@@ -67,11 +67,12 @@ function HeroCarousel({items, openArticle, T, allItems}){
         <h1 style={{fontSize:32, lineHeight:1.05, margin:'12px 0', fontWeight:900, maxWidth:600, color:'white'}}>{current.title}</h1>
         <button onClick={function(){ const orig = allItems[idx] || allItems[0]; if(orig) openArticle(orig); }} style={{background:'#ffcc00', border:0, padding:'11px 20px', borderRadius:6, fontWeight:900, marginTop:12, width:'fit-content', color:'#0d1b4a', cursor:'pointer'}}>{T.lire}</button>
       </div>
-      <button onClick={function(){ setIdx(function(p){ return p>0?p-1:safeItems.length-1; }); }} style={{position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', background:'rgba(255,255,255,0.85)', border:0, borderRadius:'50%', width:36, height:36, cursor:'pointer', fontWeight:900, zIndex:2}}>‹</button>
-      <button onClick={function(){ setIdx(function(p){ return p<safeItems.length-1?p+1:0; }); }} style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'rgba(255,255,255,0.85)', border:0, borderRadius:'50%', width:36, height:36, cursor:'pointer', fontWeight:900, zIndex:2}}>›</button>
-      <div style={{position:'absolute', bottom:12, left:24, display:'flex', gap:6, zIndex:2}}>
-        {safeItems.map(function(_, i){ return (<span key={i} onClick={function(){ setIdx(i); }} style={{width:i===idx?22:10, height:10, borderRadius:5, background:i===idx?'#ffcc00':'rgba(255,255,255,0.6)', cursor:'pointer', transition:'all 0.3s', display:'inline-block'}}></span>); })}
-      </div>
+      {hover && (
+        <>
+          <button onClick={function(){ setIdx(function(p){ return p>0?p-1:safeItems.length-1; }); }} style={{position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', background:'transparent', border:0, color:'white', fontSize:38, fontWeight:300, cursor:'pointer', zIndex:2, textShadow:'0 2px 8px rgba(0,0,0,0.8)', lineHeight:1}}>‹</button>
+          <button onClick={function(){ setIdx(function(p){ return p<safeItems.length-1?p+1:0; }); }} style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'transparent', border:0, color:'white', fontSize:38, fontWeight:300, cursor:'pointer', zIndex:2, textShadow:'0 2px 8px rgba(0,0,0,0.8)', lineHeight:1}}>›</button>
+        </>
+      )}
     </div>
   );
 }
@@ -406,64 +407,56 @@ export default function App() {
         </nav>
       </div>
 
-      {actif==='ACCUEIL'?(
+            {actif==='ACCUEIL'?(
         <div style={{background:'#2e4fb0', minHeight:'100vh'}}>
           <div className="hero-container">
             {articlePrincipal? <HeroCarousel items={filteredArticles.slice(0,5).map(getTranslated)} openArticle={openArticle} T={T} allItems={filteredArticles} /> : <div style={{flex:'0 0 68%', padding:40, color:'white'}}>{searchTerm? `Aucun résultat pour "${searchTerm}"` : T.charger}</div>}
-            <div className="hero-side" style={{background:'#2e4fb0', borderLeft:'1px solid rgba(255,255,255,0.1)'}}>{autres.map((a,i)=>(<div key={i} onClick={()=>openArticle(filteredArticles[i+1])} style={{flex:1, padding:14, borderBottom:'1px solid rgba(255,255,255,0.12)', color:'white', cursor:'pointer'}}><div style={{fontSize:10, color:'#ffcc00', fontWeight:900}}>{a.category}</div><div style={{fontSize:13, fontWeight:700, marginTop:4}}>{a.title}</div></div>))}</div>
-          </div>
-
-          {/* BBC/DW STYLE - Reportages et analyses */}
-          <div style={{maxWidth:1400, margin:'0 auto', padding:'28px 18px 40px'}}>
-            <h2 style={{color:'#00d4ff', fontSize:20, fontWeight:900, margin:'0 0 18px 0', letterSpacing:'0.2px'}}>Reportages et analyses</h2>
-            <div className="bbc-grid" style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'20px 18px'}}>
-              {filteredArticles.slice(5, 26).map((c,i)=>{
-                const tc=getTranslated(c);
-                const isVideo = c.gallery && c.gallery[0] && c.gallery[0].type==='video';
-                const img = tc.image || (c.gallery && c.gallery[0] && c.gallery[0].url) || '/placeholder.jpg';
-                const excerpt = (tc.content || '').replace(/<[^>]*>/g,'').substring(0,130);
+            <div className="hero-side" style={{background:'#2e4fb0', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', gap:0, padding:8}}>
+              {autres.map((a,i)=>{
+                const orig = filteredArticles[i+1];
+                if(!orig) return null;
+                const tc = getTranslated(orig);
+                const img = tc.image || (orig.gallery && orig.gallery[0] && orig.gallery[0].url) || '';
+                const isVid = orig.gallery && orig.gallery[0] && orig.gallery[0].type==='video';
                 return (
-                  <div key={i} onClick={()=>openArticle(c)} style={{cursor:'pointer', display:'flex', flexDirection:'column', gap:0}}>
-                    <div style={{position:'relative', width:'100%', aspectRatio:'16/9', background:'#000', borderRadius:6, overflow:'hidden'}}>
-                      <img src={img} style={{width:'100%', height:'100%', objectFit:'cover'}} alt={tc.title} />
-                      {isVideo && <div style={{position:'absolute', bottom:8, left:8, background:'white', color:'black', width:28, height:22, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:2, fontSize:10}}>▶</div>}
-                      <div style={{position:'absolute', inset:0, background:'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.15) 100%)'}}></div>
+                  <div key={i} onClick={()=>openArticle(orig)} style={{display:'flex', gap:10, padding:'8px 6px', borderBottom:'1px solid rgba(255,255,255,0.12)', cursor:'pointer', alignItems:'center'}}>
+                    <div style={{width:84, height:52, borderRadius:4, overflow:'hidden', background:'#000', flexShrink:0, position:'relative'}}>
+                      {img && <img src={img} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />}
+                      {isVid && <div style={{position:'absolute', bottom:2, left:2, background:'white', color:'black', width:14, height:10, fontSize:7, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:1}}>▶</div>}
                     </div>
-                    <div style={{padding:'10px 0 0 0'}}>
-                      <div style={{display:'flex', alignItems:'center', gap:8, fontSize:10, fontWeight:800, color:'rgba(255,255,255,0.7)', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:6}}>
-                        {isVideo && <span>🎬</span>}
-                        <span style={{color: isVideo ? 'white' : '#ffcc00'}}>{tc.category}</span>
-                        <span style={{opacity:0.5}}>|</span>
-                        <span style={{fontWeight:500, textTransform:'none'}}>{c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : 'Il y a 1 jour'}</span>
-                      </div>
-                      <h3 style={{color:'white', fontSize:16.5, fontWeight:900, lineHeight:1.25, margin:'0 0 6px 0', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden'}}>{tc.title}</h3>
-                      <p style={{color:'rgba(255,255,255,0.7)', fontSize:12.5, lineHeight:1.45, margin:0, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden'}}>{excerpt}...</p>
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontSize:9, color:'#ffcc00', fontWeight:900, textTransform:'uppercase'}}>{tc.category}</div>
+                      <div style={{fontSize:12, fontWeight:700, color:'white', lineHeight:1.25, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', marginTop:2}}>{tc.title}</div>
                     </div>
                   </div>
                 )
               })}
             </div>
-
-            {/* Deuxième rangée style MIND AND BODY si plus d'articles */}
-            {filteredArticles.length > 26 && (
-              <>
-                <h2 style={{color:'white', fontSize:16, fontWeight:900, margin:'36px 0 18px 0', borderTop:'1px solid rgba(255,255,255,0.2)', paddingTop:18, textTransform:'uppercase', letterSpacing:'0.6px'}}>À découvrir aussi</h2>
-                <div className="bbc-grid" style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'20px 18px'}}>
-                  {filteredArticles.slice(26, 38).map((c,i)=>{
-                    const tc=getTranslated(c);
-                    const img = tc.image || (c.gallery && c.gallery[0] && c.gallery[0].url) || '/placeholder.jpg';
-                    return (
-                      <div key={i} onClick={()=>openArticle(c)} style={{cursor:'pointer'}}>
-                        <div style={{width:'100%', aspectRatio:'16/9', borderRadius:6, overflow:'hidden', background:'#000'}}><img src={img} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" /></div>
-                        <h3 style={{color:'white', fontSize:15, fontWeight:800, margin:'8px 0 0 0', lineHeight:1.3}}>{tc.title}</h3>
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
-            )}
           </div>
-          <style>{`@media(max-width: 900px){ .bbc-grid{ grid-template-columns: repeat(2, 1fr) !important; } } @media(max-width: 600px){ .bbc-grid{ grid-template-columns: 1fr !important; } }`}</style>
+          <div style={{maxWidth:1400, margin:'0 auto', padding:'28px 18px 40px'}}>
+            <h2 style={{color:'#00d4ff', fontSize:20, fontWeight:900, margin:'0 0 18px 0'}}>Reportages et analyses</h2>
+            <div className="bbc-grid" style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'20px 18px'}}>
+              {filteredArticles.slice(5, 26).map((c,i)=>{
+                const tc=getTranslated(c);
+                const isVideo = c.gallery && c.gallery[0] && c.gallery[0].type==='video';
+                const img = tc.image || (c.gallery && c.gallery[0] && c.gallery[0].url) || '';
+                const excerpt = (tc.content || '').replace(/<[^>]*>/g,'').substring(0,130);
+                return (
+                  <div key={i} onClick={()=>openArticle(c)} style={{cursor:'pointer'}}>
+                    <div style={{position:'relative', width:'100%', aspectRatio:'16/9', background:'#000', borderRadius:6, overflow:'hidden'}}>
+                      {img && <img src={img} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />}
+                      {isVideo && <div style={{position:'absolute', bottom:8, left:8, background:'white', color:'black', width:28, height:22, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:2, fontSize:10}}>▶</div>}
+                    </div>
+                    <div style={{padding:'10px 0 0 0'}}>
+                      <div style={{fontSize:10, fontWeight:800, color:'rgba(255,255,255,0.7)', textTransform:'uppercase', marginBottom:6}}><span style={{color:'#ffcc00'}}>{tc.category}</span> | {c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : ''}</div>
+                      <h3 style={{color:'white', fontSize:16.5, fontWeight:900, lineHeight:1.25, margin:'0 0 6px 0'}}>{tc.title}</h3>
+                      <p style={{color:'rgba(255,255,255,0.7)', fontSize:12.5, lineHeight:1.45, margin:0}}>{excerpt}...</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       ): actif==='DIRECT'?(
         <div style={{background:'#2e4fb0', color:'white', minHeight:'100vh', padding:20}}>
