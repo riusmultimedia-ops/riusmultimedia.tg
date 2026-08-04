@@ -54,7 +54,7 @@ function HeroCarousel({items, openArticle, T, allItems}){
     const fallback = (items||[])[0];
     if(fallback && fallback.image){
       return (
-        <div className="hero-main" style={{backgroundImage:'linear-gradient(rgba(46,79,176,0.18), rgba(46,79,176,0.92)), url('+fallback.image+')', backgroundSize:'cover', backgroundPosition:'center', padding:'24px', display:'flex', flexDirection:'column', justifyContent:'flex-end', minHeight:245}}>
+        <div className="hero-main" style={{backgroundImage:'linear-gradient(rgba(46,79,176,0.18), rgba(46,79,176,0.92)), url('+fallback.image+')', backgroundSize:'cover', backgroundPosition:'center', padding:'24px', display:'flex', flexDirection:'column', justifyContent:'flex-end', minHeight:250}}>
           <span style={{background:'#d4ff00', color:'black', padding:'5px 10px', borderRadius:4, fontWeight:900, fontSize:10, width:'fit-content'}}>• {fallback.category}</span>
           <h1 style={{fontSize:28, lineHeight:1.05, margin:'12px 0', fontWeight:900, maxWidth:600, color:'white'}}>{fallback.title}</h1>
           <button onClick={function(){ if(allItems[0]) openArticle(allItems[0]); }} style={{background:'#ffcc00', border:0, padding:'11px 20px', borderRadius:6, fontWeight:900, marginTop:12, width:'fit-content', color:'#0d1b4a', cursor:'pointer'}}>{T.lire}</button>
@@ -66,10 +66,10 @@ function HeroCarousel({items, openArticle, T, allItems}){
   const current = safeItems[idx] || safeItems[0];
   const isVideo = (current.video && current.video.includes('youtube')) || (current.gallery && current.gallery[0] && (current.gallery[0].type==='video' || current.gallery[0].url?.includes('youtube') || current.gallery[0].url?.includes('youtu.be')));
   return (
-    <div className="hero-main" onMouseEnter={function(){setHover(true);}} onMouseLeave={function(){setHover(false);}} style={{position:'relative', overflow:'hidden', background:'#000', minHeight:245}}>
+    <div className="hero-main" onMouseEnter={function(){setHover(true);}} onMouseLeave={function(){setHover(false);}} style={{position:'relative', overflow:'hidden', background:'#000', minHeight:250, height:250}}>
       <div style={{position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(46,79,176,0.18), rgba(46,79,176,0.92)), url('+(current.image||'')+')', backgroundSize:'cover', backgroundPosition:'center', transition:'background-image 0.5s ease'}}></div>
       {isVideo && <div style={{position:'absolute', top:20, right:20, background:'rgba(255,0,0,0.8)', color:'white', padding:'4px 8px', borderRadius:4, fontSize:10, fontWeight:900, zIndex:2}}>▶ VIDEO</div>}
-      <div style={{position:'relative', zIndex:1, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding:'20px 24px', height:'100%', boxSizing:'border-box', minHeight:245}}>
+      <div style={{position:'relative', zIndex:1, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding:'20px 24px', height:'100%', boxSizing:'border-box', minHeight:250}}>
         <span style={{background:'#d4ff00', color:'black', padding:'5px 10px', borderRadius:4, fontWeight:900, fontSize:10, width:'fit-content'}}>• {current.category}</span>
         <h1 style={{fontSize:28, lineHeight:1.05, margin:'12px 0', fontWeight:900, maxWidth:600, color:'white'}}>{current.title}</h1>
         <button onClick={function(){ const orig = allItems[idx] || allItems[0]; if(orig) openArticle(orig); }} style={{background:'#ffcc00', border:0, padding:'10px 18px', borderRadius:6, fontWeight:900, marginTop:10, width:'fit-content', color:'#0d1b4a', cursor:'pointer'}}>{T.lire}</button>
@@ -349,7 +349,7 @@ export default function App() {
           <div style={{overflow:'hidden', flex:1}}><div className="live-text" style={{display:'flex', alignItems:'center'}}>{flashList.map((txt,i)=>(<span key={i} style={{display:'inline-flex', alignItems:'center', gap:8, marginRight:36, whiteSpace:'nowrap'}}><span className="yellow-dot"></span>{txt}</span>))}</div></div>
         </div>
 
-        <header className="header-main" style={{background:'transparent'}} style={{background:'transparent', backdropFilter:'blur(16px) saturate(180%)', WebkitBackdropFilter:'blur(16px)', borderBottom:'1px solid rgba(255,255,255,0.12)', color:'white', height:'88px', padding:'0 22px 0 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
+        <header className="header-main" style={{background:'rgba(46,79,176,0.88)', backdropFilter:'blur(12px) saturate(180%)', WebkitBackdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.15)', color:'white', height:'88px', padding:'0 22px 0 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
           <div style={{display:'flex', alignItems:'center', gap:12, flexShrink:0, minWidth:240}}>
             <img src="/logo.png" style={{width:74, height:74, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
             <div style={{lineHeight:1.15, display:'flex', flexDirection:'column', alignItems:'center'}}>
@@ -375,7 +375,7 @@ export default function App() {
         </header>
 
                 <div className="ticker-bar" style={{background:'white', color:'#0f2040', fontWeight:900, fontSize:11, display:'flex', alignItems:'center', height:26, minHeight:26, overflow:'hidden', width:'100%', position:'relative'}}>
-          <div style={{display:'flex', alignItems:'center', background:'#2e4fb0', color:'#ffcc00', padding:'0 12px', height:'100%', gap:6, flexShrink:0, fontSize:10, zIndex:3}}>📢 ANNONCES</div>
+          <div style={{display:'flex', alignItems:'center', background:'#0f2040', color:'#ffcc00', padding:'0 12px', height:'100%', gap:6, flexShrink:0, fontSize:10, zIndex:3}}>📢 ANNONCES</div>
           <div style={{flex:1, minWidth:0, overflow:'hidden', background:'white', height:'100%', display:'flex', alignItems:'center'}}>
             <div className="live-text2" style={{display:'flex', alignItems:'center', fontWeight:700, color:'#333', whiteSpace:'nowrap'}}>
               {annoncesList.map((txt,i)=>(<span key={i} style={{marginRight:50, whiteSpace:'nowrap', display:'inline-flex', alignItems:'center', gap:8}}><span style={{width:6, height:6, background:'#2e4fb0', borderRadius:'50%', display:'inline-block', flexShrink:0}}></span>{txt}</span>))}
@@ -384,7 +384,7 @@ export default function App() {
           <div className="ticker-right" style={{display:'flex', gap:10, padding:'0 12px', flexShrink:0, borderLeft:'2px solid #eee', fontSize:10, background:'#f8f8f8', height:'100%', alignItems:'center', zIndex:3}}>
             <span className="hide-mobile">📍 Lomé {meteo.icon} {meteo.temp}</span>
             <span className="hide-mobile" style={{color:'#2e4fb0', fontWeight:800}}>📅 {dateJour}</span>
-            <span style={{background:'#2e4fb0', color:'#ffcc00', padding:'3px 10px', borderRadius:10, whiteSpace:'nowrap', marginRight:16}}>🕒 {heureTU}</span>
+            <span style={{background:'#0f2040', color:'#ffcc00', padding:'3px 10px', borderRadius:10, whiteSpace:'nowrap', marginRight:16}}>🕒 {heureTU}</span>
           </div>
         </div>
 
@@ -407,7 +407,7 @@ export default function App() {
             <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('CONTACT')}} style={{color:'#ffcc00', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='CONTACT'?'3px solid #ffcc00':'3px solid transparent', display:'flex', alignItems:'center', flexShrink:0}}>CONTACT</a>
           </div>
           <span className="sep-full" style={{height:48, width:1, background:"#ffffff", margin:"0 18px 0 2px", flexShrink:0, display:"inline-block", opacity:0.95}}></span>
-          <div className="search-compact" style={{display:'flex', alignItems:'center', flexShrink:0, marginLeft:8, marginRight:16, position:'relative'}}>
+          <div className="search-compact" style={{display:'flex', alignItems:'center', flexShrink:0, marginLeft:12, marginRight:12, position:'relative'}}>
             <div style={{display:'flex', alignItems:'center', background:'white', borderRadius:'20px 0 0 20px', padding:'0 0 0 10px', width:170, height:26, boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRight:'none'}}>
               <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') handleSearch() }} placeholder={T.search} style={{border:'none', outline:'none', fontSize:11, fontWeight:700, flex:1, background:'transparent', color:'#0d1b4a', width:'100%'}} />
             </div>
@@ -420,9 +420,9 @@ export default function App() {
       
       {actif==='ACCUEIL'?(
         <div style={{background:'#2e4fb0', minHeight:'100vh'}}>
-          <div className="hero-container" style={{display:'flex', width:'100%', minHeight:245, height:245 }}>
+          <div className="hero-container" style={{display:'flex', width:'100%', minHeight:250, height:250 }}>
             {articlePrincipal? <HeroCarousel items={filteredArticles.slice(0,5).map(getTranslated)} openArticle={openArticle} T={T} allItems={filteredArticles} /> : <div style={{flex:'0 0 68%', padding:40, color:'white'}}>{searchTerm? `Aucun résultat pour "${searchTerm}"` : T.charger}</div>}
-            <div className="hero-side" style={{flex:'0 0 32%', background:'#2e4fb0', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', gap:0, padding:'4px 8px', height:245, minHeight:245, justifyContent:'space-between'}}>
+            <div className="hero-side" style={{flex:'0 0 32%', background:'#2e4fb0', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', gap:0, padding:'4px 8px', height:250, minHeight:250, justifyContent:'space-between'}}>
               {autres.map((a,i)=>{
                 const orig = filteredArticles[i+1];
                 if(!orig) return null;
@@ -474,7 +474,7 @@ export default function App() {
           <style>{`@media(max-width: 900px){ .bbc-grid{ grid-template-columns: repeat(2, 1fr) !important; } } @media(max-width: 600px){ .bbc-grid{ grid-template-columns: 1fr !important; } }`}</style>
         </div>
       ): actif==='DIRECT'?(
-        <div style={{background:'#2e4fb0', color:'white', minHeight:'100vh', padding:20}}>
+        <div style={{background:'#0f2040', color:'white', minHeight:'100vh', padding:20}}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10, marginBottom:14}}>
             <h2 style={{color:'#ff3b3b', margin:0, display:'flex', alignItems:'center', gap:8}}><span className="dot-blink"></span> {T.liveTitle}</h2>
             <div style={{display:'flex', gap:8}}>
@@ -499,7 +499,7 @@ export default function App() {
           </div>
         </div>
       ): actif==='PODCAST'?(
-        <div style={{background:'#2e4fb0', color:'white', minHeight:'100vh', paddingBottom:90}}>
+        <div style={{background:'#0f2040', color:'white', minHeight:'100vh', paddingBottom:90}}>
           <div style={{padding:'22px 20px 10px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10}}>
             <div>
               <h2 style={{color:'#a8ff00', margin:0, display:'flex', alignItems:'center', gap:8}}><span className="dot-green"></span> {T.podcastTitle}</h2>
@@ -550,7 +550,7 @@ export default function App() {
           )}
         </div>
       ): actif==='CONTACT'?(
-        <div style={{background:'#2e4fb0', color:'white', minHeight:'100vh', padding:'20px 16px'}}>
+        <div style={{background:'#0f2040', color:'white', minHeight:'100vh', padding:'20px 16px'}}>
           <div style={{maxWidth:1100, margin:'0 auto'}}>
             <h2 style={{color:'#ffcc00', margin:'0 0 6px 0', display:'flex', alignItems:'center', gap:10}}>✉️ CONTACTEZ-NOUS</h2>
             <p style={{opacity:0.7, fontSize:12, margin:'0 0 20px 0'}}>Une info, une pub, un reportage ? L'équipe Rius Multimédia vous répond en moins de 24h.</p>
@@ -593,7 +593,7 @@ export default function App() {
           </div>
         </div>
       ): actif==='RECHERCHE'?(
-        <div style={{background:'#2e4fb0', color:'white', minHeight:'100vh', padding:'20px 16px'}}>
+        <div style={{background:'#0f2040', color:'white', minHeight:'100vh', padding:'20px 16px'}}>
           <div style={{maxWidth:1000, margin:'0 auto'}}>
             <h2 style={{margin:'0 0 6px 0'}}>🔍 Résultats pour "<span style={{color:'#ffcc00'}}>{searchTerm}</span>"</h2>
             <p style={{opacity:0.7, fontSize:12, margin:'0 0 16px 0'}}>{articlesForSearch.length} article(s) trouvé(s) dans titre, contenu et catégorie</p>
@@ -604,7 +604,7 @@ export default function App() {
           </div>
         </div>
       ):(
-        <div style={{padding:'20px 16px', minHeight:400, background:'#2e4fb0', color:'white'}}>
+        <div style={{padding:'20px 16px', minHeight:400, background:'#0f2040', color:'white'}}>
           <h2>{actif}</h2>
           <div className="grid-4" style={{padding:0, marginTop:16}}>
             {filteredArticles.filter(a=>a.category===actif).map(a=>{const tc=getTranslated(a); return <div key={a.id} onClick={()=>openArticle(a)} style={{background:'white', cursor:'pointer', borderRadius:10, overflow:'hidden', color:'black'}}><img src={a.image} style={{width:'100%', height:170, objectFit:'cover'}} alt="" /><div style={{padding:10, fontWeight:700, fontSize:13}}>{tc.title}</div></div>})}
