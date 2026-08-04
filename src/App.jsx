@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react'
 import Admin from './Admin'
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://sswbiiurbnclsxqstrmu.supabase.co').split('xtfenrkhxmzptfkjxx').join('sswbiiurbnclsxqstrmu')
-const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_nO-86ly83b8Pup6WZwCsZw_OfIUZsiR'
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseKey = import.meta.env.VITE_SUPABASE_KEY
 const SLOGAN_L1 = "Si près de l'info, si près de vous"
 const SLOGAN_L2 = "Voir Vérifier Informer"
 const YOUTUBE_HANDLE = "Marius-Kodzo-ATTOR"
@@ -27,22 +27,15 @@ const UI = {
   zh: { accueil:'首页', lire:'▶ 阅读', retour:'← 返回', flash:'快讯', direct:'直播', categories:'分类', contact:'联系', newsletter:'通讯', ok:'确定', charger:'加载中...', slogan1:"离资讯如此之近", slogan2:"看见 核实 告知", search:'搜索...', liveTitle:'直播', liveDesc:'来自洛美的直播', chat:'聊天', abonner:'订阅', podcastTitle:'播客', podcastDesc:'收听我们的节目', ecouter:'▶ 收听', enCours:'正在播放' },
 }
 
-const getYoutubeId = (url) => { if(!url) return null; if(url.includes('embed/')) return url.split('embed/')[1]?.split('?')[0]; let id=url.split('v=')[1]; if(!id) id=url.split('youtu.be/')[1]; if(id) id=id.split('&')[0].split('?')[0]; return id || null }
-const getYoutubeThumb = (url) => { const id=getYoutubeId(url); return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null }
-
 const CATS = ['ACCUEIL','POLITIQUE','CULTURE','SOCIÉTÉ','SANTÉ','SPORT','ENVIRONNEMENT','INTERNATIONAL','ESPACE BUSINESS']
-
 
 
 
 function HeroCarousel({items, openArticle, T, allItems}){
   const [idx, setIdx] = useState(0);
   const [hover, setHover] = useState(false);
-  const safeItems = (items||[]).filter(function(a){ return a && (a.image || (a.gallery && a.gallery[0] && a.gallery[0].url) || getYoutubeThumb(a.video||'')); }).map(function(a){ 
-    if(!a.image){
-      if(a.gallery && a.gallery[0] && a.gallery[0].url){ a = {...a, image: a.gallery[0].url.includes('youtube')||a.gallery[0].url.includes('youtu.be') ? (getYoutubeThumb(a.gallery[0].url)||'') : a.gallery[0].url}; }
-      else if(a.video){ a = {...a, image: getYoutubeThumb(a.video)||''}; }
-    }
+  const safeItems = (items||[]).filter(function(a){ return a && (a.image || (a.gallery && a.gallery[0] && a.gallery[0].url)); }).map(function(a){ 
+    if(!a.image && a.gallery && a.gallery[0]){ a = {...a, image: a.gallery[0].url}; }
     return a;
   });
   useEffect(()=>{
@@ -54,9 +47,9 @@ function HeroCarousel({items, openArticle, T, allItems}){
     const fallback = (items||[])[0];
     if(fallback && fallback.image){
       return (
-        <div className="hero-main" style={{backgroundImage:'linear-gradient(rgba(46,79,176,0.18), rgba(46,79,176,0.92)), url('+fallback.image+')', backgroundSize:'cover', backgroundPosition:'center', padding:'24px', display:'flex', flexDirection:'column', justifyContent:'flex-end', minHeight:300}}>
+        <div className="hero-main" style={{backgroundImage:'linear-gradient(rgba(15,32,64,0.2), rgba(13,27,74,0.92)), url('+fallback.image+')', backgroundSize:'cover', backgroundPosition:'center', padding:'24px', display:'flex', flexDirection:'column', justifyContent:'flex-end'}}>
           <span style={{background:'#d4ff00', color:'black', padding:'5px 10px', borderRadius:4, fontWeight:900, fontSize:10, width:'fit-content'}}>• {fallback.category}</span>
-          <h1 style={{fontSize:28, lineHeight:1.05, margin:'12px 0', fontWeight:900, maxWidth:600, color:'white'}}>{fallback.title}</h1>
+          <h1 style={{fontSize:32, lineHeight:1.05, margin:'12px 0', fontWeight:900, maxWidth:600, color:'white'}}>{fallback.title}</h1>
           <button onClick={function(){ if(allItems[0]) openArticle(allItems[0]); }} style={{background:'#ffcc00', border:0, padding:'11px 20px', borderRadius:6, fontWeight:900, marginTop:12, width:'fit-content', color:'#0d1b4a', cursor:'pointer'}}>{T.lire}</button>
         </div>
       );
@@ -64,26 +57,24 @@ function HeroCarousel({items, openArticle, T, allItems}){
     return <div style={{flex:'0 0 68%', padding:40, color:'white'}}>Chargement...</div>;
   }
   const current = safeItems[idx] || safeItems[0];
-  const isVideo = (current.video && current.video.includes('youtube')) || (current.gallery && current.gallery[0] && (current.gallery[0].type==='video' || current.gallery[0].url?.includes('youtube') || current.gallery[0].url?.includes('youtu.be')));
+  const isVideo = current.gallery && current.gallery[0] && current.gallery[0].type==='video';
   return (
-    <div className="hero-main" onMouseEnter={function(){setHover(true);}} onMouseLeave={function(){setHover(false);}} style={{position:'relative', overflow:'hidden', background:'#000', minHeight:300, height:300}}>
-      <div style={{position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(46,79,176,0.18), rgba(46,79,176,0.92)), url('+(current.image||'')+')', backgroundSize:'cover', backgroundPosition:'center', transition:'background-image 0.5s ease'}}></div>
+    <div className="hero-main" onMouseEnter={function(){setHover(true);}} onMouseLeave={function(){setHover(false);}} style={{position:'relative', overflow:'hidden', background:'#000', minHeight:380}}>
+      <div style={{position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(15,32,64,0.2), rgba(13,27,74,0.92)), url('+(current.image||'')+')', backgroundSize:'cover', backgroundPosition:'center', transition:'background-image 0.5s ease'}}></div>
       {isVideo && <div style={{position:'absolute', top:20, right:20, background:'rgba(255,0,0,0.8)', color:'white', padding:'4px 8px', borderRadius:4, fontSize:10, fontWeight:900, zIndex:2}}>▶ VIDEO</div>}
-      <div style={{position:'relative', zIndex:1, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding:'20px 24px', height:'100%', boxSizing:'border-box', minHeight:300}}>
+      <div style={{position:'relative', zIndex:1, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding:'24px', height:'100%', boxSizing:'border-box', minHeight:380}}>
         <span style={{background:'#d4ff00', color:'black', padding:'5px 10px', borderRadius:4, fontWeight:900, fontSize:10, width:'fit-content'}}>• {current.category}</span>
-        <h1 style={{fontSize:28, lineHeight:1.05, margin:'12px 0', fontWeight:900, maxWidth:600, color:'white'}}>{current.title}</h1>
-        <button onClick={function(){ const orig = allItems[idx] || allItems[0]; if(orig) openArticle(orig); }} style={{background:'#ffcc00', border:0, padding:'10px 18px', borderRadius:6, fontWeight:900, marginTop:10, width:'fit-content', color:'#0d1b4a', cursor:'pointer'}}>{T.lire}</button>
+        <h1 style={{fontSize:32, lineHeight:1.05, margin:'12px 0', fontWeight:900, maxWidth:600, color:'white'}}>{current.title}</h1>
+        <button onClick={function(){ const orig = allItems[idx] || allItems[0]; if(orig) openArticle(orig); }} style={{background:'#ffcc00', border:0, padding:'11px 20px', borderRadius:6, fontWeight:900, marginTop:12, width:'fit-content', color:'#0d1b4a', cursor:'pointer'}}>{T.lire}</button>
       </div>
-      {hover && (
-        <>
-          <button onClick={function(){ setIdx(function(p){ return p>0?p-1:safeItems.length-1; }); }} style={{position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', background:'transparent', border:0, color:'white', fontSize:38, fontWeight:300, cursor:'pointer', zIndex:2, textShadow:'0 2px 8px rgba(0,0,0,0.8)', lineHeight:1}}>‹</button>
-          <button onClick={function(){ setIdx(function(p){ return p<safeItems.length-1?p+1:0; }); }} style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'transparent', border:0, color:'white', fontSize:38, fontWeight:300, cursor:'pointer', zIndex:2, textShadow:'0 2px 8px rgba(0,0,0,0.8)', lineHeight:1}}>›</button>
-        </>
-      )}
+      <button onClick={function(){ setIdx(function(p){ return p>0?p-1:safeItems.length-1; }); }} style={{position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', background:'rgba(255,255,255,0.85)', border:0, borderRadius:'50%', width:36, height:36, cursor:'pointer', fontWeight:900, zIndex:2}}>‹</button>
+      <button onClick={function(){ setIdx(function(p){ return p<safeItems.length-1?p+1:0; }); }} style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'rgba(255,255,255,0.85)', border:0, borderRadius:'50%', width:36, height:36, cursor:'pointer', fontWeight:900, zIndex:2}}>›</button>
+      <div style={{position:'absolute', bottom:12, left:24, display:'flex', gap:6, zIndex:2}}>
+        {safeItems.map(function(_, i){ return (<span key={i} onClick={function(){ setIdx(i); }} style={{width:i===idx?22:10, height:10, borderRadius:5, background:i===idx?'#ffcc00':'rgba(255,255,255,0.6)', cursor:'pointer', transition:'all 0.3s', display:'inline-block'}}></span>); })}
+      </div>
     </div>
   );
 }
-
 
 
 
@@ -111,7 +102,6 @@ export default function App() {
   const T = UI[lang] || UI.fr
 
   useEffect(() => {
-    if (typeof window !== 'undefined') document.body.style.background='#2e4fb0';
     if (typeof window === 'undefined') return;
     localStorage.setItem('rius_lang', lang)
     document.documentElement.dir = lang==='ar'?'rtl':'ltr'
@@ -233,7 +223,7 @@ export default function App() {
   }
   const podcastArticles = filteredArticles.filter(a=>a.audio)
   const articlePrincipal = (actif==='RECHERCHE'? articlesForSearch : filteredArticles)[0]? getTranslated((actif==='RECHERCHE'? articlesForSearch : filteredArticles)[0]) : null
-  const autres = (actif==='RECHERCHE'? articlesForSearch : filteredArticles).slice(1,5).map(getTranslated)
+  const autres = (actif==='RECHERCHE'? articlesForSearch : filteredArticles).slice(1,4).map(getTranslated)
   const flashList = flashes.length? flashes : [`Rius Multimédia - ${T.slogan1}`, `Lomé ${meteo.temp} ${meteo.icon} - ${dateJour}`]
   const annoncesList = annonces.length? annonces : [`🔴 EN DIRECT à 20h TU`, `📢 Emission Spéciale Société vendredi 20h TU`, `📰 A LIRE : ${articles[0]?.title || 'Actu disponible'}`, `💼 ESPACE BUSINESS : Votre pub ici`]
 
@@ -342,16 +332,16 @@ export default function App() {
         .sep-full{height:48px!important; width:1px!important; background:#ffffff!important; display:inline-block!important; opacity:0.9!important} .sep-small{opacity:0.9!important; color:#ffffff!important}
       `}</style>
 
-      <div style={{position:'sticky', top:0, zIndex:1000, width:'100%', background:'transparent'}}>
+      <div style={{position:'sticky', top:0, zIndex:1000, width:'100%'}}>
         <div style={{position:"sticky", top:0, zIndex:9999, width:"100%", background:"transparent"}}>
-        <div style={{background:'black', color:'white', padding:'0 10px', fontSize:11, display:'flex', gap:8, alignItems:'center', overflow:'hidden', height:26, minHeight:26, alignItems:'center', overflow:'hidden'}}>
+        <div style={{background:'black', color:'white', padding:'7px 12px', fontSize:12, display:'flex', gap:10, alignItems:'center', overflow:'hidden'}}>
           <div style={{display:'flex', alignItems:'center', gap:6, background:'#d4ff00', color:'black', padding:'3px 10px', fontWeight:900, borderRadius:4, flexShrink:0}}><span className="dot"></span> {T.flash}</div>
           <div style={{overflow:'hidden', flex:1}}><div className="live-text" style={{display:'flex', alignItems:'center'}}>{flashList.map((txt,i)=>(<span key={i} style={{display:'inline-flex', alignItems:'center', gap:8, marginRight:36, whiteSpace:'nowrap'}}><span className="yellow-dot"></span>{txt}</span>))}</div></div>
         </div>
 
-        <header className="header-main" style={{background:'rgba(46,79,176,0.88)', backdropFilter:'blur(12px) saturate(180%)', WebkitBackdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.15)', color:'white', height:'88px', padding:'0 22px 0 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
+        <header className="header-main" style={{background:'rgba(46,79,176,0.88)', backdropFilter:'blur(12px) saturate(180%)', WebkitBackdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.15)', color:'white', height:'115px', padding:'0 14px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
           <div style={{display:'flex', alignItems:'center', gap:12, flexShrink:0, minWidth:240}}>
-            <img src="/logo.png" style={{width:74, height:74, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
+            <img src="/logo.png" style={{width:82, height:82, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
             <div style={{lineHeight:1.15, display:'flex', flexDirection:'column', alignItems:'center'}}>
               <div style={{fontSize:18}}><span style={{fontFamily:'cursive'}}>Rius</span><span style={{color:'#ffcc00', fontWeight:900, marginLeft:5}}>Multimédia</span></div>
               <div style={{marginTop:4, textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center'}}>
@@ -361,20 +351,20 @@ export default function App() {
             </div>
           </div>
           <div className="header-banner" style={{flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:'6px 8px'}}>
-            {pubs.length>0? <a href={pubs[currentPub]?.link || '#'} target="_blank" rel="noreferrer" style={{width:'100%', maxWidth:728, height:76, background:'white', borderRadius:6, overflow:'hidden', display:'block'}}><img src={pubs[currentPub]?.image} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="pub" /></a> : <div style={{width:'100%', maxWidth:728, height:82, background:'rgba(0,0,0,0.2)', border:'1px dashed rgba(255,255,255,0.3)', borderRadius:6, overflow:'hidden'}}><img src="/banniere.jpg" style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" /></div>}
+            {pubs.length>0? <a href={pubs[currentPub]?.link || '#'} target="_blank" rel="noreferrer" style={{width:'100%', maxWidth:728, height:82, background:'white', borderRadius:6, overflow:'hidden', display:'block'}}><img src={pubs[currentPub]?.image} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="pub" /></a> : <div style={{width:'100%', maxWidth:728, height:82, background:'rgba(0,0,0,0.2)', border:'1px dashed rgba(255,255,255,0.3)', borderRadius:6, overflow:'hidden'}}><img src="/banniere.jpg" style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" /></div>}
           </div>
           <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:5, flexShrink:0, width:92}}>
             <select value={lang} onChange={e=>setLang(e.target.value)} style={{background:'rgba(0,0,0,0.35)', color:'white', border:'1px solid rgba(255,255,255,0.5)', borderRadius:12, padding:'2px 6px', fontSize:10, fontWeight:800, cursor:'pointer', width:'76px', height:'24px', textAlign:'center'}}>{Object.entries(LANGS).map(([code,l])=><option key={code} value={code} style={{color:'black'}}>{l.label}</option>)}</select>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:5}}>
-              <a href="https://web.facebook.com/profile.php?id=61590642726989" target="_blank" rel="noreferrer"><img src="/logo-facebook.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="FB" /></a>
-              <a href={`${YOUTUBE_CHANNEL_URL}?sub_confirmation=1`} target="_blank" rel="noreferrer"><img src="/logo-youtube.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="YT" /></a>
-              <a href="https://www.tiktok.com/@rius_multimedia?_r=1&_t=ZN-97y7NnHOElC" target="_blank" rel="noreferrer"><img src="/logo-tiktok.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="TikTok" /></a>
-              <a href="https://whatsapp.com/channel/0029VbD2cS4I7BeFr0A0I01R" target="_blank" rel="noreferrer"><img src="/logo-whatsapp.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="WA" /></a>
+              <a href="https://web.facebook.com/profile.php?id=61590642726989" target="_blank" rel="noreferrer"><img src="/logo-facebook.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="FB" /></a>
+              <a href={`${YOUTUBE_CHANNEL_URL}?sub_confirmation=1`} target="_blank" rel="noreferrer"><img src="/logo-youtube.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="YT" /></a>
+              <a href="https://www.tiktok.com/@rius_multimedia?_r=1&_t=ZN-97y7NnHOElC" target="_blank" rel="noreferrer"><img src="/logo-tiktok.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="TikTok" /></a>
+              <a href="https://whatsapp.com/channel/0029VbD2cS4I7BeFr0A0I01R" target="_blank" rel="noreferrer"><img src="/logo-whatsapp.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="WA" /></a>
             </div>
           </div>
         </header>
 
-                <div className="ticker-bar" style={{background:'white', color:'#0f2040', fontWeight:900, fontSize:11, display:'flex', alignItems:'center', height:26, minHeight:26, overflow:'hidden', width:'100%', position:'relative'}}>
+                <div className="ticker-bar" style={{background:'white', color:'#0f2040', fontWeight:900, fontSize:11, display:'flex', alignItems:'center', height:36, overflow:'hidden', width:'100%', position:'relative'}}>
           <div style={{display:'flex', alignItems:'center', background:'#0f2040', color:'#ffcc00', padding:'0 12px', height:'100%', gap:6, flexShrink:0, fontSize:10, zIndex:3}}>📢 ANNONCES</div>
           <div style={{flex:1, minWidth:0, overflow:'hidden', background:'white', height:'100%', display:'flex', alignItems:'center'}}>
             <div className="live-text2" style={{display:'flex', alignItems:'center', fontWeight:700, color:'#333', whiteSpace:'nowrap'}}>
@@ -388,7 +378,7 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="main-nav" style={{background:'transparent', backdropFilter:'blur(14px) saturate(160%)', WebkitBackdropFilter:'blur(14px) saturate(160%)', minHeight:32, height:32, display:'flex', alignItems:'center', padding:'0 8px', gap:0, justifyContent:'space-between', flexWrap:'nowrap', width:'100%', position:'relative', zIndex:10, overflow:'hidden'}}>
+        <nav className="main-nav" style={{background:'#0e1d48', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)', minHeight:48, display:'flex', alignItems:'center', padding:'0 8px', gap:0, justifyContent:'space-between', flexWrap:'nowrap', width:'100%', position:'relative', zIndex:10, overflow:'hidden'}}>
           <div className="nav-scroll" style={{display:'flex', alignItems:'center', flex:1, minWidth:0, overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch'}}>
             {CATS.map((item, idx)=>(
               <div key={item} style={{display:'flex', alignItems:'center', flexShrink:0}}>
@@ -406,72 +396,24 @@ export default function App() {
             </div>
             <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('CONTACT')}} style={{color:'#ffcc00', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='CONTACT'?'3px solid #ffcc00':'3px solid transparent', display:'flex', alignItems:'center', flexShrink:0}}>CONTACT</a>
           </div>
-          <span className="sep-full" style={{height:48, width:1, background:"#ffffff", margin:"0 18px 0 2px", flexShrink:0, display:"inline-block", opacity:0.95}}></span>
+          <span className="sep-full" style={{height:48, width:1, background:"#ffffff", margin:"0 8px 0 12px", flexShrink:0, display:"inline-block", opacity:0.95}}></span>
           <div className="search-compact" style={{display:'flex', alignItems:'center', flexShrink:0, marginLeft:12, marginRight:12, position:'relative'}}>
-            <div style={{display:'flex', alignItems:'center', background:'white', borderRadius:'20px 0 0 20px', padding:'0 0 0 10px', width:170, height:26, boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRight:'none'}}>
+            <div style={{display:'flex', alignItems:'center', background:'white', borderRadius:'20px 0 0 20px', padding:'0 0 0 10px', width:100, height:28, boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRight:'none'}}>
               <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') handleSearch() }} placeholder={T.search} style={{border:'none', outline:'none', fontSize:11, fontWeight:700, flex:1, background:'transparent', color:'#0d1b4a', width:'100%'}} />
             </div>
-            <button onClick={()=>handleSearch()} style={{background:'white', color:'#0d1b4a', border:'none', boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRadius:'0 20px 20px 0', height:26, padding:'0 12px', fontWeight:900, fontSize:11, cursor:'pointer', marginLeft:-1}}>🔍</button>
+            <button onClick={()=>handleSearch()} style={{background:'white', color:'#0d1b4a', border:'none', boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRadius:'0 20px 20px 0', height:28, padding:'0 10px', fontWeight:900, fontSize:11, cursor:'pointer', marginLeft:-1}}>🔍</button>
           </div>
         </nav>
         </div>
       </div>
 
-      
       {actif==='ACCUEIL'?(
-        <div style={{background:'#2e4fb0', minHeight:'100vh'}}>
-          <div className="hero-container" style={{display:'flex', width:'100%', minHeight:300, height:300 }}>
+        <div style={{background:'#0f2040'}}>
+          <div className="hero-container">
             {articlePrincipal? <HeroCarousel items={filteredArticles.slice(0,5).map(getTranslated)} openArticle={openArticle} T={T} allItems={filteredArticles} /> : <div style={{flex:'0 0 68%', padding:40, color:'white'}}>{searchTerm? `Aucun résultat pour "${searchTerm}"` : T.charger}</div>}
-            <div className="hero-side" style={{flex:'0 0 32%', background:'#2e4fb0', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', gap:0, padding:'4px 8px', height:300, minHeight:300, justifyContent:'space-between'}}>
-              {autres.map((a,i)=>{
-                const orig = filteredArticles[i+1];
-                if(!orig) return null;
-                const tc = getTranslated(orig);
-                const ytThumbSide = getYoutubeThumb(orig.video || (orig.gallery && orig.gallery[0] && orig.gallery[0].url) || '');
-                const img = tc.image || (orig.gallery && orig.gallery[0] && orig.gallery[0].url && !orig.gallery[0].url.includes('youtube') && !orig.gallery[0].url.includes('youtu.be') ? orig.gallery[0].url : null) || getYoutubeThumb(orig.video) || ytThumbSide || '';
-                const isVid = (orig.video && orig.video.includes('youtube')) || (orig.gallery && orig.gallery[0] && (orig.gallery[0].type==='video' || orig.gallery[0].url?.includes('youtube') || orig.gallery[0].url?.includes('youtu.be')));
-                return (
-                  <div key={i} onClick={()=>openArticle(orig)} style={{display:'flex', gap:10, padding:'6px 6px', borderBottom:'1px solid rgba(255,255,255,0.12)', cursor:'pointer', alignItems:'center', flex:1}}>
-                    <div style={{width:84, height:52, borderRadius:4, overflow:'hidden', background:'#000', flexShrink:0, position:'relative'}}>
-                      {img && <img src={img} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />}
-                      {isVid && <div style={{position:'absolute', bottom:2, left:2, background:'white', color:'black', width:14, height:10, fontSize:7, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:1}}>▶</div>}
-                    </div>
-                    <div style={{flex:1, minWidth:0}}>
-                      <div style={{fontSize:9, color:'#ffcc00', fontWeight:900, textTransform:'uppercase'}}>{tc.category}</div>
-                      <div style={{fontSize:12, fontWeight:700, color:'white', lineHeight:1.25, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', marginTop:2}}>{tc.title}</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            <div className="hero-side">{autres.map((a,i)=>(<div key={i} onClick={()=>openArticle(filteredArticles[i+1])} style={{flex:1, padding:14, borderBottom:'1px solid rgba(255,255,255,0.12)', color:'white', cursor:'pointer'}}><div style={{fontSize:10, color:'#ffcc00', fontWeight:900}}>{a.category}</div><div style={{fontSize:13, fontWeight:700, marginTop:4}}>{a.title}</div></div>))}</div>
           </div>
-
-          <div style={{maxWidth:1400, margin:'0 auto', padding:'28px 18px 40px'}}>
-            <h2 style={{color:'#00d4ff', fontSize:20, fontWeight:900, margin:'0 0 18px 0'}}>Reportages et analyses</h2>
-            <div className="bbc-grid" style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'20px 18px'}}>
-              {filteredArticles.slice(5, 26).map((c,i)=>{
-                const tc=getTranslated(c);
-                const isVideo = (c.video && c.video.includes('youtube')) || (c.gallery && c.gallery[0] && (c.gallery[0].type==='video' || c.gallery[0].url?.includes('youtube') || c.gallery[0].url?.includes('youtu.be')));
-                const ytThumb = getYoutubeThumb(c.video || (c.gallery && c.gallery[0] && c.gallery[0].url) || '');
-                const img = tc.image || (c.gallery && c.gallery[0] && c.gallery[0].url && !c.gallery[0].url.includes('youtube') && !c.gallery[0].url.includes('youtu.be') ? c.gallery[0].url : null) || getYoutubeThumb(c.video) || ytThumb || '';
-                const excerpt = (tc.content || '').replace(/<[^>]*>/g,'').substring(0,130);
-                return (
-                  <div key={i} onClick={()=>openArticle(c)} style={{cursor:'pointer'}}>
-                    <div style={{position:'relative', width:'100%', aspectRatio:'16/9', background:'#000', borderRadius:6, overflow:'hidden'}}>
-                      {img && <img src={img} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />}
-                      {isVideo && <div style={{position:'absolute', bottom:8, left:8, background:'white', color:'black', width:28, height:22, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:2, fontSize:10}}>▶</div>}
-                    </div>
-                    <div style={{padding:'10px 0 0 0'}}>
-                      <div style={{fontSize:10, fontWeight:800, color:'rgba(255,255,255,0.7)', textTransform:'uppercase', marginBottom:6}}><span style={{color:'#ffcc00'}}>{tc.category}</span> | {c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : ''}</div>
-                      <h3 style={{color:'white', fontSize:16.5, fontWeight:900, lineHeight:1.25, margin:'0 0 6px 0'}}>{tc.title}</h3>
-                      <p style={{color:'rgba(255,255,255,0.7)', fontSize:12.5, lineHeight:1.45, margin:0}}>{excerpt}...</p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-          <style>{`@media(max-width: 900px){ .bbc-grid{ grid-template-columns: repeat(2, 1fr) !important; } } @media(max-width: 600px){ .bbc-grid{ grid-template-columns: 1fr !important; } }`}</style>
+          <div className="grid-4">{filteredArticles.slice(4,12).map((c,i)=>{const tc=getTranslated(c); return <div key={i} onClick={()=>openArticle(c)} style={{background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:14, color:'white', cursor:'pointer'}}><div style={{fontSize:10, fontWeight:900, color:'#ffcc00'}}>{tc.category}</div><div style={{fontSize:13, fontWeight:700, marginTop:6}}>{tc.title}</div></div>})}</div>
         </div>
       ): actif==='DIRECT'?(
         <div style={{background:'#0f2040', color:'white', minHeight:'100vh', padding:20}}>
@@ -612,7 +554,7 @@ export default function App() {
         </div>
       )}
 
-      <footer style={{background:'linear-gradient(180deg, #3a62d1 0%, #2f52b6 100%)', color:'white', borderTop:'1px solid rgba(255,204,0,0.25)', position:'relative', boxShadow:'0 1px 0 rgba(255,255,255,0.04) inset, 0 -10px 40px rgba(0,0,0,0.8) inset'}}>
+      <footer style={{background:'linear-gradient(180deg, #000000 0%, #02040c 70%, #000000 100%)', color:'white', borderTop:'1px solid rgba(255,204,0,0.25)', position:'relative', boxShadow:'0 1px 0 rgba(255,255,255,0.04) inset, 0 -10px 40px rgba(0,0,0,0.8) inset'}}>
         <div className="footer-grid" style={{padding:'36px 24px 24px', maxWidth:1400, margin:'0 auto', display:'grid', gridTemplateColumns:'1.4fr 0.7fr 1fr 1.2fr', gap:32}}>
           <div>
             <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:12}}>
