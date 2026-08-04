@@ -333,13 +333,13 @@ export default function App() {
         .sep-full{height:48px!important; width:1px!important; background:#ffffff!important; display:inline-block!important; opacity:0.9!important} .sep-small{opacity:0.9!important; color:#ffffff!important}
       `}</style>
 
-      <div style={{position:'sticky', top:0, zIndex:1000, width:'100%', background:'#0e1d48'}}>
+      <div style={{position:'sticky', top:0, zIndex:1000, width:'100%', background:'transparent'}}>
         <div style={{background:'black', color:'white', padding:'0 10px', fontSize:11, display:'flex', gap:8, alignItems:'center', overflow:'hidden', height:26, minHeight:26, overflow:'hidden'}}>
           <div style={{display:'flex', alignItems:'center', gap:6, background:'#d4ff00', color:'black', padding:'3px 10px', fontWeight:900, borderRadius:4, flexShrink:0}}><span className="dot"></span> {T.flash}</div>
           <div style={{overflow:'hidden', flex:1}}><div className="live-text" style={{display:'flex', alignItems:'center'}}>{flashList.map((txt,i)=>(<span key={i} style={{display:'inline-flex', alignItems:'center', gap:8, marginRight:36, whiteSpace:'nowrap'}}><span className="yellow-dot"></span>{txt}</span>))}</div></div>
         </div>
 
-        <header className="header-main" style={{background:'rgba(46,79,176,0.88)', backdropFilter:'blur(12px) saturate(180%)', WebkitBackdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.15)', color:'white', height:'88px', padding:'0 22px 0 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
+        <header className="header-main" style={{background:'transparent', backdropFilter:'blur(16px) saturate(180%)', WebkitBackdropFilter:'blur(16px)', borderBottom:'1px solid rgba(255,255,255,0.12)', color:'white', height:'88px', padding:'0 22px 0 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
           <div style={{display:'flex', alignItems:'center', gap:12, flexShrink:0, minWidth:240}}>
             <img src="/logo.png" style={{width:74, height:74, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
             <div style={{lineHeight:1.15, display:'flex', flexDirection:'column', alignItems:'center'}}>
@@ -378,7 +378,7 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="main-nav" style={{background:'#0e1d48', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)', minHeight:32, height:32, display:'flex', alignItems:'center', padding:'0 8px 0 10px', gap:0, justifyContent:'space-between', flexWrap:'nowrap', width:'100%', position:'relative', zIndex:10, overflow:'hidden'}}>
+        <nav className="main-nav" style={{background:'transparent', backdropFilter:'blur(14px) saturate(160%)', WebkitBackdropFilter:'blur(14px) saturate(160%)', minHeight:32, height:32, display:'flex', alignItems:'center', padding:'0 8px 0 10px', gap:0, justifyContent:'space-between', flexWrap:'nowrap', width:'100%', position:'relative', zIndex:10, overflow:'hidden'}}>
           <div className="nav-scroll" style={{display:'flex', alignItems:'center', flex:1, minWidth:0, overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch'}}>
             {CATS.map((item, idx)=>(
               <div key={item} style={{display:'flex', alignItems:'center', flexShrink:0}}>
