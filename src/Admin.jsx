@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -16,6 +17,18 @@ const Slogan = ({ size = 1 }) => (
   </div>
 );
 
+const getYoutubeId = (url) => {
+  if(!url) return null
+  if(url.includes('embed/')) return url.split('embed/')[1]?.split('?')[0]
+  let id=url.split('v=')[1]; if(!id) id=url.split('youtu.be/')[1]
+  if(id) id=id.split('&')[0].split('?')[0]
+  return id || null
+}
+const getYoutubeThumb = (url) => {
+  const id = getYoutubeId(url)
+  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null
+}
+
 export default function Admin() {
   const [isLogged, setIsLogged] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -23,6 +36,8 @@ export default function Admin() {
   const [pass, setPass] = useState('');
   const [form, setForm] = useState({ id:null, title:'', category:'ACCUEIL', image:'', video:'', audio:'', content:'', translations:{}, gallery:[] });
   const [gallery, setGallery] = useState([]);
+  const [youtubeInput, setYoutubeInput] = useState('');
+  const [youtubeCaption, setYoutubeCaption] = useState('');
   const [editLang, setEditLang] = useState('fr');
   const [translating, setTranslating] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
@@ -66,9 +81,6 @@ export default function Admin() {
     });
   };
 
-
-
-  // Auto logout après inactivité (15 min)
   const TIMEOUT_MIN = 5;
   const [lastActivity, setLastActivity] = useState(Date.now());
   
@@ -82,15 +94,13 @@ export default function Admin() {
     const resetTimer = () => setLastActivity(Date.now());
     const events = ['mousemove','keydown','click','scroll','touchstart'];
     if (typeof window !== 'undefined') events.forEach(e=> window.addEventListener(e, resetTimer));
-    
     const interval = setInterval(()=>{
       const diff = Date.now() - lastActivity;
       if(diff > TIMEOUT_MIN * 60 * 1000){
         alert(`Session expirée après ${TIMEOUT_MIN} min d'inactivité`);
         handleLogout();
       }
-    }, 60000); // check chaque minute
-
+    }, 60000);
     return ()=>{
       if (typeof window !== 'undefined') events.forEach(e=> window.removeEventListener(e, resetTimer));
       clearInterval(interval);
@@ -129,6 +139,7 @@ export default function Admin() {
     setIsLogged(false); setCurrentUser(null); setUser(''); setPass('');
     setForm({ id:null, title:'', category:'ACCUEIL', image:'', video:'', audio:'', content:'', translations:{}, gallery:[] });
     setGallery([]);
+    setYoutubeInput(''); setYoutubeCaption('');
     setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false);
   };
 
@@ -210,10 +221,28 @@ export default function Admin() {
     const tmp=c[i]; c[i]=c[ni]; c[ni]=tmp; setGallery(c);
   };
 
+  const handleAddYoutube = () => {
+    if(!youtubeInput.trim()) return alert('Colle un lien YouTube');
+    const id = getYoutubeId(youtubeInput.trim())
+    if(!id) return alert('Lien YouTube invalide. Ex: https://youtu.be/abc123 ou https://www.youtube.com/watch?v=abc123')
+    const url = youtubeInput.trim()
+    setGallery([...gallery, {type:'video', url, caption: youtubeCaption}])
+    setYoutubeInput('')
+    setYoutubeCaption('')
+  }
+
   const handlePublish = async () => {
     if(!form.title||!form.content) return alert('Titre et contenu obligatoires');
     try{
       const payload = { title: form.title, category: form.category, image: form.image, video: form.video || null, audio: form.audio || null, content: form.content, translations: form.translations, gallery: gallery.length? gallery : null }
+      // Si pas d'image principale mais video youtube dans gallery, on met la miniature auto en image
+      if(!payload.image && gallery.length){
+        const firstYt = gallery.find(g=> g.url && (g.url.includes('youtube') || g.url.includes('youtu.be')))
+        if(firstYt){
+          const thumb = getYoutubeThumb(firstYt.url)
+          if(thumb) payload.image = thumb
+        }
+      }
       const url = form.id? `${supabaseUrl}/rest/v1/articles?id=eq.${form.id}` : `${supabaseUrl}/rest/v1/articles`
       const method = form.id? 'PATCH' : 'POST'
       const res = await fetch(url, {
@@ -370,7 +399,7 @@ export default function Admin() {
             {filtered.map(a=>(
               <div key={a.id} style={{border:'1px solid #e0e7ff', padding:10, borderRadius:12, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
                 <img src={a.image} style={{width:54,height:54,objectFit:'cover',borderRadius:8}} alt="" />
-                <div style={{flex:1, minWidth:0}}><div style={{fontWeight:800,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</div><div style={{fontSize:11,color:'#64748b'}}>{a.category} {a.gallery?.length? `• ${a.gallery.length} médias`:''}</div></div>
+                <div style={{flex:1, minWidth:0}}><div style={{fontWeight:800,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</div><div style={{fontSize:11,color:'#64748b'}}>{a.category} {a.gallery?.length? `• ${a.gallery.length} médias`:''} {a.gallery?.some(g=>g.url.includes('youtube')||g.url.includes('youtu.be'))? '• YouTube':''}</div></div>
                 <button onClick={()=>handleEdit(a)} style={{background:'#2e4fb0',color:'white',border:0,borderRadius:8,padding:'8px 12px',fontSize:12,cursor:'pointer'}}>✏</button>
                 <button onClick={()=>handleDelete(a.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:8,padding:'8px 12px',fontSize:12,cursor:'pointer'}}>🗑</button>
               </div>
@@ -395,10 +424,30 @@ export default function Admin() {
                 <input placeholder="ou colle un lien image" value={form.image} onChange={e=>setForm({...form,image:e.target.value})} style={{width:'100%',padding:'8px',marginTop:8,borderRadius:8,border:'1px solid #c7d2fe',fontSize:11}} />
               </div>
 
-              {/* NOUVEAU : GALERIE MULTI IMAGES / VIDEOS */}
+              {/* YOUTUBE DEDIE - NOUVEAU */}
+              <div style={{border:'2px solid #ff0000', padding:14, borderRadius:12, background:'#fff0f0'}}>
+                <div style={{fontSize:12,fontWeight:900,color:'#b91c1c', marginBottom:8, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <span>🎥 VIDÉO YOUTUBE (0 Mo Supabase - Recommandé)</span>
+                  <a href={YOUTUBE_STUDIO} target="_blank" rel="noreferrer" style={{fontSize:10, background:'#ff0000', color:'white', padding:'3px 8px', borderRadius:12, textDecoration:'none'}}>Ouvrir YouTube Studio</a>
+                </div>
+                <div style={{display:'flex', gap:6}}>
+                  <input placeholder="Colle lien YouTube: https://youtu.be/... ou https://www.youtube.com/watch?v=..." value={youtubeInput} onChange={e=>setYoutubeInput(e.target.value)} style={{flex:1,padding:'10px',borderRadius:8,border:'1px solid #fca5a5',fontSize:12}} />
+                  <button type="button" onClick={handleAddYoutube} style={{background:'#ff0000', color:'white', border:0, padding:'0 14px', borderRadius:8, fontWeight:900, fontSize:12, cursor:'pointer'}}>➕ Ajouter</button>
+                </div>
+                <input placeholder="Légende vidéo (optionnel)" value={youtubeCaption} onChange={e=>setYoutubeCaption(e.target.value)} style={{width:'100%',padding:'8px',marginTop:6,borderRadius:8,border:'1px solid #fca5a5',fontSize:11}} />
+                {youtubeInput && getYoutubeId(youtubeInput) && (
+                  <div style={{marginTop:10, display:'flex', gap:10, background:'white', padding:8, borderRadius:8, border:'1px solid #fecaca'}}>
+                    <img src={getYoutubeThumb(youtubeInput)} style={{width:120, height:68, objectFit:'cover', borderRadius:6}} alt="" />
+                    <div style={{fontSize:11}}><b style={{color:'#b91c1c'}}>Aperçu :</b><br/>ID: {getYoutubeId(youtubeInput)}<br/><span style={{color:'#16a34a', fontWeight:700}}>✅ 0 Mo utilisé sur Supabase</span><br/><span style={{fontSize:10, color:'#666'}}>Sera affiché comme sur DW/BBC avec ▶</span></div>
+                  </div>
+                )}
+                <div style={{fontSize:10, color:'#666', marginTop:6}}>💡 Astuce: Tu peux ajouter plusieurs vidéos YouTube. Elles apparaîtront dans l'article les unes sous les autres + en miniature auto dans le body.</div>
+              </div>
+
+              {/* GALERIE MULTI */}
               <div style={{border:'2px solid #ffcc00', padding:14, borderRadius:12, background:'#fffbe6'}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10, flexWrap:'wrap', gap:8}}>
-                  <div style={{fontSize:11,fontWeight:900,color:'#92400e'}}>🖼️🎬 GALERIE PLEIN ARTICLE (multi)</div>
+                  <div style={{fontSize:11,fontWeight:900,color:'#92400e'}}>🖼🎬 GALERIE PLEIN ARTICLE ({gallery.length} médias)</div>
                   <div style={{display:'flex', gap:6}}>
                     <button type="button" onClick={()=>galleryInputRef.current.click()} style={{background:'#000', color:'white', border:0, padding:'6px 10px', borderRadius:8, fontWeight:800, fontSize:11, cursor:'pointer'}}>{uploading==='gallery'?'⏳...':'📁 PC'}</button>
                     <button type="button" onClick={()=>addGalleryUrl('image')} style={{background:'#2e4fb0', color:'white', border:0, padding:'6px 10px', borderRadius:8, fontWeight:700, fontSize:11, cursor:'pointer'}}>+ Image URL</button>
@@ -412,15 +461,15 @@ export default function Admin() {
                   Glisse ici plusieurs images/vidéos depuis ton PC<br/><span style={{fontSize:10}}>JPG, PNG, MP4, MOV - Upload auto vers Supabase</span>
                 </div>
 
-                {gallery.length===0 && <div style={{fontSize:11, opacity:0.6, textAlign:'center', padding:8}}>Aucun média. Ajoute des images/vidéos qui s'afficheront les unes sous les autres en plein article.</div>}
+                {gallery.length===0 && <div style={{fontSize:11, opacity:0.6, textAlign:'center', padding:8}}>Aucun média. Ajoute des vidéos YouTube ci-dessus (0 Mo) ou des images depuis ton PC.</div>}
 
                 {gallery.map((item,i)=>(
-                  <div key={i} style={{background:'white', padding:8, borderRadius:10, marginBottom:8, border:'1px solid #fde68a', display:'flex', gap:10}}>
-                    <div style={{width:64, height:48, borderRadius:6, overflow:'hidden', background:'#f5f5f5', flexShrink:0}}>
-                      {item.type==='video' ? <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#000',color:'white'}}>▶</div> : <img src={item.url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />}
+                  <div key={i} style={{background:'white', padding:8, borderRadius:10, marginBottom:8, border: item.url.includes('youtube')||item.url.includes('youtu.be') ? '1px solid #fca5a5' : '1px solid #fde68a', display:'flex', gap:10}}>
+                    <div style={{width:64, height:48, borderRadius:6, overflow:'hidden', background:'#000', flexShrink:0}}>
+                      {item.url.includes('youtube')||item.url.includes('youtu.be') ? <img src={getYoutubeThumb(item.url)} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" /> : item.type==='video' ? <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#000',color:'white'}}>▶</div> : <img src={item.url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />}
                     </div>
                     <div style={{flex:1}}>
-                      <div style={{display:'flex', gap:4, marginBottom:4}}><span style={{background:item.type==='image'?'#162f6b':'#ff0000', color:'white', padding:'1px 5px', borderRadius:4, fontSize:9, fontWeight:800}}>{item.type.toUpperCase()} #{i+1}</span></div>
+                      <div style={{display:'flex', gap:4, marginBottom:4}}><span style={{background: item.url.includes('youtube')||item.url.includes('youtu.be') ? '#ff0000' : item.type==='image'?'#162f6b':'#ff0000', color:'white', padding:'1px 5px', borderRadius:4, fontSize:9, fontWeight:800}}>{item.url.includes('youtube')||item.url.includes('youtu.be')? 'YOUTUBE' : item.type.toUpperCase()} #{i+1} {item.url.includes('youtube')||item.url.includes('youtu.be')? '• 0 Mo':''}</span></div>
                       <input value={item.url} onChange={e=>updateGallery(i,'url',e.target.value)} placeholder={item.type==='image'?'URL image':'URL YouTube / mp4'} style={{padding:6, borderRadius:6, border:'1px solid #ddd', width:'100%', marginBottom:4, fontSize:11}} />
                       <input value={item.caption} onChange={e=>updateGallery(i,'caption',e.target.value)} placeholder="Légende (optionnel)" style={{padding:6, borderRadius:6, border:'1px solid #ddd', width:'100%', fontSize:11}} />
                     </div>
@@ -433,9 +482,10 @@ export default function Admin() {
                 ))}
               </div>
 
-              <div style={{border:'1px solid #bfdbfe', padding:12, borderRadius:12, background:'#eff6ff'}}>
-                <div style={{fontSize:11,fontWeight:900,color:'#2e4fb0'}}>🎥 VIDÉO YOUTUBE (ancienne - gardée pour compat)</div>
+              <div style={{border:'1px solid #bfdbfe', padding:12, borderRadius:12, background:'#eff6ff', opacity:0.7}}>
+                <div style={{fontSize:11,fontWeight:900,color:'#2e4fb0'}}>🎥 VIDÉO YOUTUBE (ancienne - gardée pour compatibilité)</div>
                 <input placeholder="https://youtube.com/watch?v=..." value={form.video} onChange={e=>setForm({...form,video:e.target.value})} style={{width:'100%',padding:'10px',marginTop:8,borderRadius:8,border:'1px solid #bfdbfe',fontSize:12}} />
+                <div style={{fontSize:10, color:'#666', marginTop:4}}>Utilise plutôt le champ rouge YouTube ci-dessus, plus pratique.</div>
               </div>
               <div style={{border:'1px solid #fde68a', padding:12, borderRadius:12, background:'#fffbeb'}}>
                 <div style={{fontSize:11,fontWeight:900,color:'#92400e'}}>🎧 AUDIO / PODCAST</div>
