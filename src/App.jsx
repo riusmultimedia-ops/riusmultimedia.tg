@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react'
 import Admin from './Admin'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_KEY
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://sswbiiurbnclsxqstrmu.supabase.co').split('xtfenrkhxmzptfkjxx').join('sswbiiurbnclsxqstrmu')
+const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_nO-86ly83b8Pup6WZwCsZw_OfIUZsiR'
 const SLOGAN_L1 = "Si près de l'info, si près de vous"
 const SLOGAN_L2 = "Voir Vérifier Informer"
 const YOUTUBE_HANDLE = "Marius-Kodzo-ATTOR"
@@ -231,7 +231,7 @@ export default function App() {
     const disp=getTranslated(articles.find(a=>a.id===selected.id) || selected)
     return(
       <div style={{background:'linear-gradient(180deg, #193071 0%, #1e3a85 100%)', minHeight:'100vh', fontFamily:'Inter,Arial'}}>
-        <style>{`* {box-sizing:border-box} body{margin:0} .sep-full{height:48px!important; width:1px!important; background:rgba(255,255,255,0.25)!important; display:inline-block!important;} .sep-small{opacity:0.4}`}</style>
+        <style>{`* {box-sizing:border-box} body{margin:0} .sep-full{height:48px!important; width:1px!important; background:#ffffff!important; display:inline-block!important; opacity:0.9!important} .sep-small{opacity:0.9!important; color:#ffffff!important}`}</style>
         <header style={{background:'rgba(46,79,176,0.70)', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)', color:'white', padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
           <b style={{cursor:'pointer'}} onClick={()=>setSelected(null)}>RIUS MULTIMEDIA</b>
           <button onClick={()=>setSelected(null)} style={{background:'#ffcc00', border:0, padding:'8px 14px', borderRadius:6, fontWeight:800, cursor:'pointer'}}>{T.retour}</button>
@@ -300,9 +300,9 @@ export default function App() {
           .ticker-right{padding:0 8px !important; gap:6px !important; border-left:1px solid #eee !important; margin-right:10px !important}
           .hide-mobile{display:none !important}
           .main-nav{display:flex !important; flex-direction:column !important; align-items:stretch !important; padding:0 !important; min-height:auto !important; width:100% !important; overflow:visible !important}
-          .nav-scroll{display:flex !important; flex:0 0 48px !important; width:100% !important; min-width:100% !important; max-width:100vw !important; overflow-x:auto !important; overflow-y:hidden !important; -webkit-overflow-scrolling:touch !important; background:rgba(13,27,74,0.70) !important; backdrop-filter:blur(12px) !important; order:1; visibility:visible !important; opacity:1 !important}
+          .nav-scroll{display:flex !important; flex:0 0 48px !important; width:100% !important; min-width:100% !important; max-width:100vw !important; overflow-x:auto !important; overflow-y:hidden !important; -webkit-overflow-scrolling:touch !important; background:#0e1d48 !important; backdrop-filter:blur(12px) !important; order:1; visibility:visible !important; opacity:1 !important}
           .nav-scroll a{flex-shrink:0 !important; display:flex !important}
-          .search-compact{order:2 !important; width:100% !important; margin:0 !important; padding:8px 12px !important; background:rgba(10,22,64,0.75) !important; backdrop-filter:blur(12px) !important; display:flex !important; justify-content:flex-start !important}
+          .search-compact{order:2 !important; width:100% !important; margin:0 !important; padding:8px 12px !important; background:#0a1636 !important; backdrop-filter:blur(12px) !important; display:flex !important; justify-content:flex-start !important}
           .search-compact div{width:140px !important}
           .main-nav > .sep-full{display:none !important}
           .grid-2{grid-template-columns:1fr}
@@ -325,23 +325,22 @@ export default function App() {
         .grid-pod{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; padding:18px 20px}
         .footer-grid{display:grid; grid-template-columns:1.6fr 1fr 1fr 1.3fr; gap:28px; padding:36px 20px}
         .yellow-dot{width:8px;height:8px;background:#ffcc00;border-radius:50%;display:inline-block;flex-shrink:0}
-        .sep-full{width:2px; height:48px; background:rgba(255,255,255,0.18); margin:0 6px; flex-shrink:0; display:inline-block}
-        .sep-small{color:rgba(255,255,255,0.22); font-size:9px; margin:0 1px}
+        .sep-full{width:1px; height:48px; background:#ffffff; margin:0 6px; flex-shrink:0; display:inline-block; opacity:0.9}
+        .sep-small{color:#ffffff; font-size:9px; margin:0 1px; opacity:0.85}
         @media(max-width:900px){.header-banner{display:none!important}.header-main{height:auto!important; padding:10px 12px!important}.hero-container{flex-direction:column!important}.hero-main{flex:1 1 100%!important; min-height:420px!important; padding:20px!important}.grid-4{grid-template-columns:1fr 1fr!important}.grid-pod{grid-template-columns:1fr 1fr!important}.footer-grid{grid-template-columns:1fr 1fr!important}.search-compact{width:100%!important}.direct-grid{flex-direction:column!important}}
         @media(max-width:600px){.grid-4{grid-template-columns:1fr!important}.grid-pod{grid-template-columns:1fr!important}.footer-grid{grid-template-columns:1fr!important}}
-        .sep-full{height:48px!important; width:1px!important; background:rgba(255,255,255,0.25)!important; display:inline-block!important;} .sep-small{opacity:0.4}
+        .sep-full{height:48px!important; width:1px!important; background:#ffffff!important; display:inline-block!important; opacity:0.9!important} .sep-small{opacity:0.9!important; color:#ffffff!important}
       `}</style>
 
-      <div style={{position:'sticky', top:0, zIndex:1000, width:'100%'}}>
-        <div style={{position:"sticky", top:0, zIndex:9999, width:"100%", background:"transparent"}}>
-        <div style={{background:'black', color:'white', padding:'7px 12px', fontSize:12, display:'flex', gap:10, alignItems:'center', overflow:'hidden'}}>
+      <div style={{position:'sticky', top:0, zIndex:1000, width:'100%', background:'#0e1d48'}}>
+        <div style={{background:'black', color:'white', padding:'0 10px', fontSize:11, display:'flex', gap:8, alignItems:'center', overflow:'hidden', height:26, minHeight:26, alignItems:'center', overflow:'hidden'}}>
           <div style={{display:'flex', alignItems:'center', gap:6, background:'#d4ff00', color:'black', padding:'3px 10px', fontWeight:900, borderRadius:4, flexShrink:0}}><span className="dot"></span> {T.flash}</div>
           <div style={{overflow:'hidden', flex:1}}><div className="live-text" style={{display:'flex', alignItems:'center'}}>{flashList.map((txt,i)=>(<span key={i} style={{display:'inline-flex', alignItems:'center', gap:8, marginRight:36, whiteSpace:'nowrap'}}><span className="yellow-dot"></span>{txt}</span>))}</div></div>
         </div>
 
-        <header className="header-main" style={{background:'rgba(46,79,176,0.88)', backdropFilter:'blur(12px) saturate(180%)', WebkitBackdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.15)', color:'white', height:'115px', padding:'0 14px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
+        <header className="header-main" style={{background:'rgba(46,79,176,0.88)', backdropFilter:'blur(12px) saturate(180%)', WebkitBackdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.15)', color:'white', height:'78px', padding:'0 14px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
           <div style={{display:'flex', alignItems:'center', gap:12, flexShrink:0, minWidth:240}}>
-            <img src="/logo.png" style={{width:82, height:82, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
+            <img src="/logo.png" style={{width:52, height:52, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
             <div style={{lineHeight:1.15, display:'flex', flexDirection:'column', alignItems:'center'}}>
               <div style={{fontSize:18}}><span style={{fontFamily:'cursive'}}>Rius</span><span style={{color:'#ffcc00', fontWeight:900, marginLeft:5}}>Multimédia</span></div>
               <div style={{marginTop:4, textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center'}}>
@@ -351,15 +350,15 @@ export default function App() {
             </div>
           </div>
           <div className="header-banner" style={{flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:'6px 8px'}}>
-            {pubs.length>0? <a href={pubs[currentPub]?.link || '#'} target="_blank" rel="noreferrer" style={{width:'100%', maxWidth:728, height:82, background:'white', borderRadius:6, overflow:'hidden', display:'block'}}><img src={pubs[currentPub]?.image} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="pub" /></a> : <div style={{width:'100%', maxWidth:728, height:82, background:'rgba(0,0,0,0.2)', border:'1px dashed rgba(255,255,255,0.3)', borderRadius:6, overflow:'hidden'}}><img src="/banniere.jpg" style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" /></div>}
+            {pubs.length>0? <a href={pubs[currentPub]?.link || '#'} target="_blank" rel="noreferrer" style={{width:'100%', maxWidth:728, height:52, background:'white', borderRadius:6, overflow:'hidden', display:'block'}}><img src={pubs[currentPub]?.image} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="pub" /></a> : <div style={{width:'100%', maxWidth:728, height:52, background:'rgba(0,0,0,0.2)', border:'1px dashed rgba(255,255,255,0.3)', borderRadius:6, overflow:'hidden'}}><img src="/banniere.jpg" style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" /></div>}
           </div>
           <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:5, flexShrink:0, width:92}}>
             <select value={lang} onChange={e=>setLang(e.target.value)} style={{background:'rgba(0,0,0,0.35)', color:'white', border:'1px solid rgba(255,255,255,0.5)', borderRadius:12, padding:'2px 6px', fontSize:10, fontWeight:800, cursor:'pointer', width:'76px', height:'24px', textAlign:'center'}}>{Object.entries(LANGS).map(([code,l])=><option key={code} value={code} style={{color:'black'}}>{l.label}</option>)}</select>
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:5}}>
-              <a href="https://web.facebook.com/profile.php?id=61590642726989" target="_blank" rel="noreferrer"><img src="/logo-facebook.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="FB" /></a>
-              <a href={`${YOUTUBE_CHANNEL_URL}?sub_confirmation=1`} target="_blank" rel="noreferrer"><img src="/logo-youtube.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="YT" /></a>
-              <a href="https://www.tiktok.com/@rius_multimedia?_r=1&_t=ZN-97y7NnHOElC" target="_blank" rel="noreferrer"><img src="/logo-tiktok.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="TikTok" /></a>
-              <a href="https://whatsapp.com/channel/0029VbD2cS4I7BeFr0A0I01R" target="_blank" rel="noreferrer"><img src="/logo-whatsapp.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="WA" /></a>
+            <div style={{display:'flex', flexDirection:'row', gap:6, alignItems:'center', justifyContent:'center'}}>
+              <a href="https://web.facebook.com/profile.php?id=61590642726989" target="_blank" rel="noreferrer"><img src="/logo-facebook.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="FB" /></a>
+              <a href={`${YOUTUBE_CHANNEL_URL}?sub_confirmation=1`} target="_blank" rel="noreferrer"><img src="/logo-youtube.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="YT" /></a>
+              <a href="https://www.tiktok.com/@rius_multimedia?_r=1&_t=ZN-97y7NnHOElC" target="_blank" rel="noreferrer"><img src="/logo-tiktok.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="TikTok" /></a>
+              <a href="https://whatsapp.com/channel/0029VbD2cS4I7BeFr0A0I01R" target="_blank" rel="noreferrer"><img src="/logo-whatsapp.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="WA" /></a>
             </div>
           </div>
         </header>
@@ -378,12 +377,12 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="main-nav" style={{background:'#152a5a', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)', minHeight:48, display:'flex', alignItems:'center', padding:'0 8px', gap:0, justifyContent:'space-between', flexWrap:'nowrap', width:'100%', position:'relative', zIndex:10, overflow:'hidden'}}>
+        <nav className="main-nav" style={{background:'#0e1d48', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)', minHeight:48, display:'flex', alignItems:'center', padding:'0 8px', gap:0, justifyContent:'space-between', flexWrap:'nowrap', width:'100%', position:'relative', zIndex:10, overflow:'hidden'}}>
           <div className="nav-scroll" style={{display:'flex', alignItems:'center', flex:1, minWidth:0, overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch'}}>
             {CATS.map((item, idx)=>(
               <div key={item} style={{display:'flex', alignItems:'center', flexShrink:0}}>
                 <a href="#" className="nav-white" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif(item)}} style={{color:actif===item?'#ffcc00':'white', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif===item?'3px solid #ffcc00':'3px solid transparent', display:'flex', alignItems:'center', transition:'color 0.2s'}}>{item}</a>
-                {idx === CATS.length -1? <span className="sep-full" style={{marginLeft:6, marginRight:8}}></span> : <span className="sep-small">│</span>}
+                {idx === CATS.length -1? <span className="sep-full" style={{marginLeft:8, marginRight:10, height:48, width:1, background:'#ffffff', opacity:0.95}}></span> : <span className="sep-small">│</span>}
               </div>
             ))}
             <div style={{display:'flex', alignItems:'center', flexShrink:0}}>
@@ -396,7 +395,7 @@ export default function App() {
             </div>
             <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('CONTACT')}} style={{color:'#ffcc00', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='CONTACT'?'3px solid #ffcc00':'3px solid transparent', display:'flex', alignItems:'center', flexShrink:0}}>CONTACT</a>
           </div>
-          <span className="sep-full" style={{height:48, width:1, background:"rgba(255,255,255,0.25)", margin:"0 8px 0 12px", flexShrink:0, display:"inline-block"}}></span>
+          <span className="sep-full" style={{height:48, width:1, background:"#ffffff", margin:"0 32px 0 2px", flexShrink:0, display:"inline-block", opacity:0.95}}></span>
           <div className="search-compact" style={{display:'flex', alignItems:'center', flexShrink:0, marginLeft:12, marginRight:12, position:'relative'}}>
             <div style={{display:'flex', alignItems:'center', background:'white', borderRadius:'20px 0 0 20px', padding:'0 0 0 10px', width:100, height:28, boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRight:'none'}}>
               <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') handleSearch() }} placeholder={T.search} style={{border:'none', outline:'none', fontSize:11, fontWeight:700, flex:1, background:'transparent', color:'#0d1b4a', width:'100%'}} />
@@ -404,7 +403,6 @@ export default function App() {
             <button onClick={()=>handleSearch()} style={{background:'white', color:'#0d1b4a', border:'none', boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRadius:'0 20px 20px 0', height:28, padding:'0 10px', fontWeight:900, fontSize:11, cursor:'pointer', marginLeft:-1}}>🔍</button>
           </div>
         </nav>
-        </div>
       </div>
 
       {actif==='ACCUEIL'?(
