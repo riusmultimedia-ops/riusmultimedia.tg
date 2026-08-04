@@ -339,7 +339,7 @@ export default function App() {
           <div style={{overflow:'hidden', flex:1}}><div className="live-text" style={{display:'flex', alignItems:'center'}}>{flashList.map((txt,i)=>(<span key={i} style={{display:'inline-flex', alignItems:'center', gap:8, marginRight:36, whiteSpace:'nowrap'}}><span className="yellow-dot"></span>{txt}</span>))}</div></div>
         </div>
 
-        <header className="header-main" style={{background:'transparent', backdropFilter:'blur(16px) saturate(180%)', WebkitBackdropFilter:'blur(16px)', borderBottom:'1px solid rgba(255,255,255,0.12)', color:'white', height:'88px', padding:'0 22px 0 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
+        <header className="header-main" style={{background:'rgba(46,79,176,0.88)', backdropFilter:'blur(12px) saturate(180%)', WebkitBackdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.15)', color:'white', height:'88px', padding:'0 22px 0 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
           <div style={{display:'flex', alignItems:'center', gap:12, flexShrink:0, minWidth:240}}>
             <img src="/logo.png" style={{width:74, height:74, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
             <div style={{lineHeight:1.15, display:'flex', flexDirection:'column', alignItems:'center'}}>
@@ -407,12 +407,63 @@ export default function App() {
       </div>
 
       {actif==='ACCUEIL'?(
-        <div style={{background:'#2e4fb0'}}>
+        <div style={{background:'#2e4fb0', minHeight:'100vh'}}>
           <div className="hero-container">
             {articlePrincipal? <HeroCarousel items={filteredArticles.slice(0,5).map(getTranslated)} openArticle={openArticle} T={T} allItems={filteredArticles} /> : <div style={{flex:'0 0 68%', padding:40, color:'white'}}>{searchTerm? `Aucun résultat pour "${searchTerm}"` : T.charger}</div>}
-            <div className="hero-side" style={{background:"#2e4fb0", borderLeft:"1px solid rgba(255,255,255,0.1)"}}>{autres.map((a,i)=>(<div key={i} onClick={()=>openArticle(filteredArticles[i+1])} style={{flex:1, padding:14, borderBottom:'1px solid rgba(255,255,255,0.12)', color:'white', cursor:'pointer'}}><div style={{fontSize:10, color:'#ffcc00', fontWeight:900}}>{a.category}</div><div style={{fontSize:13, fontWeight:700, marginTop:4}}>{a.title}</div></div>))}</div>
+            <div className="hero-side" style={{background:'#2e4fb0', borderLeft:'1px solid rgba(255,255,255,0.1)'}}>{autres.map((a,i)=>(<div key={i} onClick={()=>openArticle(filteredArticles[i+1])} style={{flex:1, padding:14, borderBottom:'1px solid rgba(255,255,255,0.12)', color:'white', cursor:'pointer'}}><div style={{fontSize:10, color:'#ffcc00', fontWeight:900}}>{a.category}</div><div style={{fontSize:13, fontWeight:700, marginTop:4}}>{a.title}</div></div>))}</div>
           </div>
-          <div className="grid-4">{filteredArticles.slice(4,12).map((c,i)=>{const tc=getTranslated(c); return <div key={i} onClick={()=>openArticle(c)} style={{background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:14, color:'white', cursor:'pointer'}}><div style={{fontSize:10, fontWeight:900, color:'#ffcc00'}}>{tc.category}</div><div style={{fontSize:13, fontWeight:700, marginTop:6}}>{tc.title}</div></div>})}</div>
+
+          {/* BBC/DW STYLE - Reportages et analyses */}
+          <div style={{maxWidth:1400, margin:'0 auto', padding:'28px 18px 40px'}}>
+            <h2 style={{color:'#00d4ff', fontSize:20, fontWeight:900, margin:'0 0 18px 0', letterSpacing:'0.2px'}}>Reportages et analyses</h2>
+            <div className="bbc-grid" style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'20px 18px'}}>
+              {filteredArticles.slice(5, 26).map((c,i)=>{
+                const tc=getTranslated(c);
+                const isVideo = c.gallery && c.gallery[0] && c.gallery[0].type==='video';
+                const img = tc.image || (c.gallery && c.gallery[0] && c.gallery[0].url) || '/placeholder.jpg';
+                const excerpt = (tc.content || '').replace(/<[^>]*>/g,'').substring(0,130);
+                return (
+                  <div key={i} onClick={()=>openArticle(c)} style={{cursor:'pointer', display:'flex', flexDirection:'column', gap:0}}>
+                    <div style={{position:'relative', width:'100%', aspectRatio:'16/9', background:'#000', borderRadius:6, overflow:'hidden'}}>
+                      <img src={img} style={{width:'100%', height:'100%', objectFit:'cover'}} alt={tc.title} />
+                      {isVideo && <div style={{position:'absolute', bottom:8, left:8, background:'white', color:'black', width:28, height:22, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:2, fontSize:10}}>▶</div>}
+                      <div style={{position:'absolute', inset:0, background:'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.15) 100%)'}}></div>
+                    </div>
+                    <div style={{padding:'10px 0 0 0'}}>
+                      <div style={{display:'flex', alignItems:'center', gap:8, fontSize:10, fontWeight:800, color:'rgba(255,255,255,0.7)', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:6}}>
+                        {isVideo && <span>🎬</span>}
+                        <span style={{color: isVideo ? 'white' : '#ffcc00'}}>{tc.category}</span>
+                        <span style={{opacity:0.5}}>|</span>
+                        <span style={{fontWeight:500, textTransform:'none'}}>{c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : 'Il y a 1 jour'}</span>
+                      </div>
+                      <h3 style={{color:'white', fontSize:16.5, fontWeight:900, lineHeight:1.25, margin:'0 0 6px 0', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden'}}>{tc.title}</h3>
+                      <p style={{color:'rgba(255,255,255,0.7)', fontSize:12.5, lineHeight:1.45, margin:0, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden'}}>{excerpt}...</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Deuxième rangée style MIND AND BODY si plus d'articles */}
+            {filteredArticles.length > 26 && (
+              <>
+                <h2 style={{color:'white', fontSize:16, fontWeight:900, margin:'36px 0 18px 0', borderTop:'1px solid rgba(255,255,255,0.2)', paddingTop:18, textTransform:'uppercase', letterSpacing:'0.6px'}}>À découvrir aussi</h2>
+                <div className="bbc-grid" style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'20px 18px'}}>
+                  {filteredArticles.slice(26, 38).map((c,i)=>{
+                    const tc=getTranslated(c);
+                    const img = tc.image || (c.gallery && c.gallery[0] && c.gallery[0].url) || '/placeholder.jpg';
+                    return (
+                      <div key={i} onClick={()=>openArticle(c)} style={{cursor:'pointer'}}>
+                        <div style={{width:'100%', aspectRatio:'16/9', borderRadius:6, overflow:'hidden', background:'#000'}}><img src={img} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" /></div>
+                        <h3 style={{color:'white', fontSize:15, fontWeight:800, margin:'8px 0 0 0', lineHeight:1.3}}>{tc.title}</h3>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+          <style>{`@media(max-width: 900px){ .bbc-grid{ grid-template-columns: repeat(2, 1fr) !important; } } @media(max-width: 600px){ .bbc-grid{ grid-template-columns: 1fr !important; } }`}</style>
         </div>
       ): actif==='DIRECT'?(
         <div style={{background:'#2e4fb0', color:'white', minHeight:'100vh', padding:20}}>
