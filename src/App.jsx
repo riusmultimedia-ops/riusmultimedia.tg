@@ -233,7 +233,7 @@ export default function App() {
   }
   const podcastArticles = filteredArticles.filter(a=>a.audio)
   const articlePrincipal = (actif==='RECHERCHE'? articlesForSearch : filteredArticles)[0]? getTranslated((actif==='RECHERCHE'? articlesForSearch : filteredArticles)[0]) : null
-  const autres = (actif==='RECHERCHE'? articlesForSearch : filteredArticles).slice(1,4).map(getTranslated)
+  const autres = (actif==='RECHERCHE'? articlesForSearch : filteredArticles).slice(1,5).map(getTranslated)
   const flashList = flashes.length? flashes : [`Rius Multimédia - ${T.slogan1}`, `Lomé ${meteo.temp} ${meteo.icon} - ${dateJour}`]
   const annoncesList = annonces.length? annonces : [`🔴 EN DIRECT à 20h TU`, `📢 Emission Spéciale Société vendredi 20h TU`, `📰 A LIRE : ${articles[0]?.title || 'Actu disponible'}`, `💼 ESPACE BUSINESS : Votre pub ici`]
 
@@ -420,9 +420,9 @@ export default function App() {
       
       {actif==='ACCUEIL'?(
         <div style={{background:'#2e4fb0', minHeight:'100vh'}}>
-          <div className="hero-container" style={{display:'flex', width:'100%' }}>
+          <div className="hero-container" style={{display:'flex', width:'100%', minHeight:245, height:245 }}>
             {articlePrincipal? <HeroCarousel items={filteredArticles.slice(0,5).map(getTranslated)} openArticle={openArticle} T={T} allItems={filteredArticles} /> : <div style={{flex:'0 0 68%', padding:40, color:'white'}}>{searchTerm? `Aucun résultat pour "${searchTerm}"` : T.charger}</div>}
-            <div className="hero-side" style={{flex:'0 0 32%', background:'#2e4fb0', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', gap:0, padding:8, minHeight:245}}>
+            <div className="hero-side" style={{flex:'0 0 32%', background:'#2e4fb0', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', gap:0, padding:'4px 8px', height:245, minHeight:245, justifyContent:'space-between'}}>
               {autres.map((a,i)=>{
                 const orig = filteredArticles[i+1];
                 if(!orig) return null;
@@ -431,7 +431,7 @@ export default function App() {
                 const img = tc.image || (orig.gallery && orig.gallery[0] && orig.gallery[0].url && !orig.gallery[0].url.includes('youtube') && !orig.gallery[0].url.includes('youtu.be') ? orig.gallery[0].url : null) || getYoutubeThumb(orig.video) || ytThumbSide || '';
                 const isVid = (orig.video && orig.video.includes('youtube')) || (orig.gallery && orig.gallery[0] && (orig.gallery[0].type==='video' || orig.gallery[0].url?.includes('youtube') || orig.gallery[0].url?.includes('youtu.be')));
                 return (
-                  <div key={i} onClick={()=>openArticle(orig)} style={{display:'flex', gap:10, padding:'8px 6px', borderBottom:'1px solid rgba(255,255,255,0.12)', cursor:'pointer', alignItems:'center'}}>
+                  <div key={i} onClick={()=>openArticle(orig)} style={{display:'flex', gap:10, padding:'6px 6px', borderBottom:'1px solid rgba(255,255,255,0.12)', cursor:'pointer', alignItems:'center', flex:1}}>
                     <div style={{width:84, height:52, borderRadius:4, overflow:'hidden', background:'#000', flexShrink:0, position:'relative'}}>
                       {img && <img src={img} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />}
                       {isVid && <div style={{position:'absolute', bottom:2, left:2, background:'white', color:'black', width:14, height:10, fontSize:7, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:1}}>▶</div>}
