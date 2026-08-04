@@ -333,14 +333,14 @@ export default function App() {
       `}</style>
 
       <div style={{position:'sticky', top:0, zIndex:1000, width:'100%', background:'#0e1d48'}}>
-        <div style={{background:'black', color:'white', padding:'0 10px', fontSize:11, display:'flex', gap:8, alignItems:'center', overflow:'hidden', height:26, minHeight:26, alignItems:'center', overflow:'hidden'}}>
+        <div style={{background:'black', color:'white', padding:'0 10px', fontSize:11, display:'flex', gap:8, alignItems:'center', overflow:'hidden', height:26, minHeight:26, overflow:'hidden'}}>
           <div style={{display:'flex', alignItems:'center', gap:6, background:'#d4ff00', color:'black', padding:'3px 10px', fontWeight:900, borderRadius:4, flexShrink:0}}><span className="dot"></span> {T.flash}</div>
           <div style={{overflow:'hidden', flex:1}}><div className="live-text" style={{display:'flex', alignItems:'center'}}>{flashList.map((txt,i)=>(<span key={i} style={{display:'inline-flex', alignItems:'center', gap:8, marginRight:36, whiteSpace:'nowrap'}}><span className="yellow-dot"></span>{txt}</span>))}</div></div>
         </div>
 
-        <header className="header-main" style={{background:'rgba(46,79,176,0.88)', backdropFilter:'blur(12px) saturate(180%)', WebkitBackdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.15)', color:'white', height:'78px', padding:'0 14px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
-          <div style={{display:'flex', alignItems:'center', gap:12, flexShrink:0, minWidth:240}}>
-            <img src="/logo.png" style={{width:52, height:52, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
+        <header className="header-main" style={{background:'rgba(46,79,176,0.88)', backdropFilter:'blur(12px) saturate(180%)', WebkitBackdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.15)', color:'white', height:'88px', padding:'0 22px 0 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
+          <div style={{display:'flex', alignItems:'center', gap:14, flexShrink:0, minWidth:260}}>
+            <img src="/logo.png" style={{width:74, height:74, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
             <div style={{lineHeight:1.15, display:'flex', flexDirection:'column', alignItems:'center'}}>
               <div style={{fontSize:18}}><span style={{fontFamily:'cursive'}}>Rius</span><span style={{color:'#ffcc00', fontWeight:900, marginLeft:5}}>Multimédia</span></div>
               <div style={{marginTop:4, textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center'}}>
@@ -349,10 +349,10 @@ export default function App() {
               </div>
             </div>
           </div>
-          <div className="header-banner" style={{flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:'6px 8px'}}>
-            {pubs.length>0? <a href={pubs[currentPub]?.link || '#'} target="_blank" rel="noreferrer" style={{width:'100%', maxWidth:728, height:52, background:'white', borderRadius:6, overflow:'hidden', display:'block'}}><img src={pubs[currentPub]?.image} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="pub" /></a> : <div style={{width:'100%', maxWidth:728, height:52, background:'rgba(0,0,0,0.2)', border:'1px dashed rgba(255,255,255,0.3)', borderRadius:6, overflow:'hidden'}}><img src="/banniere.jpg" style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" /></div>}
+          <div className="header-banner" style={{flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:'0 12px', marginLeft:8}}>
+            {pubs.length>0? <a href={pubs[currentPub]?.link || '#'} target="_blank" rel="noreferrer" style={{width:'100%', maxWidth:728, height:76, background:'white', borderRadius:6, overflow:'hidden', display:'block'}}><img src={pubs[currentPub]?.image} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="pub" /></a> : <div style={{width:'100%', maxWidth:728, height:76, background:'rgba(0,0,0,0.2)', border:'1px dashed rgba(255,255,255,0.3)', borderRadius:6, overflow:'hidden'}}><img src="/banniere.jpg" style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" /></div>}
           </div>
-          <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:5, flexShrink:0, width:92}}>
+          <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0, width:110, marginRight:4, paddingRight:4}}>
             <select value={lang} onChange={e=>setLang(e.target.value)} style={{background:'rgba(0,0,0,0.35)', color:'white', border:'1px solid rgba(255,255,255,0.5)', borderRadius:12, padding:'2px 6px', fontSize:10, fontWeight:800, cursor:'pointer', width:'76px', height:'24px', textAlign:'center'}}>{Object.entries(LANGS).map(([code,l])=><option key={code} value={code} style={{color:'black'}}>{l.label}</option>)}</select>
             <div style={{display:'flex', flexDirection:'row', gap:6, alignItems:'center', justifyContent:'center'}}>
               <a href="https://web.facebook.com/profile.php?id=61590642726989" target="_blank" rel="noreferrer"><img src="/logo-facebook.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="FB" /></a>
@@ -363,7 +363,7 @@ export default function App() {
           </div>
         </header>
 
-                <div className="ticker-bar" style={{background:'white', color:'#0f2040', fontWeight:900, fontSize:11, display:'flex', alignItems:'center', height:36, overflow:'hidden', width:'100%', position:'relative'}}>
+                <div className="ticker-bar" style={{background:'white', color:'#0f2040', fontWeight:900, fontSize:11, display:'flex', alignItems:'center', height:26, minHeight:26, overflow:'hidden', width:'100%', position:'relative'}}>
           <div style={{display:'flex', alignItems:'center', background:'#0f2040', color:'#ffcc00', padding:'0 12px', height:'100%', gap:6, flexShrink:0, fontSize:10, zIndex:3}}>📢 ANNONCES</div>
           <div style={{flex:1, minWidth:0, overflow:'hidden', background:'white', height:'100%', display:'flex', alignItems:'center'}}>
             <div className="live-text2" style={{display:'flex', alignItems:'center', fontWeight:700, color:'#333', whiteSpace:'nowrap'}}>
@@ -377,30 +377,30 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="main-nav" style={{background:'#0e1d48', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)', minHeight:48, display:'flex', alignItems:'center', padding:'0 8px', gap:0, justifyContent:'space-between', flexWrap:'nowrap', width:'100%', position:'relative', zIndex:10, overflow:'hidden'}}>
+        <nav className="main-nav" style={{background:'#0e1d48', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)', minHeight:32, height:32, display:'flex', alignItems:'center', padding:'0 8px 0 10px', gap:0, justifyContent:'space-between', flexWrap:'nowrap', width:'100%', position:'relative', zIndex:10, overflow:'hidden'}}>
           <div className="nav-scroll" style={{display:'flex', alignItems:'center', flex:1, minWidth:0, overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch'}}>
             {CATS.map((item, idx)=>(
               <div key={item} style={{display:'flex', alignItems:'center', flexShrink:0}}>
-                <a href="#" className="nav-white" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif(item)}} style={{color:actif===item?'#ffcc00':'white', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif===item?'3px solid #ffcc00':'3px solid transparent', display:'flex', alignItems:'center', transition:'color 0.2s'}}>{item}</a>
-                {idx === CATS.length -1? <span className="sep-full" style={{marginLeft:8, marginRight:10, height:48, width:1, background:'#ffffff', opacity:0.95}}></span> : <span className="sep-small">│</span>}
+                <a href="#" className="nav-white" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif(item)}} style={{color:actif===item?'#ffcc00':'white', textDecoration:'none', padding:'0 7px', height:32, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif===item?'2px solid #ffcc00':'2px solid transparent', display:'flex', alignItems:'center', transition:'color 0.2s'}}>{item}</a>
+                {idx === CATS.length -1? <span className="sep-full" style={{marginLeft:8, marginRight:10, height:32, width:1, background:'#ffffff', opacity:0.95}}></span> : <span className="sep-small">│</span>}
               </div>
             ))}
             <div style={{display:'flex', alignItems:'center', flexShrink:0}}>
-              <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('DIRECT')}} style={{color:'#ff3b3b', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='DIRECT'?'3px solid #ff3b3b':'3px solid transparent', display:'flex', alignItems:'center', gap:6}}><span className="dot-blink"></span>DIRECT</a>
+              <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('DIRECT')}} style={{color:'#ff3b3b', textDecoration:'none', padding:'0 7px', height:32, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='DIRECT'?'2px solid #ff3b3b':'2px solid transparent', display:'flex', alignItems:'center', gap:6}}><span className="dot-blink"></span>DIRECT</a>
               <span className="sep-small">│</span>
             </div>
             <div style={{display:'flex', alignItems:'center', flexShrink:0}}>
-              <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('PODCAST')}} style={{color:'#a8ff00', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='PODCAST'?'3px solid #a8ff00':'3px solid transparent', display:'flex', alignItems:'center'}}>PODCAST</a>
+              <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('PODCAST')}} style={{color:'#a8ff00', textDecoration:'none', padding:'0 7px', height:32, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='PODCAST'?'2px solid #a8ff00':'2px solid transparent', display:'flex', alignItems:'center'}}>PODCAST</a>
               <span className="sep-small">│</span>
             </div>
-            <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('CONTACT')}} style={{color:'#ffcc00', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='CONTACT'?'3px solid #ffcc00':'3px solid transparent', display:'flex', alignItems:'center', flexShrink:0}}>CONTACT</a>
+            <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('CONTACT')}} style={{color:'#ffcc00', textDecoration:'none', padding:'0 7px', height:32, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='CONTACT'?'2px solid #ffcc00':'2px solid transparent', display:'flex', alignItems:'center', flexShrink:0}}>CONTACT</a>
           </div>
-          <span className="sep-full" style={{height:48, width:1, background:"#ffffff", margin:"0 32px 0 2px", flexShrink:0, display:"inline-block", opacity:0.95}}></span>
-          <div className="search-compact" style={{display:'flex', alignItems:'center', flexShrink:0, marginLeft:12, marginRight:12, position:'relative'}}>
-            <div style={{display:'flex', alignItems:'center', background:'white', borderRadius:'20px 0 0 20px', padding:'0 0 0 10px', width:100, height:28, boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRight:'none'}}>
+          <span className="sep-full" style={{height:32, width:1, background:"#ffffff", margin:"0 18px 0 2px", flexShrink:0, display:"inline-block", opacity:0.95}}></span>
+          <div className="search-compact" style={{display:'flex', alignItems:'center', flexShrink:0, marginLeft:8, marginRight:16, position:'relative'}}>
+            <div style={{display:'flex', alignItems:'center', background:'white', borderRadius:'20px 0 0 20px', padding:'0 0 0 12px', width:170, height:26, boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRight:'none'}}>
               <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') handleSearch() }} placeholder={T.search} style={{border:'none', outline:'none', fontSize:11, fontWeight:700, flex:1, background:'transparent', color:'#0d1b4a', width:'100%'}} />
             </div>
-            <button onClick={()=>handleSearch()} style={{background:'white', color:'#0d1b4a', border:'none', boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRadius:'0 20px 20px 0', height:28, padding:'0 10px', fontWeight:900, fontSize:11, cursor:'pointer', marginLeft:-1}}>🔍</button>
+            <button onClick={()=>handleSearch()} style={{background:'white', color:'#0d1b4a', border:'none', boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRadius:'0 20px 20px 0', height:26, padding:'0 12px', fontWeight:900, fontSize:11, cursor:'pointer', marginLeft:-1}}>🔍</button>
           </div>
         </nav>
       </div>
