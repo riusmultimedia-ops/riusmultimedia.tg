@@ -140,6 +140,14 @@ export default function App() {
 
   useEffect(()=>{ if(pubs.length<=1) return; const id=setInterval(()=>setCurrentPub(p=>(p+1)%pubs.length),5000); return()=>clearInterval(id)},[pubs])
 
+    const getYoutubeThumb = (url) => {
+    if(!url) return null
+    let id=null
+    if(url.includes('embed/')) id=url.split('embed/')[1]?.split('?')[0]
+    else if(url.includes('v=')) id=url.split('v=')[1]?.split('&')[0]
+    else if(url.includes('youtu.be/')) id=url.split('youtu.be/')[1]?.split('?')[0]
+    return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null
+  }
   const getYoutubeId = (url) => {
     if(!url) return null
     if(url.includes('embed/')) return url
@@ -416,8 +424,9 @@ export default function App() {
                 const orig = filteredArticles[i+1];
                 if(!orig) return null;
                 const tc = getTranslated(orig);
-                const img = tc.image || (orig.gallery && orig.gallery[0] && orig.gallery[0].url) || '';
-                const isVid = orig.gallery && orig.gallery[0] && orig.gallery[0].type==='video';
+                const ytThumbSide = getYoutubeThumb(orig.video || (orig.gallery && orig.gallery[0] && orig.gallery[0].url) || '');
+                const img = tc.image || (orig.gallery && orig.gallery[0] && orig.gallery[0].url && !orig.gallery[0].url.includes('youtube') ? orig.gallery[0].url : null) || getYoutubeThumb(orig.video) || ytThumbSide || '';
+                const isVid = (orig.video && orig.video.includes('youtube')) || (orig.gallery && orig.gallery[0] && (orig.gallery[0].type==='video' || orig.gallery[0].url?.includes('youtube')));
                 return (
                   <div key={i} onClick={()=>openArticle(orig)} style={{display:'flex', gap:10, padding:'8px 6px', borderBottom:'1px solid rgba(255,255,255,0.12)', cursor:'pointer', alignItems:'center'}}>
                     <div style={{width:84, height:52, borderRadius:4, overflow:'hidden', background:'#000', flexShrink:0, position:'relative'}}>
@@ -439,7 +448,8 @@ export default function App() {
               {filteredArticles.slice(5, 26).map((c,i)=>{
                 const tc=getTranslated(c);
                 const isVideo = c.gallery && c.gallery[0] && c.gallery[0].type==='video';
-                const img = tc.image || (c.gallery && c.gallery[0] && c.gallery[0].url) || '';
+                const ytThumb = getYoutubeThumb(c.video || (c.gallery && c.gallery[0] && c.gallery[0].url) || '');
+                const img = tc.image || (c.gallery && c.gallery[0] && c.gallery[0].url && !c.gallery[0].url.includes('youtube') && !c.gallery[0].url.includes('youtu.be') ? c.gallery[0].url : null) || getYoutubeThumb(c.video) || ytThumb || '';
                 const excerpt = (tc.content || '').replace(/<[^>]*>/g,'').substring(0,130);
                 return (
                   <div key={i} onClick={()=>openArticle(c)} style={{cursor:'pointer'}}>
