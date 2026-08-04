@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react'
 import Admin from './Admin'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_KEY
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://sswbiiurbnclsxqstrmu.supabase.co').split('xtfenrkhxmzptfkjxx').join('sswbiiurbnclsxqstrmu')
+const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_nO-86ly83b8Pup6WZwCsZw_OfIUZsiR'
 const SLOGAN_L1 = "Si près de l'info, si près de vous"
 const SLOGAN_L2 = "Voir Vérifier Informer"
 const YOUTUBE_HANDLE = "Marius-Kodzo-ATTOR"
@@ -102,6 +102,7 @@ export default function App() {
   const T = UI[lang] || UI.fr
 
   useEffect(() => {
+    if (typeof window !== 'undefined') document.body.style.background='#2e4fb0';
     if (typeof window === 'undefined') return;
     localStorage.setItem('rius_lang', lang)
     document.documentElement.dir = lang==='ar'?'rtl':'ltr'
@@ -332,16 +333,15 @@ export default function App() {
         .sep-full{height:48px!important; width:1px!important; background:#ffffff!important; display:inline-block!important; opacity:0.9!important} .sep-small{opacity:0.9!important; color:#ffffff!important}
       `}</style>
 
-      <div style={{position:'sticky', top:0, zIndex:1000, width:'100%'}}>
-        <div style={{position:"sticky", top:0, zIndex:9999, width:"100%", background:"transparent"}}>
-        <div style={{background:'black', color:'white', padding:'7px 12px', fontSize:12, display:'flex', gap:10, alignItems:'center', overflow:'hidden'}}>
+      <div style={{position:'sticky', top:0, zIndex:1000, width:'100%', background:'transparent'}}>
+        <div style={{background:'black', color:'white', padding:'0 10px', fontSize:11, display:'flex', gap:8, alignItems:'center', overflow:'hidden', height:26, minHeight:26, overflow:'hidden'}}>
           <div style={{display:'flex', alignItems:'center', gap:6, background:'#d4ff00', color:'black', padding:'3px 10px', fontWeight:900, borderRadius:4, flexShrink:0}}><span className="dot"></span> {T.flash}</div>
           <div style={{overflow:'hidden', flex:1}}><div className="live-text" style={{display:'flex', alignItems:'center'}}>{flashList.map((txt,i)=>(<span key={i} style={{display:'inline-flex', alignItems:'center', gap:8, marginRight:36, whiteSpace:'nowrap'}}><span className="yellow-dot"></span>{txt}</span>))}</div></div>
         </div>
 
-        <header className="header-main" style={{background:'rgba(46,79,176,0.88)', backdropFilter:'blur(12px) saturate(180%)', WebkitBackdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.15)', color:'white', height:'115px', padding:'0 14px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
+        <header className="header-main" style={{background:'transparent', backdropFilter:'blur(16px) saturate(180%)', WebkitBackdropFilter:'blur(16px)', borderBottom:'1px solid rgba(255,255,255,0.12)', color:'white', height:'88px', padding:'0 22px 0 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
           <div style={{display:'flex', alignItems:'center', gap:12, flexShrink:0, minWidth:240}}>
-            <img src="/logo.png" style={{width:82, height:82, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
+            <img src="/logo.png" style={{width:74, height:74, borderRadius:'50%', border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 4px 15px rgba(0,0,0,0.4)'}} alt="Rius Multimédia" />
             <div style={{lineHeight:1.15, display:'flex', flexDirection:'column', alignItems:'center'}}>
               <div style={{fontSize:18}}><span style={{fontFamily:'cursive'}}>Rius</span><span style={{color:'#ffcc00', fontWeight:900, marginLeft:5}}>Multimédia</span></div>
               <div style={{marginTop:4, textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center'}}>
@@ -350,21 +350,21 @@ export default function App() {
               </div>
             </div>
           </div>
-          <div className="header-banner" style={{flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:'6px 8px'}}>
-            {pubs.length>0? <a href={pubs[currentPub]?.link || '#'} target="_blank" rel="noreferrer" style={{width:'100%', maxWidth:728, height:82, background:'white', borderRadius:6, overflow:'hidden', display:'block'}}><img src={pubs[currentPub]?.image} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="pub" /></a> : <div style={{width:'100%', maxWidth:728, height:82, background:'rgba(0,0,0,0.2)', border:'1px dashed rgba(255,255,255,0.3)', borderRadius:6, overflow:'hidden'}}><img src="/banniere.jpg" style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" /></div>}
+          <div className="header-banner" style={{flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:'0 12px', marginLeft:8}}>
+            {pubs.length>0? <a href={pubs[currentPub]?.link || '#'} target="_blank" rel="noreferrer" style={{width:'100%', maxWidth:728, height:76, background:'white', borderRadius:6, overflow:'hidden', display:'block'}}><img src={pubs[currentPub]?.image} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="pub" /></a> : <div style={{width:'100%', maxWidth:728, height:76, background:'rgba(0,0,0,0.2)', border:'1px dashed rgba(255,255,255,0.3)', borderRadius:6, overflow:'hidden'}}><img src="/banniere.jpg" style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" /></div>}
           </div>
-          <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:5, flexShrink:0, width:92}}>
+          <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0, width:110, marginRight:4, paddingRight:4}}>
             <select value={lang} onChange={e=>setLang(e.target.value)} style={{background:'rgba(0,0,0,0.35)', color:'white', border:'1px solid rgba(255,255,255,0.5)', borderRadius:12, padding:'2px 6px', fontSize:10, fontWeight:800, cursor:'pointer', width:'76px', height:'24px', textAlign:'center'}}>{Object.entries(LANGS).map(([code,l])=><option key={code} value={code} style={{color:'black'}}>{l.label}</option>)}</select>
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:5}}>
-              <a href="https://web.facebook.com/profile.php?id=61590642726989" target="_blank" rel="noreferrer"><img src="/logo-facebook.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="FB" /></a>
-              <a href={`${YOUTUBE_CHANNEL_URL}?sub_confirmation=1`} target="_blank" rel="noreferrer"><img src="/logo-youtube.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="YT" /></a>
-              <a href="https://www.tiktok.com/@rius_multimedia?_r=1&_t=ZN-97y7NnHOElC" target="_blank" rel="noreferrer"><img src="/logo-tiktok.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="TikTok" /></a>
-              <a href="https://whatsapp.com/channel/0029VbD2cS4I7BeFr0A0I01R" target="_blank" rel="noreferrer"><img src="/logo-whatsapp.png" style={{width:24, height:24, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="WA" /></a>
+            <div style={{display:'flex', flexDirection:'row', gap:6, alignItems:'center', justifyContent:'center'}}>
+              <a href="https://web.facebook.com/profile.php?id=61590642726989" target="_blank" rel="noreferrer"><img src="/logo-facebook.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="FB" /></a>
+              <a href={`${YOUTUBE_CHANNEL_URL}?sub_confirmation=1`} target="_blank" rel="noreferrer"><img src="/logo-youtube.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="YT" /></a>
+              <a href="https://www.tiktok.com/@rius_multimedia?_r=1&_t=ZN-97y7NnHOElC" target="_blank" rel="noreferrer"><img src="/logo-tiktok.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="TikTok" /></a>
+              <a href="https://whatsapp.com/channel/0029VbD2cS4I7BeFr0A0I01R" target="_blank" rel="noreferrer"><img src="/logo-whatsapp.png" style={{width:20, height:20, borderRadius:'50%', background:'white', objectFit:'cover'}} alt="WA" /></a>
             </div>
           </div>
         </header>
 
-                <div className="ticker-bar" style={{background:'white', color:'#0f2040', fontWeight:900, fontSize:11, display:'flex', alignItems:'center', height:36, overflow:'hidden', width:'100%', position:'relative'}}>
+                <div className="ticker-bar" style={{background:'white', color:'#0f2040', fontWeight:900, fontSize:11, display:'flex', alignItems:'center', height:26, minHeight:26, overflow:'hidden', width:'100%', position:'relative'}}>
           <div style={{display:'flex', alignItems:'center', background:'#0f2040', color:'#ffcc00', padding:'0 12px', height:'100%', gap:6, flexShrink:0, fontSize:10, zIndex:3}}>📢 ANNONCES</div>
           <div style={{flex:1, minWidth:0, overflow:'hidden', background:'white', height:'100%', display:'flex', alignItems:'center'}}>
             <div className="live-text2" style={{display:'flex', alignItems:'center', fontWeight:700, color:'#333', whiteSpace:'nowrap'}}>
@@ -374,49 +374,48 @@ export default function App() {
           <div className="ticker-right" style={{display:'flex', gap:10, padding:'0 12px', flexShrink:0, borderLeft:'2px solid #eee', fontSize:10, background:'#f8f8f8', height:'100%', alignItems:'center', zIndex:3}}>
             <span className="hide-mobile">📍 Lomé {meteo.icon} {meteo.temp}</span>
             <span className="hide-mobile" style={{color:'#2e4fb0', fontWeight:800}}>📅 {dateJour}</span>
-            <span style={{background:'#0f2040', color:'#ffcc00', padding:'3px 10px', borderRadius:10, whiteSpace:'nowrap', marginRight:16}}>🕒 {heureTU}</span>
+            <span style={{background:'#2e4fb0', color:'#ffcc00', padding:'3px 10px', borderRadius:10, whiteSpace:'nowrap', marginRight:16}}>🕒 {heureTU}</span>
           </div>
         </div>
 
-        <nav className="main-nav" style={{background:'#0e1d48', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)', minHeight:48, display:'flex', alignItems:'center', padding:'0 8px', gap:0, justifyContent:'space-between', flexWrap:'nowrap', width:'100%', position:'relative', zIndex:10, overflow:'hidden'}}>
+        <nav className="main-nav" style={{background:'transparent', backdropFilter:'blur(14px) saturate(160%)', WebkitBackdropFilter:'blur(14px) saturate(160%)', minHeight:32, height:32, display:'flex', alignItems:'center', padding:'0 8px 0 10px', gap:0, justifyContent:'space-between', flexWrap:'nowrap', width:'100%', position:'relative', zIndex:10, overflow:'hidden'}}>
           <div className="nav-scroll" style={{display:'flex', alignItems:'center', flex:1, minWidth:0, overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch'}}>
             {CATS.map((item, idx)=>(
               <div key={item} style={{display:'flex', alignItems:'center', flexShrink:0}}>
-                <a href="#" className="nav-white" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif(item)}} style={{color:actif===item?'#ffcc00':'white', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif===item?'3px solid #ffcc00':'3px solid transparent', display:'flex', alignItems:'center', transition:'color 0.2s'}}>{item}</a>
-                {idx === CATS.length -1? <span className="sep-full" style={{marginLeft:8, marginRight:10, height:48, width:1, background:'#ffffff', opacity:0.95}}></span> : <span className="sep-small">│</span>}
+                <a href="#" className="nav-white" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif(item)}} style={{color:actif===item?'#ffcc00':'white', textDecoration:'none', padding:'0 7px', height:32, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif===item?'2px solid #ffcc00':'2px solid transparent', display:'flex', alignItems:'center', transition:'color 0.2s'}}>{item}</a>
+                {idx === CATS.length -1? <span className="sep-full" style={{marginLeft:8, marginRight:10, height:32, width:1, background:'#ffffff', opacity:0.95}}></span> : <span className="sep-small">│</span>}
               </div>
             ))}
             <div style={{display:'flex', alignItems:'center', flexShrink:0}}>
-              <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('DIRECT')}} style={{color:'#ff3b3b', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='DIRECT'?'3px solid #ff3b3b':'3px solid transparent', display:'flex', alignItems:'center', gap:6}}><span className="dot-blink"></span>DIRECT</a>
+              <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('DIRECT')}} style={{color:'#ff3b3b', textDecoration:'none', padding:'0 7px', height:32, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='DIRECT'?'2px solid #ff3b3b':'2px solid transparent', display:'flex', alignItems:'center', gap:6}}><span className="dot-blink"></span>DIRECT</a>
               <span className="sep-small">│</span>
             </div>
             <div style={{display:'flex', alignItems:'center', flexShrink:0}}>
-              <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('PODCAST')}} style={{color:'#a8ff00', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='PODCAST'?'3px solid #a8ff00':'3px solid transparent', display:'flex', alignItems:'center'}}>PODCAST</a>
+              <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('PODCAST')}} style={{color:'#a8ff00', textDecoration:'none', padding:'0 7px', height:32, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='PODCAST'?'2px solid #a8ff00':'2px solid transparent', display:'flex', alignItems:'center'}}>PODCAST</a>
               <span className="sep-small">│</span>
             </div>
-            <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('CONTACT')}} style={{color:'#ffcc00', textDecoration:'none', padding:'0 7px', height:48, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='CONTACT'?'3px solid #ffcc00':'3px solid transparent', display:'flex', alignItems:'center', flexShrink:0}}>CONTACT</a>
+            <a href="#" onClick={e=>{e.preventDefault(); setSearchTerm(''); setActif('CONTACT')}} style={{color:'#ffcc00', textDecoration:'none', padding:'0 7px', height:32, fontSize:10, fontWeight:900, whiteSpace:'nowrap', borderBottom:actif==='CONTACT'?'2px solid #ffcc00':'2px solid transparent', display:'flex', alignItems:'center', flexShrink:0}}>CONTACT</a>
           </div>
-          <span className="sep-full" style={{height:48, width:1, background:"#ffffff", margin:"0 8px 0 12px", flexShrink:0, display:"inline-block", opacity:0.95}}></span>
-          <div className="search-compact" style={{display:'flex', alignItems:'center', flexShrink:0, marginLeft:12, marginRight:12, position:'relative'}}>
-            <div style={{display:'flex', alignItems:'center', background:'white', borderRadius:'20px 0 0 20px', padding:'0 0 0 10px', width:100, height:28, boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRight:'none'}}>
+          <span className="sep-full" style={{height:32, width:1, background:"#ffffff", margin:"0 18px 0 2px", flexShrink:0, display:"inline-block", opacity:0.95}}></span>
+          <div className="search-compact" style={{display:'flex', alignItems:'center', flexShrink:0, marginLeft:8, marginRight:16, position:'relative'}}>
+            <div style={{display:'flex', alignItems:'center', background:'white', borderRadius:'20px 0 0 20px', padding:'0 0 0 10px', width:170, height:26, boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRight:'none'}}>
               <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') handleSearch() }} placeholder={T.search} style={{border:'none', outline:'none', fontSize:11, fontWeight:700, flex:1, background:'transparent', color:'#0d1b4a', width:'100%'}} />
             </div>
-            <button onClick={()=>handleSearch()} style={{background:'white', color:'#0d1b4a', border:'none', boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRadius:'0 20px 20px 0', height:28, padding:'0 10px', fontWeight:900, fontSize:11, cursor:'pointer', marginLeft:-1}}>🔍</button>
+            <button onClick={()=>handleSearch()} style={{background:'white', color:'#0d1b4a', border:'none', boxShadow:'inset 0 0 0 1.2px #2e4fb0', borderRadius:'0 20px 20px 0', height:26, padding:'0 12px', fontWeight:900, fontSize:11, cursor:'pointer', marginLeft:-1}}>🔍</button>
           </div>
         </nav>
-        </div>
       </div>
 
       {actif==='ACCUEIL'?(
-        <div style={{background:'#0f2040'}}>
+        <div style={{background:'#2e4fb0'}}>
           <div className="hero-container">
             {articlePrincipal? <HeroCarousel items={filteredArticles.slice(0,5).map(getTranslated)} openArticle={openArticle} T={T} allItems={filteredArticles} /> : <div style={{flex:'0 0 68%', padding:40, color:'white'}}>{searchTerm? `Aucun résultat pour "${searchTerm}"` : T.charger}</div>}
-            <div className="hero-side">{autres.map((a,i)=>(<div key={i} onClick={()=>openArticle(filteredArticles[i+1])} style={{flex:1, padding:14, borderBottom:'1px solid rgba(255,255,255,0.12)', color:'white', cursor:'pointer'}}><div style={{fontSize:10, color:'#ffcc00', fontWeight:900}}>{a.category}</div><div style={{fontSize:13, fontWeight:700, marginTop:4}}>{a.title}</div></div>))}</div>
+            <div className="hero-side" style={{background:"#2e4fb0", borderLeft:"1px solid rgba(255,255,255,0.1)"}}>{autres.map((a,i)=>(<div key={i} onClick={()=>openArticle(filteredArticles[i+1])} style={{flex:1, padding:14, borderBottom:'1px solid rgba(255,255,255,0.12)', color:'white', cursor:'pointer'}}><div style={{fontSize:10, color:'#ffcc00', fontWeight:900}}>{a.category}</div><div style={{fontSize:13, fontWeight:700, marginTop:4}}>{a.title}</div></div>))}</div>
           </div>
           <div className="grid-4">{filteredArticles.slice(4,12).map((c,i)=>{const tc=getTranslated(c); return <div key={i} onClick={()=>openArticle(c)} style={{background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:14, color:'white', cursor:'pointer'}}><div style={{fontSize:10, fontWeight:900, color:'#ffcc00'}}>{tc.category}</div><div style={{fontSize:13, fontWeight:700, marginTop:6}}>{tc.title}</div></div>})}</div>
         </div>
       ): actif==='DIRECT'?(
-        <div style={{background:'#0f2040', color:'white', minHeight:'100vh', padding:20}}>
+        <div style={{background:'#2e4fb0', color:'white', minHeight:'100vh', padding:20}}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10, marginBottom:14}}>
             <h2 style={{color:'#ff3b3b', margin:0, display:'flex', alignItems:'center', gap:8}}><span className="dot-blink"></span> {T.liveTitle}</h2>
             <div style={{display:'flex', gap:8}}>
@@ -441,7 +440,7 @@ export default function App() {
           </div>
         </div>
       ): actif==='PODCAST'?(
-        <div style={{background:'#0f2040', color:'white', minHeight:'100vh', paddingBottom:90}}>
+        <div style={{background:'#2e4fb0', color:'white', minHeight:'100vh', paddingBottom:90}}>
           <div style={{padding:'22px 20px 10px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10}}>
             <div>
               <h2 style={{color:'#a8ff00', margin:0, display:'flex', alignItems:'center', gap:8}}><span className="dot-green"></span> {T.podcastTitle}</h2>
@@ -492,7 +491,7 @@ export default function App() {
           )}
         </div>
       ): actif==='CONTACT'?(
-        <div style={{background:'#0f2040', color:'white', minHeight:'100vh', padding:'20px 16px'}}>
+        <div style={{background:'#2e4fb0', color:'white', minHeight:'100vh', padding:'20px 16px'}}>
           <div style={{maxWidth:1100, margin:'0 auto'}}>
             <h2 style={{color:'#ffcc00', margin:'0 0 6px 0', display:'flex', alignItems:'center', gap:10}}>✉️ CONTACTEZ-NOUS</h2>
             <p style={{opacity:0.7, fontSize:12, margin:'0 0 20px 0'}}>Une info, une pub, un reportage ? L'équipe Rius Multimédia vous répond en moins de 24h.</p>
@@ -535,7 +534,7 @@ export default function App() {
           </div>
         </div>
       ): actif==='RECHERCHE'?(
-        <div style={{background:'#0f2040', color:'white', minHeight:'100vh', padding:'20px 16px'}}>
+        <div style={{background:'#2e4fb0', color:'white', minHeight:'100vh', padding:'20px 16px'}}>
           <div style={{maxWidth:1000, margin:'0 auto'}}>
             <h2 style={{margin:'0 0 6px 0'}}>🔍 Résultats pour "<span style={{color:'#ffcc00'}}>{searchTerm}</span>"</h2>
             <p style={{opacity:0.7, fontSize:12, margin:'0 0 16px 0'}}>{articlesForSearch.length} article(s) trouvé(s) dans titre, contenu et catégorie</p>
@@ -546,7 +545,7 @@ export default function App() {
           </div>
         </div>
       ):(
-        <div style={{padding:'20px 16px', minHeight:400, background:'#0f2040', color:'white'}}>
+        <div style={{padding:'20px 16px', minHeight:400, background:'#2e4fb0', color:'white'}}>
           <h2>{actif}</h2>
           <div className="grid-4" style={{padding:0, marginTop:16}}>
             {filteredArticles.filter(a=>a.category===actif).map(a=>{const tc=getTranslated(a); return <div key={a.id} onClick={()=>openArticle(a)} style={{background:'white', cursor:'pointer', borderRadius:10, overflow:'hidden', color:'black'}}><img src={a.image} style={{width:'100%', height:170, objectFit:'cover'}} alt="" /><div style={{padding:10, fontWeight:700, fontSize:13}}>{tc.title}</div></div>})}
@@ -554,7 +553,7 @@ export default function App() {
         </div>
       )}
 
-      <footer style={{background:'linear-gradient(180deg, #000000 0%, #02040c 70%, #000000 100%)', color:'white', borderTop:'1px solid rgba(255,204,0,0.25)', position:'relative', boxShadow:'0 1px 0 rgba(255,255,255,0.04) inset, 0 -10px 40px rgba(0,0,0,0.8) inset'}}>
+      <footer style={{background:'linear-gradient(180deg, #3a62d1 0%, #2f52b6 100%)', color:'white', borderTop:'1px solid rgba(255,255,255,0.15)', position:'relative', boxShadow:'0 1px 0 rgba(255,255,255,0.12) inset'}}>
         <div className="footer-grid" style={{padding:'36px 24px 24px', maxWidth:1400, margin:'0 auto', display:'grid', gridTemplateColumns:'1.4fr 0.7fr 1fr 1.2fr', gap:32}}>
           <div>
             <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:12}}>
