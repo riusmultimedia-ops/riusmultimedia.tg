@@ -54,7 +54,7 @@ function HeroCarousel({items, openArticle, T, allItems}){
     const fallback = (items||[])[0];
     if(fallback && fallback.image){
       return (
-        <div className="hero-main" style={{backgroundImage:'linear-gradient(rgba(46,79,176,0.18), rgba(46,79,176,0.92)), url('+fallback.image+')', backgroundSize:'cover', backgroundPosition:'center', padding:'24px', display:'flex', flexDirection:'column', justifyContent:'flex-end', minHeight:250}}>
+        <div className="hero-main" style={{backgroundImage:'linear-gradient(rgba(46,79,176,0.18), rgba(46,79,176,0.92)), url('+fallback.image+')', backgroundSize:'cover', backgroundPosition:'center', padding:'24px', display:'flex', flexDirection:'column', justifyContent:'flex-end', minHeight:300}}>
           <span style={{background:'#d4ff00', color:'black', padding:'5px 10px', borderRadius:4, fontWeight:900, fontSize:10, width:'fit-content'}}>• {fallback.category}</span>
           <h1 style={{fontSize:28, lineHeight:1.05, margin:'12px 0', fontWeight:900, maxWidth:600, color:'white'}}>{fallback.title}</h1>
           <button onClick={function(){ if(allItems[0]) openArticle(allItems[0]); }} style={{background:'#ffcc00', border:0, padding:'11px 20px', borderRadius:6, fontWeight:900, marginTop:12, width:'fit-content', color:'#0d1b4a', cursor:'pointer'}}>{T.lire}</button>
@@ -66,10 +66,10 @@ function HeroCarousel({items, openArticle, T, allItems}){
   const current = safeItems[idx] || safeItems[0];
   const isVideo = (current.video && current.video.includes('youtube')) || (current.gallery && current.gallery[0] && (current.gallery[0].type==='video' || current.gallery[0].url?.includes('youtube') || current.gallery[0].url?.includes('youtu.be')));
   return (
-    <div className="hero-main" onMouseEnter={function(){setHover(true);}} onMouseLeave={function(){setHover(false);}} style={{position:'relative', overflow:'hidden', background:'#000', minHeight:250, height:250}}>
+    <div className="hero-main" onMouseEnter={function(){setHover(true);}} onMouseLeave={function(){setHover(false);}} style={{position:'relative', overflow:'hidden', background:'#000', minHeight:300, height:300}}>
       <div style={{position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(46,79,176,0.18), rgba(46,79,176,0.92)), url('+(current.image||'')+')', backgroundSize:'cover', backgroundPosition:'center', transition:'background-image 0.5s ease'}}></div>
       {isVideo && <div style={{position:'absolute', top:20, right:20, background:'rgba(255,0,0,0.8)', color:'white', padding:'4px 8px', borderRadius:4, fontSize:10, fontWeight:900, zIndex:2}}>▶ VIDEO</div>}
-      <div style={{position:'relative', zIndex:1, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding:'20px 24px', height:'100%', boxSizing:'border-box', minHeight:250}}>
+      <div style={{position:'relative', zIndex:1, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding:'20px 24px', height:'100%', boxSizing:'border-box', minHeight:300}}>
         <span style={{background:'#d4ff00', color:'black', padding:'5px 10px', borderRadius:4, fontWeight:900, fontSize:10, width:'fit-content'}}>• {current.category}</span>
         <h1 style={{fontSize:28, lineHeight:1.05, margin:'12px 0', fontWeight:900, maxWidth:600, color:'white'}}>{current.title}</h1>
         <button onClick={function(){ const orig = allItems[idx] || allItems[0]; if(orig) openArticle(orig); }} style={{background:'#ffcc00', border:0, padding:'10px 18px', borderRadius:6, fontWeight:900, marginTop:10, width:'fit-content', color:'#0d1b4a', cursor:'pointer'}}>{T.lire}</button>
@@ -420,9 +420,9 @@ export default function App() {
       
       {actif==='ACCUEIL'?(
         <div style={{background:'#2e4fb0', minHeight:'100vh'}}>
-          <div className="hero-container" style={{display:'flex', width:'100%', minHeight:250, height:250 }}>
+          <div className="hero-container" style={{display:'flex', width:'100%', minHeight:300, height:300 }}>
             {articlePrincipal? <HeroCarousel items={filteredArticles.slice(0,5).map(getTranslated)} openArticle={openArticle} T={T} allItems={filteredArticles} /> : <div style={{flex:'0 0 68%', padding:40, color:'white'}}>{searchTerm? `Aucun résultat pour "${searchTerm}"` : T.charger}</div>}
-            <div className="hero-side" style={{flex:'0 0 32%', background:'#2e4fb0', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', gap:0, padding:'4px 8px', height:250, minHeight:250, justifyContent:'space-between'}}>
+            <div className="hero-side" style={{flex:'0 0 32%', background:'#2e4fb0', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', gap:0, padding:'4px 8px', height:300, minHeight:300, justifyContent:'space-between'}}>
               {autres.map((a,i)=>{
                 const orig = filteredArticles[i+1];
                 if(!orig) return null;
