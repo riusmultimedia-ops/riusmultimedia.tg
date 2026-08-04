@@ -59,10 +59,10 @@ function HeroCarousel({items, openArticle, T, allItems}){
   const current = safeItems[idx] || safeItems[0];
   const isVideo = current.gallery && current.gallery[0] && current.gallery[0].type==='video';
   return (
-    <div className="hero-main" onMouseEnter={function(){setHover(true);}} onMouseLeave={function(){setHover(false);}} style={{position:'relative', overflow:'hidden', background:'#000', minHeight:380}}>
+    <div className="hero-main" onMouseEnter={function(){setHover(true);}} onMouseLeave={function(){setHover(false);}} style={{position:'relative', overflow:'hidden', background:'#000', minHeight:255}}>
       <div style={{position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(46,79,176,0.18), rgba(46,79,176,0.92)), url('+(current.image||'')+')', backgroundSize:'cover', backgroundPosition:'center', transition:'background-image 0.5s ease'}}></div>
       {isVideo && <div style={{position:'absolute', top:20, right:20, background:'rgba(255,0,0,0.8)', color:'white', padding:'4px 8px', borderRadius:4, fontSize:10, fontWeight:900, zIndex:2}}>▶ VIDEO</div>}
-      <div style={{position:'relative', zIndex:1, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding:'24px', height:'100%', boxSizing:'border-box', minHeight:380}}>
+      <div style={{position:'relative', zIndex:1, display:'flex', flexDirection:'column', justifyContent:'flex-end', padding:'24px', height:'100%', boxSizing:'border-box', minHeight:255}}>
         <span style={{background:'#d4ff00', color:'black', padding:'5px 10px', borderRadius:4, fontWeight:900, fontSize:10, width:'fit-content'}}>• {current.category}</span>
         <h1 style={{fontSize:32, lineHeight:1.05, margin:'12px 0', fontWeight:900, maxWidth:600, color:'white'}}>{current.title}</h1>
         <button onClick={function(){ const orig = allItems[idx] || allItems[0]; if(orig) openArticle(orig); }} style={{background:'#ffcc00', border:0, padding:'11px 20px', borderRadius:6, fontWeight:900, marginTop:12, width:'fit-content', color:'#0d1b4a', cursor:'pointer'}}>{T.lire}</button>
