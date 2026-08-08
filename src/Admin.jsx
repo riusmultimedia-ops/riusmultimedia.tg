@@ -29,12 +29,16 @@ const getYoutubeThumb = (url) => {
   return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null
 }
 
+const uid = () => Math.random().toString(36).slice(2,9)
+
 export default function Admin() {
   const [isLogged, setIsLogged] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
-  const [form, setForm] = useState({ id:null, title:'', category:'ACCUEIL', image:'', video:'', audio:'', content:'', translations:{}, gallery:[] });
+  // NOUVEAU : blocks
+  const [blocks, setBlocks] = useState([{id:uid(), type:'text', content:''}]);
+  const [form, setForm] = useState({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[] });
   const [gallery, setGallery] = useState([]);
   const [youtubeInput, setYoutubeInput] = useState('');
   const [youtubeCaption, setYoutubeCaption] = useState('');
@@ -59,6 +63,7 @@ export default function Admin() {
   const [uploading, setUploading] = useState('');
   const [search, setSearch] = useState('');
   const galleryInputRef = useRef(null);
+  const blockFileRef = useRef({});
 
   const compressImage = (file, maxW=1280, quality=0.65) => {
     return new Promise((resolve)=>{
@@ -124,6 +129,59 @@ export default function Admin() {
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setPubs(data); });
   };
 
+  // === BLOCKS LOGIC ===
+  const addBlock = (type, afterId=null) => {
+    const newBlock = { id:uid(), type, content:'', url:'', caption:'', title:'' }
+    if(type==='text') newBlock.content=''
+    if(afterId){
+      const idx = blocks.findIndex(b=>b.id===afterId)
+      const copy=[...blocks]
+      copy.splice(idx+1,0,newBlock)
+      setBlocks(copy)
+    } else {
+      setBlocks([...blocks, newBlock])
+    }
+  }
+  const updateBlock = (id, field, val) => {
+    setBlocks(blocks.map(b=> b.id===id? {...b, [field]:val}: b))
+  }
+  const removeBlock = (id) => {
+    if(blocks.length===1) return alert('Garde au moins 1 bloc')
+    setBlocks(blocks.filter(b=>b.id!==id))
+  }
+  const moveBlock = (id, dir) => {
+    const idx=blocks.findIndex(b=>b.id===id)
+    const nIdx=dir==='up'? idx-1: idx+1
+    if(nIdx<0 || nIdx>=blocks.length) return
+    const copy=[...blocks]
+    const tmp=copy[idx]; copy[idx]=copy[nIdx]; copy[nIdx]=tmp
+    setBlocks(copy)
+  }
+
+  const uploadFile = async (bucket, file, isPub=false, blockId=null) => {
+    if(!file) return null;
+    if(file.type.startsWith('image/')){ file = await compressImage(file); }
+    setUploading(isPub?'pubs':(blockId? `block-${blockId}`:bucket));
+    try{
+      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const target = isPub?'pubs':bucket
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/${target}/${fileName}`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
+        body: file
+      });
+      if(!res.ok) throw new Error(await res.text());
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${target}/${fileName}`;
+      if(isPub) setNewPubImage(publicUrl);
+      else if(bucket === 'images') setForm(f=>({...f, image: publicUrl}));
+      else if(blockId){
+        updateBlock(blockId,'url', publicUrl)
+      }
+      return publicUrl;
+    }catch(e){ alert('Erreur upload: '+e.message); return null; }
+    finally{ setUploading(''); }
+  };
+
   const saveUsers = (newList) => {
     setUsers(newList);
     fetch('/api/users', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(newList) });
@@ -137,7 +195,8 @@ export default function Admin() {
 
   const handleLogout = () => {
     setIsLogged(false); setCurrentUser(null); setUser(''); setPass('');
-    setForm({ id:null, title:'', category:'ACCUEIL', image:'', video:'', audio:'', content:'', translations:{}, gallery:[] });
+    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[] });
+    setBlocks([{id:uid(), type:'text', content:''}])
     setGallery([]);
     setYoutubeInput(''); setYoutubeCaption('');
     setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false);
@@ -163,41 +222,20 @@ export default function Admin() {
   }
 
   const handleAutoTranslate = async () => {
-    if(!form.title ||!form.content) return alert('Écris d abord titre et contenu en FR')
+    if(!form.title ||!blocks.some(b=>b.type==='text'&&b.content)) return alert('Écris d abord titre et un bloc texte en FR')
     setTranslating(true)
     let newTrans = {...form.translations}
+    const fullText = blocks.filter(b=>b.type==='text').map(b=>b.content).join(' ').slice(0,800)
     for(let lang of LANGS){
       if(lang==='fr') continue
       const tTitle = await translateText(form.title, lang)
-      const tContent = await translateText(form.content.slice(0,800), lang)
+      const tContent = await translateText(fullText, lang)
       newTrans[lang] = { title: tTitle, content: tContent }
     }
     setForm(f=>({...f, translations: newTrans}))
     setTranslating(false)
     alert('✅ Traduit en 5 langues!')
   }
-
-  const uploadFile = async (bucket, file, isPub=false) => {
-    if(!file) return null;
-    if(file.type.startsWith('image/')){ file = await compressImage(file); }
-    setUploading(isPub?'pubs':bucket);
-    try{
-      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-      const target = isPub?'pubs':bucket
-      const res = await fetch(`${supabaseUrl}/storage/v1/object/${target}/${fileName}`, {
-        method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
-        body: file
-      });
-      if(!res.ok) throw new Error(await res.text());
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${target}/${fileName}`;
-      if(isPub) setNewPubImage(publicUrl);
-      else if(bucket === 'images') setForm(f=>({...f, image: publicUrl}));
-      else if(bucket === 'audios') setForm(f=>({...f, audio: publicUrl}));
-      return publicUrl;
-    }catch(e){ alert('Erreur upload: '+e.message); return null; }
-    finally{ setUploading(''); }
-  };
 
   const uploadGalleryFiles = async (files) => {
     const fileList = Array.from(files);
@@ -226,33 +264,85 @@ export default function Admin() {
     const id = getYoutubeId(youtubeInput.trim())
     if(!id) return alert('Lien YouTube invalide. Ex: https://youtu.be/abc123 ou https://www.youtube.com/watch?v=abc123')
     const url = youtubeInput.trim()
+    // Ajoute comme bloc YouTube + aussi en gallery pour compatibilité
+    setBlocks([...blocks, {id:uid(), type:'youtube', url, caption: youtubeCaption}])
     setGallery([...gallery, {type:'video', url, caption: youtubeCaption}])
     setYoutubeInput('')
     setYoutubeCaption('')
   }
 
   const handlePublish = async () => {
-    if(!form.title||!form.content) return alert('Titre et contenu obligatoires');
+    if(!form.title) return alert('Titre obligatoire');
+    if(!blocks.some(b=> (b.type==='text'&&b.content.trim()) || b.url)) return alert('Ajoute au moins un bloc texte ou média');
     try{
-      const payload = { title: form.title, category: form.category, image: form.image, video: form.video || null, audio: form.audio || null, content: form.content, translations: form.translations, gallery: gallery.length? gallery : null }
-      // Si pas d'image principale mais video youtube dans gallery, on met la miniature auto en image
-      if(!payload.image && gallery.length){
-        const firstYt = gallery.find(g=> g.url && (g.url.includes('youtube') || g.url.includes('youtu.be')))
+      // Génère le contenu legacy pour les anciennes versions du site
+      const textContent = blocks.filter(b=>b.type==='text').map(b=>b.content).join('\n\n')
+      const firstAudio = blocks.find(b=>b.type==='audio')?.url || null
+      const firstVideo = blocks.find(b=>b.type==='video' || b.type==='youtube')?.url || null
+      // gallery compilée depuis blocks + gallery manuelle
+      const compiledGallery = [
+        ...blocks.filter(b=>b.type!=='text').map(b=>({type: b.type==='audio'?'audio': b.type==='image'?'image':'video', url:b.url, caption:b.caption||'', title:b.title||''})),
+        ...gallery
+      ].filter(g=>g.url)
+
+      let payload = { 
+        title: form.title, 
+        category: form.category, 
+        image: form.image, 
+        video: firstVideo, 
+        audio: firstAudio, 
+        content: textContent || "Contenu en blocs", 
+        translations: form.translations, 
+        gallery: compiledGallery.length? compiledGallery : null,
+        // NOUVEAU CHAMP - si ta table Supabase a une colonne blocks (jsonb), il sera sauvé. Sinon il sera ignoré mais content reste.
+        blocks: blocks
+      }
+      if(!payload.image && compiledGallery.length){
+        const firstYt = compiledGallery.find(g=> g.url && (g.url.includes('youtube') || g.url.includes('youtu.be')))
         if(firstYt){
           const thumb = getYoutubeThumb(firstYt.url)
           if(thumb) payload.image = thumb
         }
+        if(!payload.image){
+          const firstImg = compiledGallery.find(g=>g.type==='image')
+          if(firstImg) payload.image = firstImg.url
+        }
       }
-      const url = form.id? `${supabaseUrl}/rest/v1/articles?id=eq.${form.id}` : `${supabaseUrl}/rest/v1/articles`
-      const method = form.id? 'PATCH' : 'POST'
-      const res = await fetch(url, {
+
+      // Si Supabase n'a pas la colonne blocks, on retire et on retry
+      let url = form.id? `${supabaseUrl}/rest/v1/articles?id=eq.${form.id}` : `${supabaseUrl}/rest/v1/articles`
+      let method = form.id? 'PATCH' : 'POST'
+      let res = await fetch(url, {
         method, headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
         body: JSON.stringify(payload)
       });
-      if(res.ok){ alert(form.id?'Article modifié!':'Article publié!'); setForm({ id:null, title:'', category:'ACCUEIL', image:'', video:'', audio:'', content:'', translations:{}, gallery:[] }); setGallery([]); setEditLang('fr'); fetchArticles(); setShowArticles(true); }
-      else alert(await res.text());
+      if(!res.ok){
+        const txt = await res.text()
+        if(txt.includes('blocks')){
+          delete payload.blocks
+          res = await fetch(url, {
+            method, headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify(payload)
+          });
+          if(res.ok) alert('⚠️ Publié sans colonne blocks (ajoute une colonne blocks jsonb dans Supabase pour avoir l\'ordre exact). Article publié en mode compatibilité.');
+          else alert(txt)
+          if(res.ok){ afterPublish() }
+          return
+        } else {
+          alert(txt)
+          return
+        }
+      }
+      alert(form.id?'Article modifié!':'Article publié!')
+      afterPublish()
     }catch(e){ alert(e.message) }
   };
+
+  const afterPublish = () => {
+    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[] }); 
+    setBlocks([{id:uid(), type:'text', content:''}])
+    setGallery([]); setEditLang('fr'); fetchArticles(); setShowArticles(true);
+  }
 
   const handleAddFlash = async () => {
     if(!newFlash.trim()) return;
@@ -281,7 +371,22 @@ export default function Admin() {
   const handleTogglePub = async (p) => { await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!p.active }) }); fetchPubs(); };
 
   const handleEdit = (art) => { 
-    setForm({ id: art.id, title: art.title, category: art.category, image: art.image||'', video: art.video||'', audio: art.audio||'', content: art.content||'', translations: art.translations||{}, gallery: art.gallery||[] }); 
+    setForm({ id: art.id, title: art.title, category: art.category, image: art.image||'', translations: art.translations||{}, gallery: art.gallery||[] }); 
+    if(art.blocks && Array.isArray(art.blocks) && art.blocks.length){
+      setBlocks(art.blocks)
+    } else {
+      // Reconstruit les blocks depuis l'ancien format
+      let b = []
+      if(art.content) b.push({id:uid(), type:'text', content: art.content})
+      if(art.gallery && Array.isArray(art.gallery)){
+        art.gallery.forEach(g=>{
+          if(g.type==='video' && (g.url.includes('youtube')||g.url.includes('youtu.be'))) b.push({id:uid(), type:'youtube', url:g.url, caption:g.caption||''})
+          else b.push({id:uid(), type:g.type, url:g.url, caption:g.caption||'', content:''})
+        })
+      }
+      if(b.length===0) b=[{id:uid(), type:'text', content:''}]
+      setBlocks(b)
+    }
     setGallery(art.gallery||[]);
     setEditLang('fr'); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); window.scrollTo(0,0); 
   };
@@ -291,7 +396,6 @@ export default function Admin() {
   const filtered = articles.filter(a => a.title.toLowerCase().includes(search.toLowerCase()));
 
   const currentTitle = editLang==='fr'? form.title : (form.translations[editLang]?.title || '')
-  const currentContent = editLang==='fr'? form.content : (form.translations[editLang]?.content || '')
 
   if(!isLogged){
     return(
@@ -399,7 +503,7 @@ export default function Admin() {
             {filtered.map(a=>(
               <div key={a.id} style={{border:'1px solid #e0e7ff', padding:10, borderRadius:12, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
                 <img src={a.image} style={{width:54,height:54,objectFit:'cover',borderRadius:8}} alt="" />
-                <div style={{flex:1, minWidth:0}}><div style={{fontWeight:800,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</div><div style={{fontSize:11,color:'#64748b'}}>{a.category} {a.gallery?.length? `• ${a.gallery.length} médias`:''} {a.gallery?.some(g=>g.url.includes('youtube')||g.url.includes('youtu.be'))? '• YouTube':''}</div></div>
+                <div style={{flex:1, minWidth:0}}><div style={{fontWeight:800,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</div><div style={{fontSize:11,color:'#64748b'}}>{a.category} {a.gallery?.length? `• ${a.gallery.length} médias`:''} {a.blocks? `• ${a.blocks.length} blocs`:''}</div></div>
                 <button onClick={()=>handleEdit(a)} style={{background:'#2e4fb0',color:'white',border:0,borderRadius:8,padding:'8px 12px',fontSize:12,cursor:'pointer'}}>✏</button>
                 <button onClick={()=>handleDelete(a.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:8,padding:'8px 12px',fontSize:12,cursor:'pointer'}}>🗑</button>
               </div>
@@ -413,7 +517,7 @@ export default function Admin() {
               <button onClick={handleAutoTranslate} disabled={translating} style={{marginLeft:8, background: translating?'#94a3b8':'#ffcc00', color:'#0f2040', border:0, borderRadius:20, padding:'6px 14px', fontWeight:900, fontSize:11, cursor:'pointer'}}>{translating?'⏳ Traduction...':'🌐 Traduire auto'}</button>
             </div>
             <div style={{display:'grid', gap:12}}>
-              <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>TITRE * [{editLang.toUpperCase()}]</label><input placeholder="Titre accrocheur..." value={currentTitle} onChange={e=>{ if(editLang==='fr') setForm({...form,title:e.target.value}); else setForm({...form, translations:{...form.translations, [editLang]:{...form.translations[editLang], title:e.target.value, content: currentContent}}}) }} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontWeight:700,fontSize:14}} /></div>
+              <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>TITRE * [{editLang.toUpperCase()}]</label><input placeholder="Titre accrocheur..." value={currentTitle} onChange={e=>{ if(editLang==='fr') setForm({...form,title:e.target.value}); else setForm({...form, translations:{...form.translations, [editLang]:{...form.translations[editLang], title:e.target.value, content: ''}}}) }} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontWeight:700,fontSize:14}} /></div>
               <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>CATÉGORIE</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe'}}><option>ACCUEIL</option><option>POLITIQUE</option><option>CULTURE</option><option>SOCIÉTÉ</option><option>SANTÉ</option><option>SPORT</option><option>ENVIRONNEMENT</option><option>INTERNATIONAL</option><option>ESPACE BUSINESS</option></select></div>
               
               <div style={{border:'2px dashed #93c5fd', padding:12, borderRadius:12, background:'#f0f7ff'}}>
@@ -424,79 +528,90 @@ export default function Admin() {
                 <input placeholder="ou colle un lien image" value={form.image} onChange={e=>setForm({...form,image:e.target.value})} style={{width:'100%',padding:'8px',marginTop:8,borderRadius:8,border:'1px solid #c7d2fe',fontSize:11}} />
               </div>
 
-              {/* YOUTUBE DEDIE - NOUVEAU */}
-              <div style={{border:'2px solid #ff0000', padding:14, borderRadius:12, background:'#fff0f0'}}>
-                <div style={{fontSize:12,fontWeight:900,color:'#b91c1c', marginBottom:8, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                  <span>🎥 VIDÉO YOUTUBE (0 Mo Supabase - Recommandé)</span>
-                  <a href={YOUTUBE_STUDIO} target="_blank" rel="noreferrer" style={{fontSize:10, background:'#ff0000', color:'white', padding:'3px 8px', borderRadius:12, textDecoration:'none'}}>Ouvrir YouTube Studio</a>
-                </div>
-                <div style={{display:'flex', gap:6}}>
-                  <input placeholder="Colle lien YouTube: https://youtu.be/... ou https://www.youtube.com/watch?v=..." value={youtubeInput} onChange={e=>setYoutubeInput(e.target.value)} style={{flex:1,padding:'10px',borderRadius:8,border:'1px solid #fca5a5',fontSize:12}} />
-                  <button type="button" onClick={handleAddYoutube} style={{background:'#ff0000', color:'white', border:0, padding:'0 14px', borderRadius:8, fontWeight:900, fontSize:12, cursor:'pointer'}}>➕ Ajouter</button>
-                </div>
-                <input placeholder="Légende vidéo (optionnel)" value={youtubeCaption} onChange={e=>setYoutubeCaption(e.target.value)} style={{width:'100%',padding:'8px',marginTop:6,borderRadius:8,border:'1px solid #fca5a5',fontSize:11}} />
-                {youtubeInput && getYoutubeId(youtubeInput) && (
-                  <div style={{marginTop:10, display:'flex', gap:10, background:'white', padding:8, borderRadius:8, border:'1px solid #fecaca'}}>
-                    <img src={getYoutubeThumb(youtubeInput)} style={{width:120, height:68, objectFit:'cover', borderRadius:6}} alt="" />
-                    <div style={{fontSize:11}}><b style={{color:'#b91c1c'}}>Aperçu :</b><br/>ID: {getYoutubeId(youtubeInput)}<br/><span style={{color:'#16a34a', fontWeight:700}}>✅ 0 Mo utilisé sur Supabase</span><br/><span style={{fontSize:10, color:'#666'}}>Sera affiché comme sur DW/BBC avec ▶</span></div>
-                  </div>
-                )}
-                <div style={{fontSize:10, color:'#666', marginTop:6}}>💡 Astuce: Tu peux ajouter plusieurs vidéos YouTube. Elles apparaîtront dans l'article les unes sous les autres + en miniature auto dans le body.</div>
-              </div>
-
-              {/* GALERIE MULTI */}
-              <div style={{border:'2px solid #ffcc00', padding:14, borderRadius:12, background:'#fffbe6'}}>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10, flexWrap:'wrap', gap:8}}>
-                  <div style={{fontSize:11,fontWeight:900,color:'#92400e'}}>🖼🎬 GALERIE PLEIN ARTICLE ({gallery.length} médias)</div>
-                  <div style={{display:'flex', gap:6}}>
-                    <button type="button" onClick={()=>galleryInputRef.current.click()} style={{background:'#000', color:'white', border:0, padding:'6px 10px', borderRadius:8, fontWeight:800, fontSize:11, cursor:'pointer'}}>{uploading==='gallery'?'⏳...':'📁 PC'}</button>
-                    <button type="button" onClick={()=>addGalleryUrl('image')} style={{background:'#2e4fb0', color:'white', border:0, padding:'6px 10px', borderRadius:8, fontWeight:700, fontSize:11, cursor:'pointer'}}>+ Image URL</button>
-                    <button type="button" onClick={()=>addGalleryUrl('video')} style={{background:'#ff0000', color:'white', border:0, padding:'6px 10px', borderRadius:8, fontWeight:800, fontSize:11, cursor:'pointer'}}>+ Vidéo URL</button>
-                  </div>
+              {/* NOUVEL EDITEUR A BLOCS */}
+              <div style={{border:'3px solid #0f2040', padding:14, borderRadius:14, background:'#f8fafc'}}>
+                <div style={{fontSize:13,fontWeight:900,color:'#0f2040', marginBottom:10, display:'flex', justifyContent:'space-between'}}>
+                  <span>📝 ÉDITEUR ARTICLE PAR BLOCS - NOUVEAU</span>
+                  <span style={{fontSize:10, background:'#0f2040', color:'white', padding:'2px 8px', borderRadius:10}}>{blocks.length} blocs</span>
                 </div>
 
-                <input ref={galleryInputRef} type="file" multiple accept="image/*,video/*" onChange={e=>uploadGalleryFiles(e.target.files)} style={{display:'none'}} />
-
-                <div onDragOver={e=>{e.preventDefault(); e.currentTarget.style.background='#fff3a0'}} onDragLeave={e=>e.currentTarget.style.background='white'} onDrop={e=>{e.preventDefault(); e.currentTarget.style.background='white'; uploadGalleryFiles(e.dataTransfer.files)}} style={{border:'2px dashed #facc15', background:'white', padding:12, borderRadius:10, textAlign:'center', marginBottom:10, fontSize:11, color:'#666'}}>
-                  Glisse ici plusieurs images/vidéos depuis ton PC<br/><span style={{fontSize:10}}>JPG, PNG, MP4, MOV - Upload auto vers Supabase</span>
-                </div>
-
-                {gallery.length===0 && <div style={{fontSize:11, opacity:0.6, textAlign:'center', padding:8}}>Aucun média. Ajoute des vidéos YouTube ci-dessus (0 Mo) ou des images depuis ton PC.</div>}
-
-                {gallery.map((item,i)=>(
-                  <div key={i} style={{background:'white', padding:8, borderRadius:10, marginBottom:8, border: item.url.includes('youtube')||item.url.includes('youtu.be') ? '1px solid #fca5a5' : '1px solid #fde68a', display:'flex', gap:10}}>
-                    <div style={{width:64, height:48, borderRadius:6, overflow:'hidden', background:'#000', flexShrink:0}}>
-                      {item.url.includes('youtube')||item.url.includes('youtu.be') ? <img src={getYoutubeThumb(item.url)} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" /> : item.type==='video' ? <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#000',color:'white'}}>▶</div> : <img src={item.url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />}
+                {blocks.map((block, idx)=>(
+                  <div key={block.id} style={{background:'white', border:'2px solid #e2e8f0', borderRadius:12, padding:10, marginBottom:10, position:'relative'}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+                      <span style={{fontSize:10, fontWeight:900, background: block.type==='text'?'#dbeafe': block.type==='image'?'#dcfce7': block.type==='audio'?'#fef3c7':'#fee2e2', color:'#0f2040', padding:'2px 8px', borderRadius:20}}>
+                        {block.type.toUpperCase()} #{idx+1}
+                      </span>
+                      <div style={{display:'flex', gap:4}}>
+                        <button type="button" onClick={()=>moveBlock(block.id,'up')} style={{border:'1px solid #ddd', background:'white', borderRadius:6, cursor:'pointer', fontSize:12, padding:'2px 6px'}}>↑</button>
+                        <button type="button" onClick={()=>moveBlock(block.id,'down')} style={{border:'1px solid #ddd', background:'white', borderRadius:6, cursor:'pointer', fontSize:12, padding:'2px 6px'}}>↓</button>
+                        <button type="button" onClick={()=>removeBlock(block.id)} style={{border:0, background:'#ef4444', color:'white', borderRadius:6, cursor:'pointer', padding:'2px 8px', fontSize:11}}>✕</button>
+                      </div>
                     </div>
-                    <div style={{flex:1}}>
-                      <div style={{display:'flex', gap:4, marginBottom:4}}><span style={{background: item.url.includes('youtube')||item.url.includes('youtu.be') ? '#ff0000' : item.type==='image'?'#162f6b':'#ff0000', color:'white', padding:'1px 5px', borderRadius:4, fontSize:9, fontWeight:800}}>{item.url.includes('youtube')||item.url.includes('youtu.be')? 'YOUTUBE' : item.type.toUpperCase()} #{i+1} {item.url.includes('youtube')||item.url.includes('youtu.be')? '• 0 Mo':''}</span></div>
-                      <input value={item.url} onChange={e=>updateGallery(i,'url',e.target.value)} placeholder={item.type==='image'?'URL image':'URL YouTube / mp4'} style={{padding:6, borderRadius:6, border:'1px solid #ddd', width:'100%', marginBottom:4, fontSize:11}} />
-                      <input value={item.caption} onChange={e=>updateGallery(i,'caption',e.target.value)} placeholder="Légende (optionnel)" style={{padding:6, borderRadius:6, border:'1px solid #ddd', width:'100%', fontSize:11}} />
-                    </div>
-                    <div style={{display:'flex', flexDirection:'column', gap:3}}>
-                      <button type="button" onClick={()=>moveGallery(i,'up')} style={{border:'1px solid #ddd', background:'white', borderRadius:4, cursor:'pointer', fontSize:11}}>↑</button>
-                      <button type="button" onClick={()=>moveGallery(i,'down')} style={{border:'1px solid #ddd', background:'white', borderRadius:4, cursor:'pointer', fontSize:11}}>↓</button>
-                      <button type="button" onClick={()=>removeGallery(i)} style={{border:0, background:'#ff3b3b', color:'white', borderRadius:4, cursor:'pointer', padding:'2px 6px', fontSize:11}}>✕</button>
-                    </div>
+
+                    {block.type==='text' && (
+                      <textarea placeholder="Écris ton texte ici..." value={block.content} onChange={e=>updateBlock(block.id,'content',e.target.value)} style={{width:'100%', minHeight:90, padding:10, borderRadius:8, border:'1px solid #c7d2fe', fontSize:13}} />
+                    )}
+
+                    {block.type==='image' && (
+                      <div>
+                        <input type="file" accept="image/*" onChange={e=>uploadFile('images', e.target.files[0], false, block.id)} style={{width:'100%',fontSize:11, marginBottom:6}} />
+                        {uploading===`block-${block.id}` && <div style={{fontSize:11, color:'#2e4fb0'}}>⏳ Upload...</div>}
+                        <input placeholder="ou URL image" value={block.url} onChange={e=>updateBlock(block.id,'url',e.target.value)} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ddd',fontSize:11, marginBottom:6}} />
+                        {block.url && <img src={block.url} style={{width:'100%', maxHeight:180, objectFit:'cover', borderRadius:8}} alt="" />}
+                        <input placeholder="Légende image (optionnel)" value={block.caption||''} onChange={e=>updateBlock(block.id,'caption',e.target.value)} style={{width:'100%',padding:6,borderRadius:6,border:'1px solid #ddd',fontSize:11, marginTop:6}} />
+                      </div>
+                    )}
+
+                    {block.type==='audio' && (
+                      <div>
+                        <input type="file" accept="audio/*" onChange={e=>uploadFile('audios', e.target.files[0], false, block.id)} style={{width:'100%',fontSize:11, marginBottom:6}} />
+                        {uploading===`block-${block.id}` && <div style={{fontSize:11, color:'#d97706'}}>⏳ Upload...</div>}
+                        <input placeholder="ou URL audio MP3" value={block.url} onChange={e=>updateBlock(block.id,'url',e.target.value)} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ddd',fontSize:11}} />
+                        {block.url && <audio controls src={block.url} style={{width:'100%', marginTop:8}} />}
+                        <input placeholder="Titre audio ex: Interview complète" value={block.title||''} onChange={e=>updateBlock(block.id,'title',e.target.value)} style={{width:'100%',padding:6,borderRadius:6,border:'1px solid #ddd',fontSize:11, marginTop:6}} />
+                      </div>
+                    )}
+
+                    {(block.type==='video' || block.type==='youtube') && (
+                      <div>
+                        {block.type==='video' && <input type="file" accept="video/*" onChange={e=>uploadFile('media', e.target.files[0], false, block.id)} style={{width:'100%',fontSize:11, marginBottom:6}} />}
+                        {uploading===`block-${block.id}` && <div style={{fontSize:11, color:'#dc2626'}}>⏳ Upload...</div>}
+                        <input placeholder="URL YouTube ou MP4" value={block.url} onChange={e=>updateBlock(block.id,'url',e.target.value)} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ddd',fontSize:11}} />
+                        {block.url && (block.url.includes('youtube')||block.url.includes('youtu.be')) && <img src={getYoutubeThumb(block.url)} style={{width:'100%', maxHeight:160, objectFit:'cover', borderRadius:8, marginTop:6}} alt="" />}
+                        {block.url && !block.url.includes('youtube') && !block.url.includes('youtu.be') && <video src={block.url} controls style={{width:'100%', maxHeight:200, borderRadius:8, marginTop:6}} />}
+                        <input placeholder="Légende vidéo" value={block.caption||''} onChange={e=>updateBlock(block.id,'caption',e.target.value)} style={{width:'100%',padding:6,borderRadius:6,border:'1px solid #ddd',fontSize:11, marginTop:6}} />
+                      </div>
+                    )}
                   </div>
                 ))}
+
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:6, marginTop:12}}>
+                  <button type="button" onClick={()=>addBlock('text')} style={{background:'#0f2040', color:'white', border:0, padding:'10px', borderRadius:10, fontWeight:800, fontSize:11, cursor:'pointer'}}>＋ TEXTE</button>
+                  <button type="button" onClick={()=>addBlock('image')} style={{background:'#16a34a', color:'white', border:0, padding:'10px', borderRadius:10, fontWeight:800, fontSize:11, cursor:'pointer'}}>＋ IMAGE</button>
+                  <button type="button" onClick={()=>addBlock('audio')} style={{background:'#d97706', color:'white', border:0, padding:'10px', borderRadius:10, fontWeight:800, fontSize:11, cursor:'pointer'}}>＋ AUDIO</button>
+                  <button type="button" onClick={()=>addBlock('youtube')} style={{background:'#dc2626', color:'white', border:0, padding:'10px', borderRadius:10, fontWeight:800, fontSize:11, cursor:'pointer'}}>＋ VIDÉO</button>
+                </div>
+
+                <div style={{fontSize:10, color:'#64748b', marginTop:10, background:'white', padding:8, borderRadius:8}}>
+                  💡 <b>Comment ça marche :</b> Écris ton article bloc par bloc. Exemple : Bloc 1 = Texte d'intro, Bloc 2 = Audio interview, Bloc 3 = Suite du texte, Bloc 4 = Vidéo YouTube. Tu peux déplacer les blocs avec ↑ ↓.
+                </div>
               </div>
 
-              <div style={{border:'1px solid #bfdbfe', padding:12, borderRadius:12, background:'#eff6ff', opacity:0.7}}>
-                <div style={{fontSize:11,fontWeight:900,color:'#2e4fb0'}}>🎥 VIDÉO YOUTUBE (ancienne - gardée pour compatibilité)</div>
-                <input placeholder="https://youtube.com/watch?v=..." value={form.video} onChange={e=>setForm({...form,video:e.target.value})} style={{width:'100%',padding:'10px',marginTop:8,borderRadius:8,border:'1px solid #bfdbfe',fontSize:12}} />
-                <div style={{fontSize:10, color:'#666', marginTop:4}}>Utilise plutôt le champ rouge YouTube ci-dessus, plus pratique.</div>
+              {/* YOUTUBE RAPIDE */}
+              <div style={{border:'2px solid #ff0000', padding:12, borderRadius:12, background:'#fff0f0'}}>
+                <div style={{fontSize:11,fontWeight:900,color:'#b91c1c', marginBottom:8, display:'flex', justifyContent:'space-between'}}>
+                  <span>🎥 AJOUT RAPIDE YOUTUBE</span>
+                  <a href={YOUTUBE_STUDIO} target="_blank" rel="noreferrer" style={{fontSize:10, background:'#ff0000', color:'white', padding:'3px 8px', borderRadius:12, textDecoration:'none'}}>YouTube Studio</a>
+                </div>
+                <div style={{display:'flex', gap:6}}>
+                  <input placeholder="Colle lien YouTube" value={youtubeInput} onChange={e=>setYoutubeInput(e.target.value)} style={{flex:1,padding:'10px',borderRadius:8,border:'1px solid #fca5a5',fontSize:12}} />
+                  <button type="button" onClick={handleAddYoutube} style={{background:'#ff0000', color:'white', border:0, padding:'0 14px', borderRadius:8, fontWeight:900, fontSize:12, cursor:'pointer'}}>➕ Ajouter en bloc</button>
+                </div>
               </div>
-              <div style={{border:'1px solid #fde68a', padding:12, borderRadius:12, background:'#fffbeb'}}>
-                <div style={{fontSize:11,fontWeight:900,color:'#92400e'}}>🎧 AUDIO / PODCAST</div>
-                <input type="file" accept="audio/*" onChange={e=>uploadFile('audios', e.target.files[0])} style={{width:'100%',fontSize:12, marginTop:6}} />
-                {uploading==='audios' && <div style={{fontSize:11,color:'#d97706',marginTop:6}}>⏳ Upload...</div>}
-                {form.audio && <audio controls src={form.audio} style={{width:'100%', marginTop:8}}></audio>}
-              </div>
-              <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>CONTENU * [{editLang.toUpperCase()}]</label><textarea placeholder="Rédige ton article..." value={currentContent} onChange={e=>{ if(editLang==='fr') setForm({...form,content:e.target.value}); else setForm({...form, translations:{...form.translations, [editLang]:{...form.translations[editLang], content:e.target.value, title: currentTitle}}}) }} style={{width:'100%',padding:'12px',height:180,marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontSize:13}} /></div>
+
               <div style={{display:'flex',gap:8}}>
-                {form.id && <button onClick={()=>{setForm({ id:null, title:'', category:'ACCUEIL', image:'', video:'', audio:'', content:'', translations:{}, gallery:[] }); setGallery([]);}} style={{flex:1,padding:'14px',background:'#e0e7ff',borderRadius:12,border:0,fontWeight:800,cursor:'pointer', color:'#2e4fb0'}}>Annuler</button>}
-                <button onClick={handlePublish} style={{flex:2,padding:'14px',background: form.id? '#f59e0b' : '#2e4fb0',color:'white',fontWeight:900,borderRadius:12,border:0,cursor:'pointer',fontSize:14}}>{form.id? '💾 METTRE À JOUR' : '🚀 PUBLIER'}</button>
+                {form.id && <button onClick={()=>{setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[] }); setBlocks([{id:uid(), type:'text', content:''}]); setGallery([]);}} style={{flex:1,padding:'14px',background:'#e0e7ff',borderRadius:12,border:0,fontWeight:800,cursor:'pointer', color:'#2e4fb0'}}>Annuler</button>}
+                <button onClick={handlePublish} style={{flex:2,padding:'14px',background: form.id? '#f59e0b' : '#2e4fb0',color:'white',fontWeight:900,borderRadius:12,border:0,cursor:'pointer',fontSize:14}}>{form.id? '💾 METTRE À JOUR' : '🚀 PUBLIER AVEC BLOCS'}</button>
               </div>
             </div>
           </div>
