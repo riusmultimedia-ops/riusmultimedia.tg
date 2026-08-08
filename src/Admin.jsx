@@ -172,11 +172,13 @@ export default function Admin() {
       });
       if(!res.ok) throw new Error(await res.text());
       const publicUrl = `${supabaseUrl}/storage/v1/object/public/${target}/${fileName}`;
+      // FIX V4: priorité absolue au block, ne touche JAMAIS la Une si c'est un bloc
       if(isPub) setNewPubImage(publicUrl);
-      else if(bucket === 'images') setForm(f=>({...f, image: publicUrl}));
       else if(blockId){
-        updateBlock(blockId,'url', publicUrl)
+        // met à jour SEULEMENT le bloc concerné
+        setBlocks(prev => prev.map(b=> b.id===blockId ? {...b, url: publicUrl} : b))
       }
+      else if(bucket === 'images') setForm(f=>({...f, image: publicUrl}));
       return publicUrl;
     }catch(e){ alert('Erreur upload: '+e.message); return null; }
     finally{ setUploading(''); }
