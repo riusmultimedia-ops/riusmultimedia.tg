@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -158,28 +157,68 @@ export default function Admin() {
     setBlocks(copy)
   }
 
-  const uploadFile = async (bucket, file, isPub=false, blockId=null) => {
+  // FONCTION UNE - TOUCHE UNIQUEMENT LA UNE
+  const uploadUne = async (file) => {
     if(!file) return null;
     if(file.type.startsWith('image/')){ file = await compressImage(file); }
-    setUploading(isPub?'pubs':(blockId? `block-${blockId}`:bucket));
+    setUploading('UNE');
     try{
-      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-      const target = isPub?'pubs':bucket
-      const res = await fetch(`${supabaseUrl}/storage/v1/object/${target}/${fileName}`, {
+      const fileName = `UNE_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/images/${fileName}`, {
         method: 'POST',
         headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
         body: file
       });
       if(!res.ok) throw new Error(await res.text());
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${target}/${fileName}`;
-      if(isPub) setNewPubImage(publicUrl);
-      else if(blockId){
-        setBlocks(prev => prev.map(b=> b.id===blockId ? {...b, url: publicUrl} : b));
-      }
-      else if(bucket === 'images') setForm(f=>({...f, image: publicUrl}));
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/images/${fileName}`;
+      setForm(f=>({...f, image: publicUrl}));
       return publicUrl;
-    }catch(e){ alert('Erreur upload: '+e.message); return null; }
+    }catch(e){ alert('Erreur upload Une: '+e.message); return null; }
     finally{ setUploading(''); }
+  };
+
+  // FONCTION BLOC - TOUCHE UNIQUEMENT LE BLOC
+  const uploadBloc = async (blockId, file) => {
+    if(!file || !blockId) return null;
+    if(file.type.startsWith('image/')){ file = await compressImage(file); }
+    setUploading(`block-${blockId}`);
+    try{
+      const fileName = `BLOC_${blockId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/images/${fileName}`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
+        body: file
+      });
+      if(!res.ok) throw new Error(await res.text());
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/images/${fileName}`;
+      setBlocks(prev => prev.map(b=> b.id===blockId ? {...b, url: publicUrl} : b));
+      return publicUrl;
+    }catch(e){ alert('Erreur upload bloc: '+e.message); return null; }
+    finally{ setUploading(''); }
+  };
+
+  // Ancienne fonction gardée pour compatibilité pubs et autres
+  const uploadFile = async (bucket, file, isPub=false, blockId=null) => {
+    if(isPub) {
+      if(!file) return null;
+      if(file.type.startsWith('image/')){ file = await compressImage(file); }
+      setUploading('pubs');
+      try{
+        const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+        const res = await fetch(`${supabaseUrl}/storage/v1/object/pubs/${fileName}`, {
+          method: 'POST',
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
+          body: file
+        });
+        if(!res.ok) throw new Error(await res.text());
+        const publicUrl = `${supabaseUrl}/storage/v1/object/public/pubs/${fileName}`;
+        setNewPubImage(publicUrl);
+        return publicUrl;
+      }catch(e){ alert('Erreur upload: '+e.message); return null; }
+      finally{ setUploading(''); }
+    }
+    if(blockId) return uploadBloc(blockId, file);
+    return uploadUne(file);
   };
 
   const saveUsers = (newList) => {
@@ -522,7 +561,7 @@ export default function Admin() {
               
               <div style={{border:'2px dashed #93c5fd', padding:12, borderRadius:12, background:'#f0f7ff'}}>
                 <div style={{fontSize:11,fontWeight:900,color:'#2e4fb0', marginBottom:6}}>📷 PHOTO PRINCIPALE</div>
-                <input type="file" accept="image/*" onChange={e=>uploadFile('images', e.target.files[0])} style={{width:'100%',fontSize:12}} />
+                <input type="file" accept="image/*" onChange={e=>uploadUne(e.target.files[0])} style={{width:'100%',fontSize:12}} />
                 {uploading==='images' && <div style={{fontSize:11,color:'#2e4fb0',marginTop:6}}>⏳ Upload...</div>}
                 {form.image && <img src={form.image} style={{width:'100%', maxHeight:180, objectFit:'cover', borderRadius:10, marginTop:8}} alt="" />}
                 <input placeholder="ou colle un lien image" value={form.image} onChange={e=>setForm({...form,image:e.target.value})} style={{width:'100%',padding:'8px',marginTop:8,borderRadius:8,border:'1px solid #c7d2fe',fontSize:11}} />
@@ -554,7 +593,7 @@ export default function Admin() {
 
                     {block.type==='image' && (
                       <div>
-                        <input type="file" accept="image/*" onChange={e=>uploadFile('images', e.target.files[0], false, block.id)} style={{width:'100%',fontSize:11, marginBottom:6}} />
+                        <input type="file" accept="image/*" onChange={e=>uploadBloc(block.id, e.target.files[0])} style={{width:'100%',fontSize:11, marginBottom:6}} />
                         {uploading===`block-${block.id}` && <div style={{fontSize:11, color:'#2e4fb0'}}>⏳ Upload...</div>}
                         <input placeholder="ou URL image" value={block.url} onChange={e=>updateBlock(block.id,'url',e.target.value)} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ddd',fontSize:11, marginBottom:6}} />
                         {block.url && <img src={block.url} style={{width:'100%', maxHeight:180, objectFit:'cover', borderRadius:8}} alt="" />}
