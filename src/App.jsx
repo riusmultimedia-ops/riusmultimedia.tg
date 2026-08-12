@@ -45,8 +45,8 @@ function SiteHeader({T, flashList, actif, setActif, setSelected, searchTerm, set
   return (
     <div style={{position:'sticky',top:0,zIndex:1000,width:'100%'}}>
       <div style={{background:'black',color:'white',height:26,display:'flex',alignItems:'center',padding:'0 10px',fontSize:11,overflow:'hidden'}}>
-        <span style={{background:'#d4ff00',color:'black',padding:'2px 8px',fontWeight:900,borderRadius:4,marginRight:8,flexShrink:0}}>FLASH</span>
-        <div style={{flex:1,overflow:'hidden'}}><span className="flash-track">{(flashList.length? flashList.join(' ••• ') : 'Bienvenue sur Rius Multimédia - L info en continu depuis Lomé ••• ') + (flashList.length? ' ••• ' + flashList.join(' ••• ') : '')}</span></div>
+        <div style={{display:'flex',alignItems:'center',gap:6,background:'#d4ff00',color:'black',padding:'2px 10px',fontWeight:900,borderRadius:4,marginRight:8,flexShrink:0}}><span className="dot"></span>FLASH</div>
+        <div style={{flex:1,overflow:'hidden'}}><span className="flash-track" style={{display:'flex',alignItems:'center'}}>{(flashList.length? flashList : ['Bienvenue sur Rius Multimédia - L info en continu depuis Lomé']).map((t,i)=><span key={i} style={{display:'flex',alignItems:'center'}}><span className="yellow-dot"></span>{t}</span>)}</span></div>
       </div>
       <div style={{background:'#2e4fb0',color:'white',height:64,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 16px'}}>
         <div style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}} onClick={()=>{setSelected(null); setActif('ACCUEIL')}}>
@@ -167,6 +167,9 @@ export default function App(){
           ::-webkit-scrollbar-thumb:hover{background:#ffcc00!important}
           @keyframes defile{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}
           .flash-track{animation:defile 60s linear infinite;white-space:nowrap;display:inline-block}
+          @keyframes pulse{0%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.2)}100%{opacity:1;transform:scale(1)}}
+          .dot{width:8px;height:8px;background:#ff3b3b;border-radius:50%;display:inline-block;animation:pulse 2s infinite}
+          .yellow-dot{width:6px;height:6px;background:#ffcc00;border-radius:50%;display:inline-block;margin:0 8px 0 16px}
           @media(max-width:900px){.article-layout{flex-direction:column!important;padding:12px!important}.article-side{width:100%!important}}
         `}</style>
 
@@ -276,7 +279,10 @@ export default function App(){
     <div style={{margin:0,fontFamily:'Inter,Arial,sans-serif',background:'#162f6b'}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');*{box-sizing:border-box}html,body{margin:0;padding:0;overflow-y:scroll!important}::-webkit-scrollbar{width:8px!important;height:8px!important}::-webkit-scrollbar-track{background:#0f2040!important}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.35)!important;border-radius:10px!important}::-webkit-scrollbar-thumb:hover{background:#ffcc00!important}
           @keyframes defile{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}
-          .flash-track{animation:defile 60s linear infinite;white-space:nowrap;display:inline-block}`}</style>
+          .flash-track{animation:defile 60s linear infinite;white-space:nowrap;display:inline-block}
+          @keyframes pulse{0%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.2)}100%{opacity:1;transform:scale(1)}}
+          .dot{width:8px;height:8px;background:#ff3b3b;border-radius:50%;display:inline-block;animation:pulse 2s infinite}
+          .yellow-dot{width:6px;height:6px;background:#ffcc00;border-radius:50%;display:inline-block;margin:0 8px 0 16px}`}</style>
       <SiteHeader T={T} flashList={flashList} actif={actif} setActif={setActif} setSelected={setSelected} searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
       {renderMain()}
       <SiteFooter T={T} />
