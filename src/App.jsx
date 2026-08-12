@@ -168,7 +168,6 @@ export default function App(){
           @media(max-width:900px){.article-layout{flex-direction:column!important;padding:12px!important}.article-side{width:100%!important}}
         `}</style>
 
-        <div style={{background:'#ffcc00',color:'black',textAlign:'center',padding:'4px',fontSize:10,fontWeight:900}}>HEADER TEST - SI TU VOIS CE BANDEAU JAUNE, LE HEADER MARCHE</div>
         <SiteHeader T={T} flashList={flashList} actif={actif} setActif={setActif} setSelected={setSelected} searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
 
         <div className="article-layout" style={{maxWidth:1280,margin:'0 auto',display:'flex',gap:24,padding:'24px 18px 0'}}>
