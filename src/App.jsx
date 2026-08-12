@@ -160,7 +160,7 @@ export default function App(){
     return (
       <div style={{margin:0,fontFamily:'Inter,Arial,sans-serif',background:'#2e4fb0'}}>
         <style>{`
-          *{box-sizing:border-box}html,body{margin:0;padding:0}
+          *{box-sizing:border-box}html,body{margin:0;padding:0;overflow-y:scroll!important}
           ::-webkit-scrollbar{width:8px!important;height:8px!important}
           ::-webkit-scrollbar-track{background:#0f2040!important}
           ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.35)!important;border-radius:10px!important}
@@ -168,6 +168,7 @@ export default function App(){
           @media(max-width:900px){.article-layout{flex-direction:column!important;padding:12px!important}.article-side{width:100%!important}}
         `}</style>
 
+        <div style={{background:'#ffcc00',color:'black',textAlign:'center',padding:'4px',fontSize:10,fontWeight:900}}>HEADER TEST - SI TU VOIS CE BANDEAU JAUNE, LE HEADER MARCHE</div>
         <SiteHeader T={T} flashList={flashList} actif={actif} setActif={setActif} setSelected={setSelected} searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
 
         <div className="article-layout" style={{maxWidth:1280,margin:'0 auto',display:'flex',gap:24,padding:'24px 18px 0'}}>
@@ -272,7 +273,7 @@ export default function App(){
 
   return (
     <div style={{margin:0,fontFamily:'Inter,Arial,sans-serif',background:'#162f6b'}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');*{box-sizing:border-box}html,body{margin:0;padding:0}::-webkit-scrollbar{width:8px!important;height:8px!important}::-webkit-scrollbar-track{background:#0f2040!important}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.35)!important;border-radius:10px!important}::-webkit-scrollbar-thumb:hover{background:#ffcc00!important}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');*{box-sizing:border-box}html,body{margin:0;padding:0;overflow-y:scroll!important}::-webkit-scrollbar{width:8px!important;height:8px!important}::-webkit-scrollbar-track{background:#0f2040!important}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.35)!important;border-radius:10px!important}::-webkit-scrollbar-thumb:hover{background:#ffcc00!important}`}</style>
       <SiteHeader T={T} flashList={flashList} actif={actif} setActif={setActif} setSelected={setSelected} searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
       {renderMain()}
       <SiteFooter T={T} />
