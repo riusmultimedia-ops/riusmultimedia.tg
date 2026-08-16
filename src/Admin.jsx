@@ -846,7 +846,8 @@ export default function Admin() {
                         <div style={{display:'flex', gap:6, marginBottom:6}}>
                           <button type="button" onClick={()=>wrapSelection(block.id,'**')} title="Gras" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontWeight:900,cursor:'pointer',fontSize:13}}>G</button>
                           <button type="button" onClick={()=>wrapSelection(block.id,'*')} title="Italique" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontStyle:'italic',cursor:'pointer',fontSize:13}}>I</button>
-                          <span style={{fontSize:10,color:'#94a3b8',alignSelf:'center'}}>Selectionne du texte puis clique G (gras) ou I (italique)</span>
+                          <button type="button" onClick={()=>wrapSelection(block.id,'~')} title="Texte plus petit" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',cursor:'pointer',fontSize:10,fontWeight:800}}>T-</button>
+                          <span style={{fontSize:10,color:'#94a3b8',alignSelf:'center'}}>Selectionne du texte puis clique G (gras), I (italique) ou T- (plus petit)</span>
                         </div>
                         <textarea ref={el=>blockTextareaRef.current[block.id]=el} placeholder="Ecris ton texte ici..." value={block.content} onChange={e=>updateBlock(block.id,'content',e.target.value)} style={{width:'100%', minHeight:90, padding:10, borderRadius:8, border:'1px solid #c7d2fe', fontSize:13}} />
                       </div>
