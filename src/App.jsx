@@ -58,8 +58,28 @@ function AdBanner({pubs, format='leaderboard'}){
 
 function InstallBanner({deferredPrompt, setDeferredPrompt, T}){
   const [show,setShow]=useState(false)
+  const [isIOS,setIsIOS]=useState(false)
+  useEffect(()=>{
+    if(typeof window==='undefined') return
+    const standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true
+    if(standalone) return
+    const iOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream
+    if(iOS){ setIsIOS(true); const t=setTimeout(()=>setShow(true),5000); return()=>clearTimeout(t) }
+  },[])
   useEffect(()=>{ if(deferredPrompt){ const t=setTimeout(()=>setShow(true),5000); return()=>clearTimeout(t) } },[deferredPrompt])
-  if(!show||!deferredPrompt) return null
+  if(!show) return null
+  if(!isIOS && !deferredPrompt) return null
+  if(isIOS){
+    return (
+      <div style={{position:'fixed', bottom:16, left:12, right:12, background:'#0f2040', color:'white', padding:'14px', borderRadius:14, boxShadow:'0 10px 30px rgba(0,0,0,0.5)', zIndex:99999, border:'2px solid #ffcc00'}}>
+        <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}><img src="/logo.png" style={{width:42,height:42,borderRadius:'50%'}} alt="" /><div style={{flex:1}}><div style={{fontWeight:900,fontSize:13}}>{T.installer}</div><div style={{fontSize:10,opacity:0.8}}>{T.installDesc}</div></div><button onClick={()=>setShow(false)} style={{background:'transparent',color:'white',border:0,fontSize:16,opacity:0.7,padding:'0 4px'}}>✕</button></div>
+        <div style={{fontSize:11,lineHeight:1.6,background:'rgba(255,255,255,0.08)',borderRadius:10,padding:'10px 12px'}}>
+          1. Appuie sur <b>Partager</b> <span style={{display:'inline-block'}}>⬆️</span> en bas de Safari<br/>
+          2. Choisis <b>"Sur l'écran d'accueil"</b> ➕
+        </div>
+      </div>
+    )
+  }
   return (
     <div style={{position:'fixed', bottom:16, left:12, right:12, background:'#0f2040', color:'white', padding:'12px 14px', borderRadius:14, display:'flex', justifyContent:'space-between', alignItems:'center', boxShadow:'0 10px 30px rgba(0,0,0,0.5)', zIndex:99999, border:'2px solid #ffcc00'}}>
       <div style={{display:'flex', alignItems:'center', gap:10}}><img src="/logo.png" style={{width:42,height:42,borderRadius:'50%'}} alt="" /><div><div style={{fontWeight:900,fontSize:13}}>{T.installer}</div><div style={{fontSize:10,opacity:0.8}}>{T.installDesc}</div></div></div>
