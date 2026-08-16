@@ -10,6 +10,15 @@ const SLOGAN_L2 = "Voir Verifier Informer";
 const LANGS = ['fr','en','es','de','ar','zh'];
 const LABELS = { fr:'FR', en:'EN', es:'ES', de:'DE', ar:'AR', zh:'ZH' };
 
+const PUB_SLOTS = [
+  { value:'header', label:'Bandeau Header (toutes pages) - 728x90' },
+  { value:'home-band', label:'Accueil - Bandeau apres le carrousel - 728x90' },
+  { value:'home-infeed', label:'Accueil - Carte dans la grille d\'articles' },
+  { value:'sidebar', label:'Article - Encart sidebar - 300x250' },
+  { value:'article-incontent', label:'Article - Bandeau sous l\'image - 728x90' },
+];
+const slotLabel = (v) => (PUB_SLOTS.find(s=>s.value===v)?.label) || 'Bandeau Header (toutes pages) - 728x90';
+
 const Slogan = ({ size = 1 }) => (
   <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
     <div style={{ fontSize: size === 1? 12 : 10, fontWeight: 700 }}>{SLOGAN_L1}</div>
@@ -48,17 +57,23 @@ export default function Admin() {
   const [showFlash, setShowFlash] = useState(false);
   const [showAnnonces, setShowAnnonces] = useState(false);
   const [showPubs, setShowPubs] = useState(false);
+  const [showRadio, setShowRadio] = useState(false);
   const [showKiosque, setShowKiosque] = useState(false);
   const [users, setUsers] = useState([{ user: 'Rius', pass: 'Rius2025', role: 'admin' }]);
   const [articles, setArticles] = useState([]);
   const [flashes, setFlashes] = useState([]);
   const [annonces, setAnnonces] = useState([]);
   const [pubs, setPubs] = useState([]);
+  const [radioPlaylist, setRadioPlaylist] = useState([]);
   const [unes, setUnes] = useState([]);
   const [newFlash, setNewFlash] = useState('');
   const [newAnnonce, setNewAnnonce] = useState('');
   const [newPubImage, setNewPubImage] = useState('');
   const [newPubLink, setNewPubLink] = useState('');
+  const [newPubSlot, setNewPubSlot] = useState('header');
+  const [newRadioTitle, setNewRadioTitle] = useState('');
+  const [newRadioAudio, setNewRadioAudio] = useState('');
+  const [newRadioImage, setNewRadioImage] = useState('');
   const [newUneImage, setNewUneImage] = useState('');
   const [newUneJournal, setNewUneJournal] = useState('');
   const [newUneTitle, setNewUneTitle] = useState('');
@@ -96,7 +111,7 @@ export default function Admin() {
   
   useEffect(() => {
     fetch('/api/users').then(r=>r.json()).then(data=>{ if(data?.length) setUsers(data); }).catch(()=>{});
-    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes();
+    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist();
   }, []);
 
   useEffect(() => {
@@ -136,6 +151,10 @@ export default function Admin() {
   const fetchUnes = () => {
     fetch(`${supabaseUrl}/rest/v1/unes?select=*&order=date.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setUnes(data); }).catch(()=>{});
+  };
+  const fetchRadioPlaylist = () => {
+    fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&order=id.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setRadioPlaylist(data); }).catch(()=>{});
   };
 
   const addBlock = (type, afterId=null) => {
@@ -225,6 +244,44 @@ export default function Admin() {
     }
     if(blockId) return uploadBloc(blockId, file);
     return uploadUne(file);
+  };
+
+  const uploadRadioAudio = async (file) => {
+    if(!file) return null;
+    setUploading('radio-audio');
+    try{
+      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
+        body: file
+      });
+      if(!res.ok) throw new Error(await res.text());
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/radio/${fileName}`;
+      setNewRadioAudio(publicUrl);
+      return publicUrl;
+    }catch(e){ alert('Erreur upload audio: '+e.message); return null; }
+    finally{ setUploading(''); }
+  };
+
+  const uploadRadioImage = async (file) => {
+    if(!file) return null;
+    let f=file;
+    if(file.type.startsWith('image/')){ f = await compressImage(file, 500, 0.7); }
+    setUploading('radio-image');
+    try{
+      const fileName = `COVER_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': f.type },
+        body: f
+      });
+      if(!res.ok) throw new Error(await res.text());
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/radio/${fileName}`;
+      setNewRadioImage(publicUrl);
+      return publicUrl;
+    }catch(e){ alert('Erreur upload pochette: '+e.message); return null; }
+    finally{ setUploading(''); }
   };
 
   const uploadKiosqueImage = async (file) => {
@@ -426,17 +483,26 @@ export default function Admin() {
   const handleDeleteAnnonce = async (id) => { if(!confirm('Supprimer cette annonce?')) return; await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }); fetchAnnonces(); };
   const handleToggleAnnonce = async (a) => { await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${a.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!a.active }) }); fetchAnnonces(); };
 
-  const handleAddPub = async () => { if(!newPubImage) return alert('Mets une image'); const res=await fetch(`${supabaseUrl}/rest/v1/pubs`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ image:newPubImage, link:newPubLink||null, active:true }) }); if(res.ok){ setNewPubImage(''); setNewPubLink(''); fetchPubs(); alert('Pub ajoutee!'); } };
+  const handleAddPub = async () => { if(!newPubImage) return alert('Mets une image'); const res=await fetch(`${supabaseUrl}/rest/v1/pubs`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ image:newPubImage, link:newPubLink||null, slot:newPubSlot, active:true }) }); if(res.ok){ setNewPubImage(''); setNewPubLink(''); setNewPubSlot('header'); fetchPubs(); alert('Pub ajoutee!'); } else alert(await res.text()); };
   const handleDeletePub = async (id) => { if(!confirm('Supprimer cette pub?')) return; await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchPubs(); };
   const handleTogglePub = async (p) => { await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!p.active }) }); fetchPubs(); };
+  const handleChangePubSlot = async (p, slot) => { await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ slot }) }); fetchPubs(); };
+
+  const handleAddRadioTrack = async () => {
+    if(!newRadioAudio) return alert('Ajoute un fichier audio');
+    if(!newRadioTitle.trim()) return alert('Mets un titre pour la piste');
+    const res = await fetch(`${supabaseUrl}/rest/v1/radio_playlist`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, active:true }) });
+    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); fetchRadioPlaylist(); alert('Piste ajoutee a la radio!'); } else alert(await res.text());
+  };
+  const handleDeleteRadioTrack = async (id) => { if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchRadioPlaylist(); };
+  const handleToggleRadioTrack = async (t) => { await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
   const handleAddUne = async () => {
     if(!newUneImage) return alert('Image obligatoire');
-    if(!newUneJournal.trim()) return alert('Nom du journal obligatoire');
     const res=await fetch(`${supabaseUrl}/rest/v1/unes`, {
       method:'POST',
       headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-      body: JSON.stringify({ journal:newUneJournal.trim(), title:newUneTitle.trim()||newUneJournal.trim(), image:newUneImage, date:newUneDate, active:true })
+      body: JSON.stringify({ journal:newUneJournal.trim(), title:newUneTitle.trim()||newUneJournal.trim()||'Kiosque', image:newUneImage, date:newUneDate, active:true })
     });
     if(res.ok){ setNewUneImage(''); setNewUneJournal(''); setNewUneTitle(''); fetchUnes(); alert('Une ajoutee au Kiosque!'); } else { alert(await res.text()); }
   };
@@ -506,13 +572,14 @@ export default function Admin() {
 
       <div style={{maxWidth:900, margin:'20px auto', padding:'0 12px'}}>
         <div style={{display:'flex', gap:6, marginBottom:16, overflowX:'auto', flexWrap:'wrap'}}>
-          <button onClick={()=>{setShowArticles(!showArticles); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>
-          <button onClick={()=>{setShowFlash(!showFlash); setShowArticles(false); setShowUsers(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>
-          <button onClick={()=>{setShowAnnonces(!showAnnonces); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowPubs(false); setShowKiosque(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>
-          <button onClick={()=>{setShowPubs(!showPubs); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowKiosque(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>
-          <button onClick={()=>{setShowKiosque(!showKiosque); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>
-          {currentUser.role==='admin'&&(<button onClick={()=>{setShowUsers(!showUsers); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
-          <button onClick={()=>{setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background:!showArticles &&!showUsers &&!showFlash &&!showAnnonces &&!showPubs &&!showKiosque? '#ffcc00':'white', color:'#0f2040', fontWeight:900}}>Nouveau</button>
+          <button onClick={()=>{setShowArticles(!showArticles); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>
+          <button onClick={()=>{setShowFlash(!showFlash); setShowArticles(false); setShowUsers(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>
+          <button onClick={()=>{setShowAnnonces(!showAnnonces); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>
+          <button onClick={()=>{setShowPubs(!showPubs); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>
+          <button onClick={()=>{setShowRadio(!showRadio); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>
+          <button onClick={()=>{setShowKiosque(!showKiosque); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>
+          {currentUser.role==='admin'&&(<button onClick={()=>{setShowUsers(!showUsers); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
+          <button onClick={()=>{setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background:!showArticles &&!showUsers &&!showFlash &&!showAnnonces &&!showPubs &&!showKiosque &&!showRadio? '#ffcc00':'white', color:'#0f2040', fontWeight:900}}>Nouveau</button>
         </div>
 
         {showUsers? (
@@ -553,8 +620,13 @@ export default function Admin() {
           </div>
         ) : showPubs? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #2e4fb0'}}>
-            <h3 style={{marginTop:0, color:'#2e4fb0'}}>Pubs Header - 728x90</h3>
+            <h3 style={{marginTop:0, color:'#2e4fb0'}}>Espaces publicitaires</h3>
+            <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>5 emplacements disponibles sur le site : header, accueil (bandeau + grille), article (sidebar + sous l'image).</div>
             <div style={{border:'2px dashed #93c5fd', padding:12, borderRadius:12, background:'#f0f7ff', marginBottom:12}}>
+              <label style={{fontSize:10,fontWeight:800,color:'#2e4fb0'}}>EMPLACEMENT</label>
+              <select value={newPubSlot} onChange={e=>setNewPubSlot(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #c7d2fe',fontSize:12,fontWeight:700}}>
+                {PUB_SLOTS.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
               <input type="file" accept="image/*" onChange={e=>uploadFile('pubs', e.target.files[0], true)} style={{width:'100%',fontSize:12}} />
               {uploading==='pubs' && <div style={{fontSize:11,color:'#2e4fb0',marginTop:6}}>Upload...</div>}
               {newPubImage && <img src={newPubImage} style={{width:'100%', height:80, objectFit:'cover', borderRadius:8, marginTop:8}} alt="" />}
@@ -562,13 +634,47 @@ export default function Admin() {
               <button onClick={handleAddPub} style={{width:'100%',marginTop:8,padding:10,background:'#2e4fb0',color:'white',fontWeight:800,borderRadius:8,border:0}}>Ajouter</button>
             </div>
             {pubs.map(p=>(
-              <div key={p.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
-                <img src={p.image} style={{width:90,height:40,objectFit:'cover',borderRadius:6}} alt="" />
-                <div style={{flex:1, fontSize:11, overflow:'hidden'}}>{p.link || 'Pas de lien'}</div>
+              <div key={p.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap'}}>
+                <img src={p.image} style={{width:70,height:36,objectFit:'cover',borderRadius:6}} alt="" />
+                <div style={{flex:'1 1 140px', minWidth:0}}>
+                  <select value={p.slot||'header'} onChange={e=>handleChangePubSlot(p, e.target.value)} style={{width:'100%',padding:6,borderRadius:6,border:'1px solid #c7d2fe',fontSize:10,fontWeight:700}}>
+                    {PUB_SLOTS.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                  <div style={{fontSize:10, color:'#64748b', marginTop:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{p.link || 'Pas de lien'}</div>
+                </div>
                 <button onClick={()=>handleTogglePub(p)} style={{background: p.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{p.active?'ON':'OFF'}</button>
                 <button onClick={()=>handleDeletePub(p.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
               </div>
             ))}
+          </div>
+        ) : showRadio? (
+          <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #16a34a'}}>
+            <h3 style={{marginTop:0, color:'#16a34a'}}>Radio - Playlist de secours</h3>
+            <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Ces pistes jouent en boucle sur la page DIRECT &gt; RADIO quand tu n'es pas en direct sur YouTube.</div>
+            <div style={{border:'2px dashed #86efac', padding:12, borderRadius:12, background:'#f0fdf4', marginBottom:12}}>
+              <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>TITRE DE LA PISTE *</label>
+              <input placeholder="Ex: Emission Societe - 12 aout" value={newRadioTitle} onChange={e=>setNewRadioTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #bbf7d0',fontSize:12}} />
+              <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>FICHIER AUDIO (MP3) *</label>
+              <input type="file" accept="audio/*" onChange={e=>uploadRadioAudio(e.target.files[0])} style={{width:'100%',fontSize:12,marginTop:4}} />
+              {uploading==='radio-audio' && <div style={{fontSize:11,color:'#16a34a',marginTop:6}}>Upload audio...</div>}
+              {newRadioAudio && <audio controls src={newRadioAudio} style={{width:'100%',marginTop:8}} />}
+              <label style={{fontSize:10,fontWeight:800,color:'#16a34a',marginTop:10,display:'block'}}>POCHETTE (optionnel)</label>
+              <input type="file" accept="image/*" onChange={e=>uploadRadioImage(e.target.files[0])} style={{width:'100%',fontSize:12,marginTop:4}} />
+              {uploading==='radio-image' && <div style={{fontSize:11,color:'#16a34a',marginTop:6}}>Upload pochette...</div>}
+              {newRadioImage && <img src={newRadioImage} style={{width:60,height:60,objectFit:'cover',borderRadius:8,marginTop:8}} alt="" />}
+              <button onClick={handleAddRadioTrack} style={{width:'100%',marginTop:10,padding:10,background:'#16a34a',color:'white',fontWeight:800,borderRadius:8,border:0}}>Ajouter a la playlist</button>
+            </div>
+            {radioPlaylist.map((t,i)=>(
+              <div key={t.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
+                <img src={t.image||'/logo.png'} style={{width:40,height:40,objectFit:'cover',borderRadius:6}} alt="" />
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{i+1}. {t.title}</div>
+                </div>
+                <button onClick={()=>handleToggleRadioTrack(t)} style={{background: t.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{t.active?'ON':'OFF'}</button>
+                <button onClick={()=>handleDeleteRadioTrack(t.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+              </div>
+            ))}
+            {radioPlaylist.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucune piste pour l'instant. Ajoute ta premiere piste ci-dessus.</div>}
           </div>
         ) : showKiosque? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #ffcc00'}}>
@@ -584,7 +690,7 @@ export default function Admin() {
                   <input placeholder="ou colle URL image Une" value={newUneImage} onChange={e=>setNewUneImage(e.target.value)} style={{width:'100%',padding:8,marginTop:8,borderRadius:8,border:'1px solid #c7d2fe',fontSize:11}} />
                 </div>
                 <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
-                  <div><label style={{fontSize:10,fontWeight:800}}>JOURNAL *</label><input placeholder="Ex: Togo Matin" value={newUneJournal} onChange={e=>setNewUneJournal(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #c7d2fe',marginTop:4}} /></div>
+                  <div><label style={{fontSize:10,fontWeight:800}}>JOURNAL (optionnel)</label><input placeholder="Ex: Togo Matin" value={newUneJournal} onChange={e=>setNewUneJournal(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #c7d2fe',marginTop:4}} /></div>
                   <div><label style={{fontSize:10,fontWeight:800}}>DATE</label><input type="date" value={newUneDate} onChange={e=>setNewUneDate(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #c7d2fe',marginTop:4}} /></div>
                 </div>
                 <div><label style={{fontSize:10,fontWeight:800}}>TITRE / GROS TITRE (optionnel)</label><input placeholder="Ex: Economie : Port de Lome bat des records" value={newUneTitle} onChange={e=>setNewUneTitle(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #c7d2fe',marginTop:4}} /></div>
@@ -596,7 +702,7 @@ export default function Admin() {
                 <div key={u.id} style={{border:'1px solid #e5e7eb', borderRadius:10, overflow:'hidden', background: u.active? 'white':'#f1f5f9', opacity: u.active?1:0.6}}>
                   <div style={{position:'relative', aspectRatio:'3/4', background:'#f5f5f5'}}>
                     <img src={u.image} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />
-                    <div style={{position:'absolute',top:6,left:6,background:'#0f2040',color:'#ffcc00',padding:'2px 6px',borderRadius:4,fontSize:9,fontWeight:900}}>{u.journal}</div>
+                    {u.journal&&<div style={{position:'absolute',top:6,left:6,background:'#0f2040',color:'#ffcc00',padding:'2px 6px',borderRadius:4,fontSize:9,fontWeight:900}}>{u.journal}</div>}
                   </div>
                   <div style={{padding:8}}>
                     <div style={{fontSize:11,fontWeight:800,lineHeight:1.2}}>{u.title?.substring(0,40)}</div>
