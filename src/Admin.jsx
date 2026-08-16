@@ -58,6 +58,7 @@ export default function Admin() {
   const [showAnnonces, setShowAnnonces] = useState(false);
   const [showPubs, setShowPubs] = useState(false);
   const [showRadio, setShowRadio] = useState(false);
+  const [showVideoTV, setShowVideoTV] = useState(false);
   const [showKiosque, setShowKiosque] = useState(false);
   const [users, setUsers] = useState([{ user: 'Rius', pass: 'Rius2025', role: 'admin' }]);
   const [articles, setArticles] = useState([]);
@@ -65,6 +66,7 @@ export default function Admin() {
   const [annonces, setAnnonces] = useState([]);
   const [pubs, setPubs] = useState([]);
   const [radioPlaylist, setRadioPlaylist] = useState([]);
+  const [videoPlaylist, setVideoPlaylist] = useState([]);
   const [unes, setUnes] = useState([]);
   const [newFlash, setNewFlash] = useState('');
   const [newAnnonce, setNewAnnonce] = useState('');
@@ -73,6 +75,9 @@ export default function Admin() {
   const [newPubSlot, setNewPubSlot] = useState('header');
   const [newRadioTitle, setNewRadioTitle] = useState('');
   const [editingRadioId, setEditingRadioId] = useState(null);
+  const [newVideoTitle, setNewVideoTitle] = useState('');
+  const [newVideoUrl, setNewVideoUrl] = useState('');
+  const [editingVideoId, setEditingVideoId] = useState(null);
   const [newRadioAudio, setNewRadioAudio] = useState('');
   const [newRadioImage, setNewRadioImage] = useState('');
   const [newUneImage, setNewUneImage] = useState('');
@@ -112,7 +117,7 @@ export default function Admin() {
   
   useEffect(() => {
     fetch('/api/users').then(r=>r.json()).then(data=>{ if(data?.length) setUsers(data); }).catch(()=>{});
-    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist();
+    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist();
   }, []);
 
   useEffect(() => {
@@ -156,6 +161,10 @@ export default function Admin() {
   const fetchRadioPlaylist = () => {
     fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&order=id.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setRadioPlaylist(data); }).catch(()=>{});
+  };
+  const fetchVideoPlaylist = () => {
+    fetch(`${supabaseUrl}/rest/v1/video_playlist?select=*&order=id.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setVideoPlaylist(data); }).catch(()=>{});
   };
 
   const addBlock = (type, afterId=null) => {
@@ -503,6 +512,24 @@ export default function Admin() {
   const handleDeleteRadioTrack = async (id) => { if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchRadioPlaylist(); };
   const handleToggleRadioTrack = async (t) => { await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
+  const getYtId = (url) => getYoutubeId(url);
+  const handleAddVideoTrack = async () => {
+    if(!newVideoUrl.trim()) return alert('Colle un lien YouTube');
+    const id = getYtId(newVideoUrl.trim());
+    if(!id) return alert('Lien YouTube invalide');
+    if(!newVideoTitle.trim()) return alert('Mets un titre pour la video');
+    const thumb = getYoutubeThumb(newVideoUrl.trim());
+    const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, active:true };
+    const url = editingVideoId? `${supabaseUrl}/rest/v1/video_playlist?id=eq.${editingVideoId}` : `${supabaseUrl}/rest/v1/video_playlist`;
+    const method = editingVideoId? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    if(res.ok){ setNewVideoTitle(''); setNewVideoUrl(''); setEditingVideoId(null); fetchVideoPlaylist(); alert(editingVideoId? 'Video modifiee!' : 'Video ajoutee a la playlist TV!'); } else alert(await res.text());
+  };
+  const handleEditVideoTrack = (v) => { setEditingVideoId(v.id); setNewVideoTitle(v.title||''); setNewVideoUrl(v.url||''); window.scrollTo(0,0); };
+  const handleCancelVideoEdit = () => { setEditingVideoId(null); setNewVideoTitle(''); setNewVideoUrl(''); };
+  const handleDeleteVideoTrack = async (id) => { if(!confirm('Supprimer cette video?')) return; await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchVideoPlaylist(); };
+  const handleToggleVideoTrack = async (v) => { await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!v.active }) }); fetchVideoPlaylist(); };
+
   const handleAddUne = async () => {
     if(!newUneImage) return alert('Image obligatoire');
     const res=await fetch(`${supabaseUrl}/rest/v1/unes`, {
@@ -578,14 +605,15 @@ export default function Admin() {
 
       <div style={{maxWidth:900, margin:'20px auto', padding:'0 12px'}}>
         <div style={{display:'flex', gap:6, marginBottom:16, overflowX:'auto', flexWrap:'wrap'}}>
-          <button onClick={()=>{setShowArticles(!showArticles); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>
-          <button onClick={()=>{setShowFlash(!showFlash); setShowArticles(false); setShowUsers(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>
-          <button onClick={()=>{setShowAnnonces(!showAnnonces); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>
-          <button onClick={()=>{setShowPubs(!showPubs); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>
-          <button onClick={()=>{setShowRadio(!showRadio); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>
-          <button onClick={()=>{setShowKiosque(!showKiosque); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>
-          {currentUser.role==='admin'&&(<button onClick={()=>{setShowUsers(!showUsers); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
-          <button onClick={()=>{setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background:!showArticles &&!showUsers &&!showFlash &&!showAnnonces &&!showPubs &&!showKiosque &&!showRadio? '#ffcc00':'white', color:'#0f2040', fontWeight:900}}>Nouveau</button>
+          <button onClick={()=>{setShowArticles(!showArticles); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>
+          <button onClick={()=>{setShowFlash(!showFlash); setShowArticles(false); setShowUsers(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>
+          <button onClick={()=>{setShowAnnonces(!showAnnonces); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>
+          <button onClick={()=>{setShowPubs(!showPubs); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>
+          <button onClick={()=>{setShowRadio(!showRadio); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>
+          <button onClick={()=>{setShowVideoTV(!showVideoTV); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fecaca', background: showVideoTV? '#dc2626':'white', color: showVideoTV? 'white':'#dc2626', fontWeight:800}}>Videos TV ({videoPlaylist.length})</button>
+          <button onClick={()=>{setShowKiosque(!showKiosque); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>
+          {currentUser.role==='admin'&&(<button onClick={()=>{setShowUsers(!showUsers); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
+          <button onClick={()=>{setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background:!showArticles &&!showUsers &&!showFlash &&!showAnnonces &&!showPubs &&!showKiosque &&!showRadio &&!showVideoTV? '#ffcc00':'white', color:'#0f2040', fontWeight:900}}>Nouveau</button>
         </div>
 
         {showUsers? (
@@ -683,6 +711,32 @@ export default function Admin() {
               </div>
             ))}
             {radioPlaylist.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucune piste pour l'instant. Ajoute ta premiere piste ci-dessus.</div>}
+          </div>
+        ) : showVideoTV? (
+          <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #dc2626'}}>
+            <h3 style={{marginTop:0, color:'#dc2626'}}>TV - Videos de secours</h3>
+            <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Ces videos jouent en boucle sur la page DIRECT &gt; TV quand tu n'es pas en direct sur YouTube. Colle simplement des liens YouTube.</div>
+            <div style={{border:'2px dashed #fca5a5', padding:12, borderRadius:12, background:'#fef2f2', marginBottom:12}}>
+              <label style={{fontSize:10,fontWeight:800,color:'#dc2626'}}>TITRE DE LA VIDEO *</label>
+              <input placeholder="Ex: Reportage Marche de Lome" value={newVideoTitle} onChange={e=>setNewVideoTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
+              <label style={{fontSize:10,fontWeight:800,color:'#dc2626'}}>LIEN YOUTUBE *</label>
+              <input placeholder="https://www.youtube.com/watch?v=..." value={newVideoUrl} onChange={e=>setNewVideoUrl(e.target.value)} style={{width:'100%',padding:10,marginTop:4,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
+              {newVideoUrl && getYtId(newVideoUrl) && <img src={getYoutubeThumb(newVideoUrl)} style={{width:'100%',maxHeight:160,objectFit:'cover',borderRadius:8,marginTop:8}} alt="" />}
+              <button onClick={handleAddVideoTrack} style={{width:'100%',marginTop:10,padding:10,background:'#dc2626',color:'white',fontWeight:800,borderRadius:8,border:0}}>{editingVideoId? 'Modifier la video' : 'Ajouter a la playlist TV'}</button>
+              {editingVideoId && <button onClick={handleCancelVideoEdit} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#dc2626',fontWeight:700,borderRadius:8,border:'1px solid #dc2626'}}>Annuler la modification</button>}
+            </div>
+            {videoPlaylist.map((v,i)=>(
+              <div key={v.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap'}}>
+                <img src={v.image} style={{width:60,height:36,objectFit:'cover',borderRadius:6}} alt="" />
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{i+1}. {v.title}</div>
+                </div>
+                <button onClick={()=>handleEditVideoTrack(v)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
+                <button onClick={()=>handleToggleVideoTrack(v)} style={{background: v.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{v.active?'ON':'OFF'}</button>
+                <button onClick={()=>handleDeleteVideoTrack(v.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+              </div>
+            ))}
+            {videoPlaylist.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucune video pour l'instant. Ajoute ta premiere video ci-dessus.</div>}
           </div>
         ) : showKiosque? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #ffcc00'}}>
