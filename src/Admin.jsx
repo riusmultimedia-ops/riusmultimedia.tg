@@ -845,7 +845,7 @@ export default function Admin() {
                       <div>
                         <div style={{display:'flex', gap:6, marginBottom:6}}>
                           <button type="button" onClick={()=>wrapSelection(block.id,'**')} title="Gras" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontWeight:900,cursor:'pointer',fontSize:13}}>G</button>
-                          <button type="button" onClick={()=>wrapSelection(block.id,'*')} title="Italique" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontStyle:'italic',cursor:'pointer',fontSize:13}}>I</button>
+                          <button type="button" onClick={()=>wrapSelection(block.id,'_')} title="Italique" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontStyle:'italic',cursor:'pointer',fontSize:13}}>I</button>
                           <button type="button" onClick={()=>wrapSelection(block.id,'~')} title="Texte plus petit" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',cursor:'pointer',fontSize:10,fontWeight:800}}>T-</button>
                           <span style={{fontSize:10,color:'#94a3b8',alignSelf:'center'}}>Selectionne du texte puis clique G (gras), I (italique) ou T- (plus petit)</span>
                         </div>
