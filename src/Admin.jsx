@@ -90,6 +90,18 @@ export default function Admin() {
   const [search, setSearch] = useState('');
   const galleryInputRef = useRef(null);
   const blockFileRef = useRef({});
+  const blockTextareaRef = useRef({});
+  const wrapSelection = (blockId, marker) => {
+    const el = blockTextareaRef.current[blockId];
+    if(!el) return;
+    const start = el.selectionStart, end = el.selectionEnd;
+    if(start===end) return alert('Selectionne d\'abord le texte a mettre en forme');
+    const block = blocks.find(b=>b.id===blockId);
+    const text = block.content || '';
+    const newText = text.slice(0,start) + marker + text.slice(start,end) + marker + text.slice(end);
+    updateBlock(blockId, 'content', newText);
+    setTimeout(()=>{ el.focus(); el.selectionStart=start; el.selectionEnd=end+marker.length*2 }, 0);
+  };
 
   const compressImage = (file, maxW=1280, quality=0.65) => {
     return new Promise((resolve)=>{
@@ -830,7 +842,14 @@ export default function Admin() {
                     </div>
 
                     {block.type==='text' && (
-                      <textarea placeholder="Ecris ton texte ici..." value={block.content} onChange={e=>updateBlock(block.id,'content',e.target.value)} style={{width:'100%', minHeight:90, padding:10, borderRadius:8, border:'1px solid #c7d2fe', fontSize:13}} />
+                      <div>
+                        <div style={{display:'flex', gap:6, marginBottom:6}}>
+                          <button type="button" onClick={()=>wrapSelection(block.id,'**')} title="Gras" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontWeight:900,cursor:'pointer',fontSize:13}}>G</button>
+                          <button type="button" onClick={()=>wrapSelection(block.id,'*')} title="Italique" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontStyle:'italic',cursor:'pointer',fontSize:13}}>I</button>
+                          <span style={{fontSize:10,color:'#94a3b8',alignSelf:'center'}}>Selectionne du texte puis clique G (gras) ou I (italique)</span>
+                        </div>
+                        <textarea ref={el=>blockTextareaRef.current[block.id]=el} placeholder="Ecris ton texte ici..." value={block.content} onChange={e=>updateBlock(block.id,'content',e.target.value)} style={{width:'100%', minHeight:90, padding:10, borderRadius:8, border:'1px solid #c7d2fe', fontSize:13}} />
+                      </div>
                     )}
 
                     {block.type==='image' && (
