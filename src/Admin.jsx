@@ -72,6 +72,7 @@ export default function Admin() {
   const [newPubLink, setNewPubLink] = useState('');
   const [newPubSlot, setNewPubSlot] = useState('header');
   const [newRadioTitle, setNewRadioTitle] = useState('');
+  const [editingRadioId, setEditingRadioId] = useState(null);
   const [newRadioAudio, setNewRadioAudio] = useState('');
   const [newRadioImage, setNewRadioImage] = useState('');
   const [newUneImage, setNewUneImage] = useState('');
@@ -491,9 +492,14 @@ export default function Admin() {
   const handleAddRadioTrack = async () => {
     if(!newRadioAudio) return alert('Ajoute un fichier audio');
     if(!newRadioTitle.trim()) return alert('Mets un titre pour la piste');
-    const res = await fetch(`${supabaseUrl}/rest/v1/radio_playlist`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, active:true }) });
-    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); fetchRadioPlaylist(); alert('Piste ajoutee a la radio!'); } else alert(await res.text());
+    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, active:true };
+    const url = editingRadioId? `${supabaseUrl}/rest/v1/radio_playlist?id=eq.${editingRadioId}` : `${supabaseUrl}/rest/v1/radio_playlist`;
+    const method = editingRadioId? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : 'Piste ajoutee a la radio!'); } else alert(await res.text());
   };
+  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioImage(t.image||''); window.scrollTo(0,0); };
+  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); };
   const handleDeleteRadioTrack = async (id) => { if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchRadioPlaylist(); };
   const handleToggleRadioTrack = async (t) => { await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
@@ -662,7 +668,8 @@ export default function Admin() {
               <input type="file" accept="image/*" onChange={e=>uploadRadioImage(e.target.files[0])} style={{width:'100%',fontSize:12,marginTop:4}} />
               {uploading==='radio-image' && <div style={{fontSize:11,color:'#16a34a',marginTop:6}}>Upload pochette...</div>}
               {newRadioImage && <img src={newRadioImage} style={{width:60,height:60,objectFit:'cover',borderRadius:8,marginTop:8}} alt="" />}
-              <button onClick={handleAddRadioTrack} style={{width:'100%',marginTop:10,padding:10,background:'#16a34a',color:'white',fontWeight:800,borderRadius:8,border:0}}>Ajouter a la playlist</button>
+              <button onClick={handleAddRadioTrack} style={{width:'100%',marginTop:10,padding:10,background:'#16a34a',color:'white',fontWeight:800,borderRadius:8,border:0}}>{editingRadioId? 'Modifier la piste' : 'Ajouter a la playlist'}</button>
+              {editingRadioId && <button onClick={handleCancelRadioEdit} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#16a34a',fontWeight:700,borderRadius:8,border:'1px solid #16a34a'}}>Annuler la modification</button>}
             </div>
             {radioPlaylist.map((t,i)=>(
               <div key={t.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
@@ -670,6 +677,7 @@ export default function Admin() {
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{i+1}. {t.title}</div>
                 </div>
+                <button onClick={()=>handleEditRadioTrack(t)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleRadioTrack(t)} style={{background: t.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{t.active?'ON':'OFF'}</button>
                 <button onClick={()=>handleDeleteRadioTrack(t.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
               </div>
