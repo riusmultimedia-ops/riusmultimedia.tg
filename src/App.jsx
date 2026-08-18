@@ -175,8 +175,9 @@ export default function App(){
   const prevRadioTrack=()=>{ if(!radioPlaylist.length) return; const pi=radioTrackIndexRef.current>0? radioTrackIndexRef.current-1: radioPlaylist.length-1; radioTrackIndexRef.current=pi; pausedOffsetRef.current=0; setRadioTrackIndex(pi); startPlayback(pi,0) }
 
   const translateText=async(text,target)=>{ if(!text||target==='fr') return text; try{ const q=encodeURIComponent(text.slice(0,450)); const res=await fetch(`https://api.mymemory.translated.net/get?q=${q}&langpair=fr|${target}`); const data=await res.json(); return data?.responseData?.translatedText||text }catch{return text} }
-  const getTranslated=(art)=>{ if(!art) return art; if(lang==='fr') return art; if(art.translations&&art.translations[lang]&&art.translations[lang].title){ return {...art,title:art.translations[lang].title,content:art.translations[lang].content||art.content} } if(translatedCache[art.id]?.[lang]){ return {...art,...translatedCache[art.id][lang]} } return art }
-  const handleLiveTranslate=async(art)=>{ if(lang==='fr'||art.translations?.[lang]||translatedCache[art.id]?.[lang]) return; const title=await translateText(art.title,lang); const content=await translateText(art.content.slice(0,800),lang); setTranslatedCache(p=>({...p,[art.id]:{...p[art.id],[lang]:{title,content}}})) }
+  const translateChunked=async(text,target)=>{ if(!text||target==='fr') return text; const words=text.split(' '); const chunks=[]; let current=''; for(const w of words){ if((current+' '+w).trim().length>420){ if(current.trim()) chunks.push(current.trim()); current=w } else { current=(current+' '+w).trim() } } if(current.trim()) chunks.push(current.trim()); const out=[]; for(const c of chunks){ out.push(await translateText(c,target)) } return out.join(' ') }
+  const getTranslated=(art)=>{ if(!art) return art; if(lang==='fr') return art; if(art.translations&&art.translations[lang]&&art.translations[lang].title){ return {...art,title:art.translations[lang].title,content:art.translations[lang].content||art.content,blocks:art.translations[lang].blocks||art.blocks} } if(translatedCache[art.id]?.[lang]){ return {...art,...translatedCache[art.id][lang]} } return art }
+  const handleLiveTranslate=async(art)=>{ if(lang==='fr'||art.translations?.[lang]||translatedCache[art.id]?.[lang]) return; const title=await translateText(art.title,lang); let content=art.content; let blocks=art.blocks; if(art.blocks&&Array.isArray(art.blocks)&&art.blocks.length){ const translatedBlocks=[]; for(const b of art.blocks){ if(b.type==='text'&&b.content){ translatedBlocks.push({...b,content:await translateChunked(b.content,lang)}) } else { translatedBlocks.push(b) } } blocks=translatedBlocks } else if(art.content){ content=await translateChunked(art.content,lang) } setTranslatedCache(p=>({...p,[art.id]:{...p[art.id],[lang]:{title,content,blocks}}})) }
   useEffect(()=>{ if(lang!=='fr'&&articles.length){ articles.slice(0,8).forEach(a=>{ if(!a.translations?.[lang]) handleLiveTranslate(a) }) } },[lang,articles])
   const openArticle=(art)=>{ const td=getTranslated(art); setSelected(td); if(lang!=='fr'&&!art.translations?.[lang]) handleLiveTranslate(art); window.scrollTo(0,0); if(typeof window!=='undefined'){ try{ window.history.pushState(null,'','?a='+art.id) }catch{} } }
   useEffect(()=>{ if(urlOpenedRef.current||!articles.length||typeof window==='undefined') return; const params=new URLSearchParams(window.location.search); const aid=params.get('a'); if(aid){ const found=articles.find(a=>String(a.id)===aid); if(found){ urlOpenedRef.current=true; openArticle(found) } } },[articles])
@@ -222,7 +223,7 @@ export default function App(){
       ): actif==='KIOSQUE'?(
         <div style={{background:'#2e4fb0',color:'white',minHeight:'100vh',padding:'20px 16px'}}>
           <div style={{maxWidth:1400,margin:'0 auto'}}>
-            <h2 style={{color:'#ffcc00',margin:'0 0 6px 0'}}>KIOSQUE - LES UNES DU JOUR</h2>
+            <h2 style={{color:'white',margin:'0 0 6px 0'}}>KIOSQUE - LES UNES DU JOUR</h2>
             <p style={{opacity:0.7,fontSize:12,margin:'0 0 16px 0'}}>Kiosque presse - {new Date().toLocaleDateString('fr-FR')} - {unes.length} Unes</p>
             {selectedUne && (
               <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setSelectedUne(null)}>
@@ -235,7 +236,7 @@ export default function App(){
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:16}}>
               {unes.length>0 ? unes.map((une)=>(
                 <div key={une.id} onClick={()=>setSelectedUne(une)} style={{background:'white',borderRadius:12,overflow:'hidden',cursor:'pointer'}}>
-                  <div style={{position:'relative',aspectRatio:'3/4',background:'#f5f5f5'}}><img src={une.image} loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" /><div style={{position:'absolute',top:8,left:8,background:'#0f2040',color:'#ffcc00',padding:'4px 8px',borderRadius:6,fontSize:9,fontWeight:900}}>{une.journal}</div></div>
+                  <div style={{position:'relative',aspectRatio:'3/4',background:'#f5f5f5'}}><img src={une.image} loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />{une.journal&&<div style={{position:'absolute',top:8,left:8,background:'#0f2040',color:'#ffcc00',padding:'4px 8px',borderRadius:6,fontSize:9,fontWeight:900}}>{une.journal}</div>}</div>
                   <div style={{padding:'10px 12px',color:'#0f2040'}}><div style={{fontSize:11,fontWeight:800}}>{une.title||une.journal}</div><div style={{fontSize:10,opacity:0.6}}>{une.date? new Date(une.date).toLocaleDateString('fr-FR'):''}</div></div>
                 </div>
               )) : <div style={{gridColumn:'1/-1',textAlign:'center',padding:40,opacity:0.7}}>Aucune Une active - ajoute dans Admin KIOSQUE</div>}
