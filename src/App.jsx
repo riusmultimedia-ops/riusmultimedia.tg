@@ -133,7 +133,7 @@ const HeroCarousel = React.memo(function HeroCarousel({items, openArticle, T, al
 export default function App(){
   if(typeof window!=='undefined'&&window.location.pathname==='/admin') return <Admin />
   const [lang,setLang]=useState(()=>{ if(typeof window==='undefined') return 'fr'; return localStorage.getItem('rius_lang')||'fr' })
-  const [articles,setArticles]=useState([]); const [flashes,setFlashes]=useState([]); const [annonces,setAnnonces]=useState([]); const [pubs,setPubs]=useState([]); const [unes,setUnes]=useState([]); const [selectedUne,setSelectedUne]=useState(null); const [currentPub,setCurrentPub]=useState(0); const [actif,setActif]=useState('ACCUEIL'); const [meteo,setMeteo]=useState({temp:'32°C',icon:'☀'}); const [dateJour,setDateJour]=useState(''); const [heureTU,setHeureTU]=useState(''); const [deferredPrompt,setDeferredPrompt]=useState(null); const [selected,setSelected]=useState(null); const [newsletterEmail,setNewsletterEmail]=useState(''); const [contactForm,setContactForm]=useState({name:'',email:'',subject:'',message:''}); const [contactStatus,setContactStatus]=useState(''); const [translatedCache,setTranslatedCache]=useState({}); const [searchTerm,setSearchTerm]=useState(''); const [searchHistory,setSearchHistory]=useState(()=>{ if(typeof window==='undefined') return []; try{return JSON.parse(localStorage.getItem('rius_search_hist')||'[]')}catch{return []} }); const [currentAudio,setCurrentAudio]=useState(null); const audioRef=useRef(null); const [directMenuOpen,setDirectMenuOpen]=useState(false); const [directMenuPos,setDirectMenuPos]=useState({top:0,left:0}); const directBtnRef=useRef(null); const [youtubeLive,setYoutubeLive]=useState(null); const [radioPlaylist,setRadioPlaylist]=useState([]); const [videoPlaylist,setVideoPlaylist]=useState([]); const [radioTrackIndex,setRadioTrackIndex]=useState(0); const radioTrackIndexRef=useRef(0); const [radioIsPlaying,setRadioIsPlaying]=useState(false); const [shareMenuOpen,setShareMenuOpen]=useState(false); const urlOpenedRef=useRef(false); const T=UI[lang]||UI.fr
+  const [articles,setArticles]=useState([]); const [flashes,setFlashes]=useState([]); const [annonces,setAnnonces]=useState([]); const [pubs,setPubs]=useState([]); const [unes,setUnes]=useState([]); const [selectedUne,setSelectedUne]=useState(null); const [purchasedUnes,setPurchasedUnes]=useState(()=>{ if(typeof window==='undefined') return new Set(); try{ return new Set(JSON.parse(localStorage.getItem('rius_purchased_unes')||'[]')) }catch{ return new Set() } }); const [buyingUneId,setBuyingUneId]=useState(null); const [currentPub,setCurrentPub]=useState(0); const [actif,setActif]=useState('ACCUEIL'); const [meteo,setMeteo]=useState({temp:'32°C',icon:'☀'}); const [dateJour,setDateJour]=useState(''); const [heureTU,setHeureTU]=useState(''); const [deferredPrompt,setDeferredPrompt]=useState(null); const [selected,setSelected]=useState(null); const [newsletterEmail,setNewsletterEmail]=useState(''); const [contactForm,setContactForm]=useState({name:'',email:'',subject:'',message:''}); const [contactStatus,setContactStatus]=useState(''); const [translatedCache,setTranslatedCache]=useState({}); const [searchTerm,setSearchTerm]=useState(''); const [searchHistory,setSearchHistory]=useState(()=>{ if(typeof window==='undefined') return []; try{return JSON.parse(localStorage.getItem('rius_search_hist')||'[]')}catch{return []} }); const [currentAudio,setCurrentAudio]=useState(null); const audioRef=useRef(null); const [directMenuOpen,setDirectMenuOpen]=useState(false); const [directMenuPos,setDirectMenuPos]=useState({top:0,left:0}); const directBtnRef=useRef(null); const [youtubeLive,setYoutubeLive]=useState(null); const [radioPlaylist,setRadioPlaylist]=useState([]); const [videoPlaylist,setVideoPlaylist]=useState([]); const [radioTrackIndex,setRadioTrackIndex]=useState(0); const radioTrackIndexRef=useRef(0); const [radioIsPlaying,setRadioIsPlaying]=useState(false); const [shareMenuOpen,setShareMenuOpen]=useState(false); const urlOpenedRef=useRef(false); const T=UI[lang]||UI.fr
 
   useEffect(()=>{ const h=(e)=>{ e.preventDefault(); setDeferredPrompt(e) }; window.addEventListener('beforeinstallprompt',h); return()=>window.removeEventListener('beforeinstallprompt',h) },[])
   useEffect(()=>{ if(typeof window==='undefined') return; localStorage.setItem('rius_lang',lang); document.documentElement.dir=lang==='ar'?'rtl':'ltr'; document.documentElement.lang=lang; const locale=lang==='zh'?'zh-CN':lang==='ar'?'ar-EG':lang; const d=new Date().toLocaleDateString(locale,{weekday:'long',day:'numeric',month:'short',year:'numeric'}); setDateJour(d.charAt(0).toUpperCase()+d.slice(1)) },[lang])
@@ -181,6 +181,43 @@ export default function App(){
   useEffect(()=>{ if(lang!=='fr'&&articles.length){ articles.slice(0,8).forEach(a=>{ if(!a.translations?.[lang]) handleLiveTranslate(a) }) } },[lang,articles])
   const openArticle=(art)=>{ const td=getTranslated(art); setSelected(td); if(lang!=='fr'&&!art.translations?.[lang]) handleLiveTranslate(art); window.scrollTo(0,0); if(typeof window!=='undefined'){ try{ window.history.pushState(null,'','?a='+art.id) }catch{} } }
   useEffect(()=>{ if(urlOpenedRef.current||!articles.length||typeof window==='undefined') return; const params=new URLSearchParams(window.location.search); const aid=params.get('a'); if(aid){ const found=articles.find(a=>String(a.id)===aid); if(found){ urlOpenedRef.current=true; openArticle(found) } } },[articles])
+  const handleAcheterUne = async (une) => {
+    setBuyingUneId(une.id)
+    try{
+      // TODO Étape 3 : remplacer par l'appel réel à la fonction serveur CinetPay une fois les clés reçues
+      // const res = await fetch(`${supabaseUrl}/functions/v1/cinetpay-init`, {
+      //   method:'POST',
+      //   headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey,'Content-Type':'application/json'},
+      //   body: JSON.stringify({ une_id: une.id })
+      // })
+      // const data = await res.json()
+      // window.location.href = data.payment_url
+      alert("Le paiement en ligne arrive bientôt ! (en attente de validation CinetPay)")
+    } finally {
+      setBuyingUneId(null)
+    }
+  }
+
+  const handleTelechargerUne = async (une) => {
+    // TODO Étape 3 : appeler une fonction serveur qui vérifie l'achat et renvoie une URL signée vers le bucket privé
+    // const res = await fetch(`${supabaseUrl}/functions/v1/get-une-pdf`, {
+    //   method:'POST',
+    //   headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey,'Content-Type':'application/json'},
+    //   body: JSON.stringify({ une_id: une.id })
+    // })
+    // const {signed_url} = await res.json()
+    // window.open(signed_url, '_blank')
+    alert("Téléchargement du PDF — sera activé avec la vérification de paiement (Étape 3)")
+  }
+
+  const markUneAsPurchased = (uneId) => {
+    setPurchasedUnes(prev=>{
+      const next = new Set(prev); next.add(uneId)
+      try{ localStorage.setItem('rius_purchased_unes', JSON.stringify([...next])) }catch{}
+      return next
+    })
+  }
+
   const handleNewsletter=async()=>{ if(!newsletterEmail) return alert('Mets ton email'); await fetch('https://formsubmit.co/ajax/rius.multimedia@gmail.com',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_subject:'Newsletter: '+newsletterEmail,email:newsletterEmail})}); alert('Merci!'); setNewsletterEmail('') }
   const handleContact=async(e)=>{ e.preventDefault(); if(!contactForm.name||!contactForm.email||!contactForm.message){ alert('Remplis tous les champs'); return } setContactStatus('Envoi...'); try{ await fetch('https://formsubmit.co/ajax/rius.multimedia@gmail.com',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_subject:`CONTACT RIUS: ${contactForm.subject||'Nouveau message'}`,name:contactForm.name,email:contactForm.email,subject:contactForm.subject,message:contactForm.message})}); setContactStatus('Message envoyé avec succès !'); setContactForm({name:'',email:'',subject:'',message:''}); setTimeout(()=>setContactStatus(''),4000) }catch{ setContactStatus('Erreur, réessaie') } }
   const articlesForSearch=searchTerm? articles.filter(a=>{ const q=searchTerm.toLowerCase(); return (a.title?.toLowerCase().includes(q)||a.content?.toLowerCase().includes(q)||a.category?.toLowerCase().includes(q)) }) : articles
@@ -234,12 +271,30 @@ export default function App(){
               </div>
             )}
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:16}}>
-              {unes.length>0 ? unes.map((une)=>(
-                <div key={une.id} onClick={()=>setSelectedUne(une)} style={{background:'white',borderRadius:12,overflow:'hidden',cursor:'pointer'}}>
-                  <div style={{position:'relative',aspectRatio:'3/4',background:'#f5f5f5'}}><img src={une.image} loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />{une.journal&&<div style={{position:'absolute',top:8,left:8,background:'#0f2040',color:'#ffcc00',padding:'4px 8px',borderRadius:6,fontSize:9,fontWeight:900}}>{une.journal}</div>}</div>
-                  <div style={{padding:'10px 12px',color:'#0f2040'}}><div style={{fontSize:11,fontWeight:800}}>{une.title||une.journal}</div><div style={{fontSize:10,opacity:0.6}}>{une.date? new Date(une.date).toLocaleDateString('fr-FR'):''}</div></div>
-                </div>
-              )) : <div style={{gridColumn:'1/-1',textAlign:'center',padding:40,opacity:0.7}}>Aucune Une active - ajoute dans Admin KIOSQUE</div>}
+              {unes.length>0 ? unes.map((une)=>{
+                const isPurchased = purchasedUnes.has(une.id)
+                const isFree = !une.price || une.price===0
+                return (
+                  <div key={une.id} style={{background:'white',borderRadius:12,overflow:'hidden'}}>
+                    <div onClick={()=>setSelectedUne(une)} style={{position:'relative',aspectRatio:'3/4',background:'#f5f5f5',cursor:'pointer'}}>
+                      <img src={une.image} loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />
+                      {une.journal&&<div style={{position:'absolute',top:8,left:8,background:'#0f2040',color:'#ffcc00',padding:'4px 8px',borderRadius:6,fontSize:9,fontWeight:900}}>{une.journal}</div>}
+                      {!isFree && <div style={{position:'absolute',top:8,right:8,background:isPurchased?'#a8ff00':'#ffcc00',color:'black',padding:'4px 8px',borderRadius:6,fontSize:9,fontWeight:900}}>{isPurchased? '✓ Achetée' : `${une.price} F`}</div>}
+                    </div>
+                    <div style={{padding:'10px 12px',color:'#0f2040'}}>
+                      <div style={{fontSize:11,fontWeight:800}}>{une.title||une.journal}</div>
+                      <div style={{fontSize:10,opacity:0.6,marginBottom:8}}>{une.date? new Date(une.date).toLocaleDateString('fr-FR'):''}</div>
+                      {isFree ? (
+                        <button onClick={()=>setSelectedUne(une)} style={{width:'100%',background:'#0f2040',color:'white',border:0,padding:'8px 10px',borderRadius:6,fontWeight:800,fontSize:11,cursor:'pointer'}}>👁 Voir</button>
+                      ) : isPurchased ? (
+                        <button onClick={()=>handleTelechargerUne(une)} style={{width:'100%',background:'#a8ff00',color:'black',border:0,padding:'8px 10px',borderRadius:6,fontWeight:800,fontSize:11,cursor:'pointer'}}>📄 Télécharger le PDF</button>
+                      ) : (
+                        <button onClick={()=>handleAcheterUne(une)} disabled={buyingUneId===une.id} style={{width:'100%',background:buyingUneId===une.id?'#94a3b8':'#ffcc00',color:'black',border:0,padding:'8px 10px',borderRadius:6,fontWeight:800,fontSize:11,cursor:buyingUneId===une.id?'default':'pointer'}}>{buyingUneId===une.id? 'Patiente...' : `🛒 Acheter — ${une.price} F`}</button>
+                      )}
+                    </div>
+                  </div>
+                )
+              }) : <div style={{gridColumn:'1/-1',textAlign:'center',padding:40,opacity:0.7}}>Aucune Une active - ajoute dans Admin KIOSQUE</div>}
             </div>
           </div>
         </div>
