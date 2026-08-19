@@ -84,6 +84,8 @@ export default function Admin() {
   const [newUneJournal, setNewUneJournal] = useState('');
   const [newUneTitle, setNewUneTitle] = useState('');
   const [newUneDate, setNewUneDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newUnePrice, setNewUnePrice] = useState('');
+  const [newUnePdfPath, setNewUnePdfPath] = useState('');
   const [newU, setNewU] = useState('');
   const [newP, setNewP] = useState('');
   const [uploading, setUploading] = useState('');
@@ -303,6 +305,24 @@ export default function Admin() {
       setNewRadioImage(publicUrl);
       return publicUrl;
     }catch(e){ alert('Erreur upload pochette: '+e.message); return null; }
+    finally{ setUploading(''); }
+  };
+
+  const uploadUnePdf = async (file) => {
+    if(!file) return null;
+    if(file.type!=='application/pdf') return alert('Merci de choisir un fichier PDF');
+    setUploading('une-pdf');
+    try{
+      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/kiosque-pdfs/${fileName}`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/pdf' },
+        body: file
+      });
+      if(!res.ok) throw new Error(await res.text());
+      setNewUnePdfPath(fileName);
+      return fileName;
+    }catch(e){ alert('Erreur upload PDF: '+e.message); return null; }
     finally{ setUploading(''); }
   };
 
@@ -547,9 +567,9 @@ export default function Admin() {
     const res=await fetch(`${supabaseUrl}/rest/v1/unes`, {
       method:'POST',
       headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-      body: JSON.stringify({ journal:newUneJournal.trim(), title:newUneTitle.trim()||newUneJournal.trim()||'Kiosque', image:newUneImage, date:newUneDate, active:true })
+      body: JSON.stringify({ journal:newUneJournal.trim(), title:newUneTitle.trim()||newUneJournal.trim()||'Kiosque', image:newUneImage, date:newUneDate, price:newUnePrice?parseInt(newUnePrice,10):null, pdf_path:newUnePdfPath||null, active:true })
     });
-    if(res.ok){ setNewUneImage(''); setNewUneJournal(''); setNewUneTitle(''); fetchUnes(); alert('Une ajoutee au Kiosque!'); } else { alert(await res.text()); }
+    if(res.ok){ setNewUneImage(''); setNewUneJournal(''); setNewUneTitle(''); setNewUnePrice(''); setNewUnePdfPath(''); fetchUnes(); alert('Une ajoutee au Kiosque!'); } else { alert(await res.text()); }
   };
   const handleDeleteUne = async (id) => { if(!confirm('Supprimer cette Une?')) return; await fetch(`${supabaseUrl}/rest/v1/unes?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchUnes(); };
   const handleToggleUne = async (u) => { await fetch(`${supabaseUrl}/rest/v1/unes?id=eq.${u.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!u.active }) }); fetchUnes(); };
@@ -768,7 +788,15 @@ export default function Admin() {
                   <div><label style={{fontSize:10,fontWeight:800}}>DATE</label><input type="date" value={newUneDate} onChange={e=>setNewUneDate(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #c7d2fe',marginTop:4}} /></div>
                 </div>
                 <div><label style={{fontSize:10,fontWeight:800}}>TITRE / GROS TITRE (optionnel)</label><input placeholder="Ex: Economie : Port de Lome bat des records" value={newUneTitle} onChange={e=>setNewUneTitle(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #c7d2fe',marginTop:4}} /></div>
-                <button onClick={handleAddUne} style={{width:'100%',padding:12,background:'#0f2040',color:'#ffcc00',fontWeight:900,borderRadius:10,border:0, cursor:'pointer', fontSize:13}}>AJOUTER AU KIOSQUE</button>
+                <div style={{border:'2px solid #16a34a',borderRadius:10,padding:12,background:'#f0fdf4'}}>
+                  <div style={{fontSize:11,fontWeight:900,color:'#16a34a',marginBottom:8}}>VENTE DU PDF (optionnel)</div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                    <div><label style={{fontSize:10,fontWeight:800}}>PRIX (FCFA)</label><input type="number" placeholder="Ex: 1000" value={newUnePrice} onChange={e=>setNewUnePrice(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #bbf7d0',marginTop:4}} /></div>
+                    <div><label style={{fontSize:10,fontWeight:800}}>FICHIER PDF</label><input type="file" accept="application/pdf" onChange={e=>uploadUnePdf(e.target.files[0])} style={{width:'100%',fontSize:11,marginTop:6}} />{uploading==='une-pdf' && <div style={{fontSize:11,color:'#16a34a',marginTop:4}}>Upload...</div>}{newUnePdfPath && <div style={{fontSize:11,color:'#16a34a',marginTop:4}}>✓ PDF pret</div>}</div>
+                  </div>
+                  <div style={{fontSize:10,color:'#64748b',marginTop:8}}>Laisse vide si cette Une est juste une image gratuite (comme avant). Remplis les deux champs pour la vendre.</div>
+                </div>
+<button onClick={handleAddUne} style={{width:'100%',padding:12,background:'#0f2040',color:'#ffcc00',fontWeight:900,borderRadius:10,border:0, cursor:'pointer', fontSize:13}}>AJOUTER AU KIOSQUE</button>
               </div>
             </div>
             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:10}}>
@@ -780,6 +808,7 @@ export default function Admin() {
                   </div>
                   <div style={{padding:8}}>
                     <div style={{fontSize:11,fontWeight:800,lineHeight:1.2}}>{u.title?.substring(0,40)}</div>
+                    {u.price&&<div style={{fontSize:11,fontWeight:900,color:'#16a34a',marginTop:2}}>{u.price} FCFA {u.pdf_path?'(PDF pret)':'(PDF manquant !)'}</div>}
                     <div style={{fontSize:10,color:'#64748b',marginTop:4}}>{u.date? new Date(u.date).toLocaleDateString('fr-FR'):''}</div>
                     <div style={{display:'flex',gap:6,marginTop:8}}>
                       <button onClick={()=>handleToggleUne(u)} style={{flex:1,background: u.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'6px', fontSize:10, fontWeight:800}}>{u.active?'ON':'OFF'}</button>
