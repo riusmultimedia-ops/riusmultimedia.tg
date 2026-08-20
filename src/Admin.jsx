@@ -60,6 +60,7 @@ export default function Admin() {
   const [showRadio, setShowRadio] = useState(false);
   const [showVideoTV, setShowVideoTV] = useState(false);
   const [showKiosque, setShowKiosque] = useState(false);
+  const [showEncadres, setShowEncadres] = useState(false);
   const [users, setUsers] = useState([{ user: 'Rius', pass: 'Rius2025', role: 'admin' }]);
   const [articles, setArticles] = useState([]);
   const [flashes, setFlashes] = useState([]);
@@ -68,6 +69,12 @@ export default function Admin() {
   const [radioPlaylist, setRadioPlaylist] = useState([]);
   const [videoPlaylist, setVideoPlaylist] = useState([]);
   const [unes, setUnes] = useState([]);
+  const [encadres, setEncadres] = useState([]);
+  const [newEncadreTitle, setNewEncadreTitle] = useState('');
+  const [newEncadreAdvertiser, setNewEncadreAdvertiser] = useState('');
+  const [newEncadreLink, setNewEncadreLink] = useState('');
+  const [encadreMedia, setEncadreMedia] = useState([]);
+  const [editingEncadreId, setEditingEncadreId] = useState(null);
   const [newFlash, setNewFlash] = useState('');
   const [newAnnonce, setNewAnnonce] = useState('');
   const [newPubImage, setNewPubImage] = useState('');
@@ -131,7 +138,7 @@ export default function Admin() {
   
   useEffect(() => {
     fetch('/api/users').then(r=>r.json()).then(data=>{ if(data?.length) setUsers(data); }).catch(()=>{});
-    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist();
+    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres();
   }, []);
 
   useEffect(() => {
@@ -180,9 +187,13 @@ export default function Admin() {
     fetch(`${supabaseUrl}/rest/v1/video_playlist?select=*&order=id.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setVideoPlaylist(data); }).catch(()=>{});
   };
+  const fetchEncadres = () => {
+    fetch(`${supabaseUrl}/rest/v1/encadres?select=*&order=order_index.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setEncadres(data); }).catch(()=>{});
+  };
 
   const addBlock = (type, afterId=null) => {
-    const newBlock = { id:uid(), type, content:'', url:'', caption:'', title:'' }
+    const newBlock = { id:uid(), type, content:'', url:'', caption:'', title:'', position:'center' }
     if(type==='text') newBlock.content=''
     if(afterId){
       const idx = blocks.findIndex(b=>b.id===afterId)
@@ -346,6 +357,76 @@ export default function Admin() {
     finally{ setUploading(''); }
   };
 
+  const encadreTextareaRef = useRef({});
+  const wrapEncadreSelection = (mediaId, marker) => {
+    const el = encadreTextareaRef.current[mediaId];
+    if(!el) return;
+    const start = el.selectionStart, end = el.selectionEnd;
+    if(start===end) return alert('Selectionne d\'abord le texte a mettre en forme');
+    const item = encadreMedia.find(m=>m.id===mediaId);
+    const text = item.content || '';
+    const newText = text.slice(0,start) + marker + text.slice(start,end) + marker + text.slice(end);
+    updateEncadreMedia(mediaId, 'content', newText);
+    setTimeout(()=>{ el.focus(); el.selectionStart=start; el.selectionEnd=end+marker.length*2 }, 0);
+  };
+
+  const uploadEncadreMedia = async (mediaId, file) => {
+    if(!file) return null;
+    let f = file;
+    if(file.type.startsWith('image/')){ f = await compressImage(file, 1200, 0.7); }
+    setUploading(`encadre-${mediaId}`);
+    try{
+      const fileName = `ENC_${mediaId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/encadres/${fileName}`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': f.type },
+        body: f
+      });
+      if(!res.ok) throw new Error(await res.text());
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/encadres/${fileName}`;
+      setEncadreMedia(prev => prev.map(m=> m.id===mediaId ? {...m, url: publicUrl} : m));
+      return publicUrl;
+    }catch(e){ alert('Erreur upload media encadre: '+e.message); return null; }
+    finally{ setUploading(''); }
+  };
+
+  const addEncadreMedia = (type) => setEncadreMedia([...encadreMedia, {id:uid(), type, url:'', position:'bottom', caption:''}]);
+  const updateEncadreMedia = (id, field, val) => setEncadreMedia(encadreMedia.map(m=> m.id===id? {...m, [field]:val}: m));
+  const removeEncadreMedia = (id) => setEncadreMedia(encadreMedia.filter(m=>m.id!==id));
+
+  const resetEncadreForm = () => {
+    setNewEncadreTitle(''); setNewEncadreAdvertiser(''); setNewEncadreLink(''); setEncadreMedia([]); setEditingEncadreId(null);
+  };
+
+  const handleAddEncadre = async () => {
+    if(!newEncadreTitle.trim() && !encadreMedia.some(m=> m.type==='text'? m.content?.trim() : m.url)) return alert('Ajoute au moins un titre ou un bloc de contenu');
+    const payload = {
+      title: newEncadreTitle.trim() || null,
+      advertiser: newEncadreAdvertiser.trim() || null,
+      link: newEncadreLink.trim() || null,
+      media: encadreMedia.filter(m=> m.type==='text'? m.content?.trim() : m.url).map(({type, url, content, position, caption})=>({type, url: url||null, content: content||null, position, caption: caption||null})),
+      active: true
+    };
+    const url = editingEncadreId? `${supabaseUrl}/rest/v1/encadres?id=eq.${editingEncadreId}` : `${supabaseUrl}/rest/v1/encadres`;
+    const method = editingEncadreId? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    if(res.ok){ resetEncadreForm(); fetchEncadres(); alert(editingEncadreId? 'Encadre modifie!' : 'Encadre ajoute!'); } else alert(await res.text());
+  };
+
+  const handleEditEncadre = (enc) => {
+    setEditingEncadreId(enc.id);
+    setNewEncadreTitle(enc.title||'');
+    setNewEncadreAdvertiser(enc.advertiser||'');
+    setNewEncadreLink(enc.link||'');
+    let media = (enc.media||[]).map(m=>({id:uid(), ...m}));
+    if(enc.content && !media.some(m=>m.type==='text')) media = [{id:uid(), type:'text', content:enc.content, position:'center'}, ...media];
+    setEncadreMedia(media);
+    window.scrollTo(0,0);
+  };
+  const handleCancelEncadreEdit = () => resetEncadreForm();
+  const handleDeleteEncadre = async (id) => { if(!confirm('Supprimer cet encadre?')) return; await fetch(`${supabaseUrl}/rest/v1/encadres?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchEncadres(); };
+  const handleToggleEncadre = async (enc) => { await fetch(`${supabaseUrl}/rest/v1/encadres?id=eq.${enc.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!enc.active }) }); fetchEncadres(); };
+
   const saveUsers = (newList) => {
     setUsers(newList);
     fetch('/api/users', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(newList) });
@@ -353,7 +434,7 @@ export default function Admin() {
 
   const handleLogin = () => {
     const found = users.find(u => u.user === user && u.pass === pass);
-    if (found) { setCurrentUser(found); setIsLogged(true); setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); }
+    if (found) { setCurrentUser(found); setIsLogged(true); setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false); }
     else alert('Identifiants incorrects');
   };
 
@@ -363,7 +444,7 @@ export default function Admin() {
     setBlocks([{id:uid(), type:'text', content:''}])
     setGallery([]);
     setYoutubeInput(''); setYoutubeCaption('');
-    setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false);
+    setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false);
   };
 
   const handleChangeMyPass = () => {
@@ -591,7 +672,7 @@ export default function Admin() {
       setBlocks(b)
     }
     setGallery(art.gallery||[]);
-    setEditLang('fr'); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); window.scrollTo(0,0); 
+    setEditLang('fr'); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false); window.scrollTo(0,0); 
   };
   const handleDelete = async (id) => { if(!confirm('Supprimer definitivement cet article?')) return; const res = await fetch(`${supabaseUrl}/rest/v1/articles?id=eq.${id}`, { method: 'DELETE', headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }); if(res.ok) fetchArticles(); };
   const handleAddUser = () => { if(!newU ||!newP) return; saveUsers([...users, { user: newU, pass: newP, role: 'journaliste' }]); setNewU(''); setNewP(''); };
@@ -637,15 +718,16 @@ export default function Admin() {
 
       <div style={{maxWidth:900, margin:'20px auto', padding:'0 12px'}}>
         <div style={{display:'flex', gap:6, marginBottom:16, overflowX:'auto', flexWrap:'wrap'}}>
-          <button onClick={()=>{setShowArticles(!showArticles); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>
-          <button onClick={()=>{setShowFlash(!showFlash); setShowArticles(false); setShowUsers(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>
-          <button onClick={()=>{setShowAnnonces(!showAnnonces); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>
-          <button onClick={()=>{setShowPubs(!showPubs); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>
-          <button onClick={()=>{setShowRadio(!showRadio); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>
-          <button onClick={()=>{setShowVideoTV(!showVideoTV); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fecaca', background: showVideoTV? '#dc2626':'white', color: showVideoTV? 'white':'#dc2626', fontWeight:800}}>Videos TV ({videoPlaylist.length})</button>
-          <button onClick={()=>{setShowKiosque(!showKiosque); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>
-          {currentUser.role==='admin'&&(<button onClick={()=>{setShowUsers(!showUsers); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
-          <button onClick={()=>{setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background:!showArticles &&!showUsers &&!showFlash &&!showAnnonces &&!showPubs &&!showKiosque &&!showRadio &&!showVideoTV? '#ffcc00':'white', color:'#0f2040', fontWeight:900}}>Nouveau</button>
+          <button onClick={()=>{setShowArticles(!showArticles); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>
+          <button onClick={()=>{setShowFlash(!showFlash); setShowArticles(false); setShowUsers(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>
+          <button onClick={()=>{setShowAnnonces(!showAnnonces); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>
+          <button onClick={()=>{setShowPubs(!showPubs); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>
+          <button onClick={()=>{setShowRadio(!showRadio); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>
+          <button onClick={()=>{setShowVideoTV(!showVideoTV); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fecaca', background: showVideoTV? '#dc2626':'white', color: showVideoTV? 'white':'#dc2626', fontWeight:800}}>Videos TV ({videoPlaylist.length})</button>
+          <button onClick={()=>{setShowKiosque(!showKiosque); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>
+          <button onClick={()=>{setShowEncadres(!showEncadres); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #a855f7', background: showEncadres? '#a855f7':'white', color: showEncadres? 'white':'#a855f7', fontWeight:900}}>ESPACE BUSINESS ({encadres.length})</button>
+          {currentUser.role==='admin'&&(<button onClick={()=>{setShowUsers(!showUsers); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
+          <button onClick={()=>{setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background:!showArticles &&!showUsers &&!showFlash &&!showAnnonces &&!showPubs &&!showKiosque &&!showRadio &&!showVideoTV &&!showEncadres? '#ffcc00':'white', color:'#0f2040', fontWeight:900}}>Nouveau</button>
         </div>
 
         {showUsers? (
@@ -820,6 +902,97 @@ export default function Admin() {
             </div>
             {unes.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucune Une pour l'instant. Ajoute ta premiere Une ci-dessus. Pense a creer la table <code>unes</code> dans Supabase si ce n'est pas fait.</div>}
           </div>
+        ) : showEncadres? (
+          <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #a855f7'}}>
+            <h3 style={{marginTop:0, color:'#7e22ce', display:'flex', alignItems:'center', gap:8}}>ESPACE BUSINESS - Encadres publicitaires <span style={{background:'#7e22ce',color:'white',padding:'2px 8px',borderRadius:10,fontSize:10}}>{encadres.length} encadres</span></h3>
+            <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Chaque encadre peut contenir un titre, un texte, et autant d'images/sons/videos que tu veux, chacun positionnable (gauche, droite, haut, bas, centre).</div>
+            <div style={{border:'3px solid #a855f7', padding:14, borderRadius:12, background:'#faf5ff', marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:900, marginBottom:10, color:'#7e22ce'}}>{editingEncadreId? 'MODIFIER L\'ENCADRE' : 'AJOUTER UN NOUVEL ENCADRE'}</div>
+              <div style={{display:'grid', gap:10}}>
+                <div><label style={{fontSize:10,fontWeight:800}}>NOM DE L'ANNONCEUR (optionnel)</label><input placeholder="Ex: Boutique Kekeli" value={newEncadreAdvertiser} onChange={e=>setNewEncadreAdvertiser(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #e9d5ff',marginTop:4}} /></div>
+                <div><label style={{fontSize:10,fontWeight:800}}>TITRE</label><input placeholder="Ex: Grande promo de rentree" value={newEncadreTitle} onChange={e=>setNewEncadreTitle(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #e9d5ff',marginTop:4}} /></div>
+                <div><label style={{fontSize:10,fontWeight:800}}>LIEN EXTERNE (optionnel)</label><input placeholder="https://..." value={newEncadreLink} onChange={e=>setNewEncadreLink(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #e9d5ff',marginTop:4}} /></div>
+
+                <div style={{border:'2px solid #a855f7',borderRadius:10,padding:12,background:'white'}}>
+                  <div style={{fontSize:11,fontWeight:900,color:'#7e22ce',marginBottom:8}}>MEDIAS ({encadreMedia.length})</div>
+                  {encadreMedia.map((m)=>(
+                    <div key={m.id} style={{border:'1px solid #e9d5ff', borderRadius:10, padding:10, marginBottom:8, background:'#faf5ff'}}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+                        <span style={{fontSize:10, fontWeight:900, background:'#e9d5ff', color:'#7e22ce', padding:'2px 8px', borderRadius:20}}>{m.type.toUpperCase()}</span>
+                        <button type="button" onClick={()=>removeEncadreMedia(m.id)} style={{border:0, background:'#ef4444', color:'white', borderRadius:6, cursor:'pointer', padding:'2px 8px', fontSize:11}}>X</button>
+                      </div>
+                      <label style={{fontSize:10,fontWeight:800}}>POSITION</label>
+                      <select value={m.position} onChange={e=>updateEncadreMedia(m.id,'position',e.target.value)} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #e9d5ff',marginTop:4,marginBottom:8,fontSize:12,fontWeight:700}}>
+                        <option value="top">Haut</option>
+                        <option value="bottom">Bas</option>
+                        <option value="left">Gauche</option>
+                        <option value="right">Droite</option>
+                        <option value="center">Centre</option>
+                      </select>
+                      {m.type==='text' && (
+                        <div>
+                          <div style={{display:'flex', gap:6, marginBottom:6}}>
+                            <button type="button" onClick={()=>wrapEncadreSelection(m.id,'**')} title="Gras" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontWeight:900,cursor:'pointer',fontSize:13}}>G</button>
+                            <button type="button" onClick={()=>wrapEncadreSelection(m.id,'_')} title="Italique" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontStyle:'italic',cursor:'pointer',fontSize:13}}>I</button>
+                            <button type="button" onClick={()=>wrapEncadreSelection(m.id,'~')} title="Texte plus petit" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',cursor:'pointer',fontSize:10,fontWeight:800}}>T-</button>
+                            <span style={{fontSize:9,color:'#94a3b8',alignSelf:'center'}}>Selectionne du texte puis clique G/I/T-</span>
+                          </div>
+                          <textarea ref={el=>encadreTextareaRef.current[m.id]=el} placeholder="Ecris ton texte ici..." value={m.content||''} onChange={e=>updateEncadreMedia(m.id,'content',e.target.value)} style={{width:'100%', minHeight:80, padding:10, borderRadius:8, border:'1px solid #e9d5ff', fontSize:13}} />
+                        </div>
+                      )}
+                      {m.type==='image' && (
+                        <div>
+                          <input type="file" accept="image/*" onChange={e=>uploadEncadreMedia(m.id, e.target.files[0])} style={{width:'100%',fontSize:11, marginBottom:6}} />
+                          {uploading===`encadre-${m.id}` && <div style={{fontSize:11, color:'#7e22ce'}}>Upload...</div>}
+                          <input placeholder="ou URL image" value={m.url} onChange={e=>updateEncadreMedia(m.id,'url',e.target.value)} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #e9d5ff',fontSize:11, marginBottom:6}} />
+                          {m.url && <img src={m.url} style={{width:'100%', maxHeight:160, objectFit:'cover', borderRadius:8}} alt="" />}
+                        </div>
+                      )}
+                      {m.type==='audio' && (
+                        <div>
+                          <input type="file" accept="audio/*" onChange={e=>uploadEncadreMedia(m.id, e.target.files[0])} style={{width:'100%',fontSize:11, marginBottom:6}} />
+                          {uploading===`encadre-${m.id}` && <div style={{fontSize:11, color:'#7e22ce'}}>Upload...</div>}
+                          <input placeholder="ou URL audio MP3" value={m.url} onChange={e=>updateEncadreMedia(m.id,'url',e.target.value)} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #e9d5ff',fontSize:11}} />
+                          {m.url && <audio controls src={m.url} style={{width:'100%', marginTop:8}} />}
+                        </div>
+                      )}
+                      {m.type==='video' && (
+                        <div>
+                          <input placeholder="URL YouTube ou MP4" value={m.url} onChange={e=>updateEncadreMedia(m.id,'url',e.target.value)} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #e9d5ff',fontSize:11}} />
+                        </div>
+                      )}
+                      {m.type!=='text' && <input placeholder="Legende (optionnel)" value={m.caption||''} onChange={e=>updateEncadreMedia(m.id,'caption',e.target.value)} style={{width:'100%',padding:6,borderRadius:6,border:'1px solid #e9d5ff',fontSize:11, marginTop:6}} />}
+                    </div>
+                  ))}
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:6, marginTop:6}}>
+                    <button type="button" onClick={()=>addEncadreMedia('text')} style={{background:'#0f2040', color:'white', border:0, padding:'10px', borderRadius:10, fontWeight:800, fontSize:11, cursor:'pointer'}}>+ TEXTE</button>
+                    <button type="button" onClick={()=>addEncadreMedia('image')} style={{background:'#16a34a', color:'white', border:0, padding:'10px', borderRadius:10, fontWeight:800, fontSize:11, cursor:'pointer'}}>+ IMAGE</button>
+                    <button type="button" onClick={()=>addEncadreMedia('audio')} style={{background:'#d97706', color:'white', border:0, padding:'10px', borderRadius:10, fontWeight:800, fontSize:11, cursor:'pointer'}}>+ AUDIO</button>
+                    <button type="button" onClick={()=>addEncadreMedia('video')} style={{background:'#dc2626', color:'white', border:0, padding:'10px', borderRadius:10, fontWeight:800, fontSize:11, cursor:'pointer'}}>+ VIDEO</button>
+                  </div>
+                </div>
+
+                <button onClick={handleAddEncadre} style={{width:'100%',padding:12,background:'#7e22ce',color:'white',fontWeight:900,borderRadius:10,border:0, cursor:'pointer', fontSize:13}}>{editingEncadreId? 'METTRE A JOUR L\'ENCADRE' : 'AJOUTER L\'ENCADRE'}</button>
+                {editingEncadreId && <button onClick={handleCancelEncadreEdit} style={{width:'100%',padding:10,background:'transparent',color:'#7e22ce',fontWeight:700,borderRadius:10,border:'1px solid #7e22ce', cursor:'pointer'}}>Annuler la modification</button>}
+              </div>
+            </div>
+
+            {encadres.map(enc=>(
+              <div key={enc.id} style={{border:'1px solid #e9d5ff', padding:10, borderRadius:12, marginBottom:8, background: enc.active? 'white':'#f8fafc', opacity: enc.active?1:0.6}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', gap:10}}>
+                  <div style={{flex:1, minWidth:0}}>
+                    {enc.advertiser && <div style={{fontSize:10, fontWeight:900, color:'#7e22ce', textTransform:'uppercase'}}>{enc.advertiser}</div>}
+                    <div style={{fontWeight:800, fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{enc.title || '(sans titre)'}</div>
+                    <div style={{fontSize:10, color:'#64748b', marginTop:2}}>{(enc.media||[]).length} media(s)</div>
+                  </div>
+                  <button onClick={()=>handleEditEncadre(enc)} style={{background:'#ede9fe',color:'#7e22ce',border:0,borderRadius:8,padding:'8px 12px',fontSize:12,cursor:'pointer'}}>Modifier</button>
+                  <button onClick={()=>handleToggleEncadre(enc)} style={{background: enc.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'8px', fontSize:10, fontWeight:800}}>{enc.active?'ON':'OFF'}</button>
+                  <button onClick={()=>handleDeleteEncadre(enc.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:8,padding:'8px 12px',fontSize:12,cursor:'pointer'}}>Suppr</button>
+                </div>
+              </div>
+            ))}
+            {encadres.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucun encadre pour l'instant. Ajoute ton premier encadre ci-dessus. Pense a creer la table <code>encadres</code> et le bucket <code>encadres</code> dans Supabase si ce n'est pas fait.</div>}
+          </div>
         ) : showArticles? (
           <div style={{background:'white', padding:14, borderRadius:14, borderTop:'4px solid #2e4fb0'}}>
             <input placeholder="Rechercher..." value={search} onChange={e=>setSearch(e.target.value)} style={{width:'100%', padding:'11px 12px', borderRadius:10, border:'1px solid #c7d2fe', marginBottom:12}} />
@@ -859,10 +1032,17 @@ export default function Admin() {
 
                 {blocks.map((block, idx)=>(
                   <div key={block.id} style={{background:'white', border:'2px solid #e2e8f0', borderRadius:12, padding:10, marginBottom:10, position:'relative'}}>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, flexWrap:'wrap', gap:8}}>
                       <span style={{fontSize:10, fontWeight:900, background: block.type==='text'?'#dbeafe': block.type==='image'?'#dcfce7': block.type==='audio'?'#fef3c7':'#fee2e2', color:'#0f2040', padding:'2px 8px', borderRadius:20}}>
                         {block.type.toUpperCase()} #{idx+1}
                       </span>
+                      <select value={block.position||'center'} onChange={e=>updateBlock(block.id,'position',e.target.value)} style={{padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:10,fontWeight:700}}>
+                        <option value="top">Haut</option>
+                        <option value="bottom">Bas</option>
+                        <option value="left">Gauche</option>
+                        <option value="right">Droite</option>
+                        <option value="center">Centre</option>
+                      </select>
                       <div style={{display:'flex', gap:4}}>
                         <button type="button" onClick={()=>moveBlock(block.id,'up')} style={{border:'1px solid #ddd', background:'white', borderRadius:6, cursor:'pointer', fontSize:12, padding:'2px 6px'}}>UP</button>
                         <button type="button" onClick={()=>moveBlock(block.id,'down')} style={{border:'1px solid #ddd', background:'white', borderRadius:6, cursor:'pointer', fontSize:12, padding:'2px 6px'}}>DOWN</button>
