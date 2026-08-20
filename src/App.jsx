@@ -39,6 +39,7 @@ function getYoutubeIdRaw(url){
 }
 const getYoutubeThumb = (url) => { const id=getYoutubeIdRaw(url); return id? `https://img.youtube.com/vi/${id}/hqdefault.jpg`:null }
 const getYoutubeEmbed = (url) => { const id=getYoutubeIdRaw(url); return id? `https://www.youtube.com/embed/${id}`:url }
+const shuffleArray = (arr) => { const a=[...arr]; for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a }
 
 function AdBanner({pubs, format='leaderboard'}){
   const [idx,setIdx]=useState(0)
@@ -183,8 +184,8 @@ export default function App(){
     fetch(`${supabaseUrl}/rest/v1/unes?select=*&active=eq.true&order=date.desc&limit=50`,{headers:{'apikey':supabaseKey,'Authorization':`Bearer ${supabaseKey}`}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)){ console.log('UNES chargees:', d); setUnes(d) } }).catch(()=>{});
     fetch(`${supabaseUrl}/rest/v1/encadres?select=*&active=eq.true&order=order_index.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setEncadres(d) }).catch(()=>{});
     fetch(`${supabaseUrl}/rest/v1/pubs?select=*&active=eq.true&order=created_at.desc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)&&d.length>0) setPubs(d) }).catch(()=>{}) 
-    fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setRadioPlaylist(d) }).catch(()=>{})
-    fetch(`${supabaseUrl}/rest/v1/video_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setVideoPlaylist(d) }).catch(()=>{})
+    fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setRadioPlaylist(shuffleArray(d)) }).catch(()=>{})
+    fetch(`${supabaseUrl}/rest/v1/video_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setVideoPlaylist(shuffleArray(d)) }).catch(()=>{})
   },[])
   useEffect(()=>{ if(pubs.length<=1) return; const id=setInterval(()=>setCurrentPub(p=>(p+1)%pubs.length),5000); return()=>clearInterval(id) },[pubs])
   useEffect(()=>{ if(!selected||!supabaseUrl||!supabaseKey){ setArticleComments([]); return } fetch(`${supabaseUrl}/rest/v1/comments?select=*&article_id=eq.${selected.id}&order=created_at.desc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setArticleComments(d) }).catch(()=>{}) },[selected])
