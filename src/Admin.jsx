@@ -81,6 +81,7 @@ export default function Admin() {
   const [newPubLink, setNewPubLink] = useState('');
   const [newPubSlot, setNewPubSlot] = useState('header');
   const [newRadioTitle, setNewRadioTitle] = useState('');
+  const [newRadioIsJingle, setNewRadioIsJingle] = useState(false);
   const [editingRadioId, setEditingRadioId] = useState(null);
   const [newVideoTitle, setNewVideoTitle] = useState('');
   const [newVideoUrl, setNewVideoUrl] = useState('');
@@ -614,14 +615,14 @@ export default function Admin() {
   const handleAddRadioTrack = async () => {
     if(!newRadioAudio) return alert('Ajoute un fichier audio');
     if(!newRadioTitle.trim()) return alert('Mets un titre pour la piste');
-    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, active:true };
+    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, active:true };
     const url = editingRadioId? `${supabaseUrl}/rest/v1/radio_playlist?id=eq.${editingRadioId}` : `${supabaseUrl}/rest/v1/radio_playlist`;
     const method = editingRadioId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : 'Piste ajoutee a la radio!'); } else alert(await res.text());
+    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setNewRadioIsJingle(false); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : 'Piste ajoutee a la radio!'); } else alert(await res.text());
   };
-  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioImage(t.image||''); window.scrollTo(0,0); };
-  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); };
+  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); window.scrollTo(0,0); };
+  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setNewRadioIsJingle(false); };
   const handleDeleteRadioTrack = async (id) => { if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchRadioPlaylist(); };
   const handleToggleRadioTrack = async (t) => { await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
@@ -798,10 +799,14 @@ export default function Admin() {
         ) : showRadio? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #16a34a'}}>
             <h3 style={{marginTop:0, color:'#16a34a'}}>Radio - Playlist de secours</h3>
-            <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Ces pistes jouent en boucle sur la page DIRECT &gt; RADIO quand tu n'es pas en direct sur YouTube.</div>
+            <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Ces pistes jouent en boucle sur la page DIRECT &gt; RADIO quand tu n'es pas en direct sur YouTube. Coche "C'est un jingle" pour les sons courts qui doivent s'intercaler automatiquement entre deux pistes normales.</div>
             <div style={{border:'2px dashed #86efac', padding:12, borderRadius:12, background:'#f0fdf4', marginBottom:12}}>
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>TITRE DE LA PISTE *</label>
               <input placeholder="Ex: Emission Societe - 12 aout" value={newRadioTitle} onChange={e=>setNewRadioTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #bbf7d0',fontSize:12}} />
+              <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,color:'#16a34a',marginBottom:10,cursor:'pointer'}}>
+                <input type="checkbox" checked={newRadioIsJingle} onChange={e=>setNewRadioIsJingle(e.target.checked)} />
+                C'est un jingle (s'intercale automatiquement entre les pistes, pas dans la numerotation)
+              </label>
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>FICHIER AUDIO (MP3) *</label>
               <input type="file" accept="audio/*" onChange={e=>uploadRadioAudio(e.target.files[0])} style={{width:'100%',fontSize:12,marginTop:4}} />
               {uploading==='radio-audio' && <div style={{fontSize:11,color:'#16a34a',marginTop:6}}>Upload audio...</div>}
@@ -817,7 +822,7 @@ export default function Admin() {
               <div key={t.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
                 <img src={t.image||'/logo.png'} style={{width:40,height:40,objectFit:'cover',borderRadius:6}} alt="" />
                 <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{i+1}. {t.title}</div>
+                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{t.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : `${i+1}.`} {t.title}</div>
                 </div>
                 <button onClick={()=>handleEditRadioTrack(t)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleRadioTrack(t)} style={{background: t.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{t.active?'ON':'OFF'}</button>

@@ -272,13 +272,40 @@ export default function App(){
   const audioCtxRef=useRef(null); const sourceNodeRef=useRef(null); const gainNodeRef=useRef(null); const bufferCacheRef=useRef({}); const pausedOffsetRef=useRef(0); const ctxStartTimeRef=useRef(0); const manualStopRef=useRef(false); const playTokenRef=useRef(0);
   const getAudioCtx=()=>{ if(!audioCtxRef.current){ const Ctx=window.AudioContext||window.webkitAudioContext; audioCtxRef.current=new Ctx(); gainNodeRef.current=audioCtxRef.current.createGain(); gainNodeRef.current.connect(audioCtxRef.current.destination) } return audioCtxRef.current }
   const decodeTrack=async(url)=>{ if(bufferCacheRef.current[url]) return bufferCacheRef.current[url]; const ctx=getAudioCtx(); const res=await fetch(url); const arr=await res.arrayBuffer(); const buffer=await ctx.decodeAudioData(arr); const data=buffer.getChannelData(0); const threshold=0.02; const step=200; let leadIn=0; for(let i=0;i<data.length;i+=step){ if(Math.abs(data[i])>threshold){ leadIn=i/buffer.sampleRate; break } } let contentEnd=buffer.duration; for(let i=data.length-1;i>=0;i-=step){ if(Math.abs(data[i])>threshold){ contentEnd=i/buffer.sampleRate; break } } const info={buffer, leadIn, contentEnd}; bufferCacheRef.current[url]=info; return info }
-  const startPlayback=async(idx, fromOffset=0)=>{ if(!radioPlaylist.length) return; const url=radioPlaylist[idx]?.url; if(!url) return; const myToken=++playTokenRef.current; const ctx=getAudioCtx(); if(ctx.state==='suspended'){ try{ await ctx.resume() }catch{} } let info; try{ info=await decodeTrack(url) }catch{ return }; if(myToken!==playTokenRef.current) return; if(sourceNodeRef.current){ manualStopRef.current=true; try{sourceNodeRef.current.stop()}catch{}; sourceNodeRef.current=null } const remaining=Math.max(0.1,(info.contentEnd-info.leadIn)-fromOffset); const source=ctx.createBufferSource(); source.buffer=info.buffer; source.connect(gainNodeRef.current); manualStopRef.current=false; source.onended=()=>{ if(manualStopRef.current) return; if(myToken!==playTokenRef.current) return; pausedOffsetRef.current=0; nextRadioTrack() }; try{ source.start(0, info.leadIn+fromOffset, remaining) }catch{ return }; sourceNodeRef.current=source; ctxStartTimeRef.current=ctx.currentTime; pausedOffsetRef.current=fromOffset; setRadioIsPlaying(true); const nextIdx=(idx+1)%radioPlaylist.length; const nextUrl=radioPlaylist[nextIdx]?.url; if(nextUrl) decodeTrack(nextUrl).catch(()=>{}) }
+  const radioMainTracks = radioPlaylist.filter(t=>!t.is_jingle)
+  const radioJingles = radioPlaylist.filter(t=>t.is_jingle)
+  const radioPhaseRef = useRef('track')
+
+  const playSource = async (url, fromOffset, onEndedCb) => {
+    const myToken=++playTokenRef.current; const ctx=getAudioCtx(); if(ctx.state==='suspended'){ try{ await ctx.resume() }catch{} }
+    let info; try{ info=await decodeTrack(url) }catch{ return }
+    if(myToken!==playTokenRef.current) return
+    if(sourceNodeRef.current){ manualStopRef.current=true; try{sourceNodeRef.current.stop()}catch{}; sourceNodeRef.current=null }
+    const remaining=Math.max(0.1,(info.contentEnd-info.leadIn)-fromOffset)
+    const source=ctx.createBufferSource(); source.buffer=info.buffer; source.connect(gainNodeRef.current)
+    manualStopRef.current=false
+    source.onended=()=>{ if(manualStopRef.current) return; if(myToken!==playTokenRef.current) return; pausedOffsetRef.current=0; onEndedCb&&onEndedCb() }
+    try{ source.start(0, info.leadIn+fromOffset, remaining) }catch{ return }
+    sourceNodeRef.current=source; ctxStartTimeRef.current=ctx.currentTime; pausedOffsetRef.current=fromOffset; setRadioIsPlaying(true)
+  }
+
+  const playJingleThenNext = () => {
+    if(radioJingles.length>0){
+      radioPhaseRef.current='jingle'
+      const jingle = radioJingles[Math.floor(Math.random()*radioJingles.length)]
+      playSource(jingle.url, 0, ()=>{ radioPhaseRef.current='track'; nextRadioTrack() })
+    } else {
+      nextRadioTrack()
+    }
+  }
+
+  const startPlayback=async(idx, fromOffset=0)=>{ if(!radioMainTracks.length) return; const url=radioMainTracks[idx]?.url; if(!url) return; radioPhaseRef.current='track'; await playSource(url, fromOffset, playJingleThenNext); const nextIdx=(idx+1)%radioMainTracks.length; const nextUrl=radioMainTracks[nextIdx]?.url; if(nextUrl) decodeTrack(nextUrl).catch(()=>{}) }
   const pausePlayback=()=>{ if(!sourceNodeRef.current||!audioCtxRef.current) return; const elapsed=audioCtxRef.current.currentTime-ctxStartTimeRef.current; pausedOffsetRef.current=pausedOffsetRef.current+elapsed; manualStopRef.current=true; try{sourceNodeRef.current.stop()}catch{}; sourceNodeRef.current=null; setRadioIsPlaying(false) }
   const toggleRadioPlay=()=>{ if(radioIsPlaying) pausePlayback(); else startPlayback(radioTrackIndexRef.current, pausedOffsetRef.current||0) }
-  const nextRadioTrack=()=>{ if(!radioPlaylist.length) return; const ni=(radioTrackIndexRef.current+1)%radioPlaylist.length; radioTrackIndexRef.current=ni; pausedOffsetRef.current=0; setRadioTrackIndex(ni); startPlayback(ni,0) }
-  useEffect(()=>{ if(actif!=='DIRECT-RADIO') return; if(youtubeLive===null) return; if(youtubeLive) return; if(radioIsPlaying) return; if(!radioPlaylist.length) return; startPlayback(radioTrackIndexRef.current, pausedOffsetRef.current||0) },[actif, youtubeLive, radioPlaylist])
+  const nextRadioTrack=()=>{ if(!radioMainTracks.length) return; const ni=(radioTrackIndexRef.current+1)%radioMainTracks.length; radioTrackIndexRef.current=ni; pausedOffsetRef.current=0; setRadioTrackIndex(ni); startPlayback(ni,0) }
+  useEffect(()=>{ if(actif!=='DIRECT-RADIO') return; if(youtubeLive===null) return; if(youtubeLive) return; if(radioIsPlaying) return; if(!radioMainTracks.length) return; startPlayback(radioTrackIndexRef.current, pausedOffsetRef.current||0) },[actif, youtubeLive, radioPlaylist])
   useEffect(()=>{ if(actif!=='DIRECT-RADIO') pausePlayback() },[actif])
-  const prevRadioTrack=()=>{ if(!radioPlaylist.length) return; const pi=radioTrackIndexRef.current>0? radioTrackIndexRef.current-1: radioPlaylist.length-1; radioTrackIndexRef.current=pi; pausedOffsetRef.current=0; setRadioTrackIndex(pi); startPlayback(pi,0) }
+  const prevRadioTrack=()=>{ if(!radioMainTracks.length) return; const pi=radioTrackIndexRef.current>0? radioTrackIndexRef.current-1: radioMainTracks.length-1; radioTrackIndexRef.current=pi; pausedOffsetRef.current=0; setRadioTrackIndex(pi); startPlayback(pi,0) }
 
   const translateText=async(text,target)=>{ if(!text||target==='fr') return text; try{ const q=encodeURIComponent(text.slice(0,450)); const res=await fetch(`https://api.mymemory.translated.net/get?q=${q}&langpair=fr|${target}`); const data=await res.json(); return data?.responseData?.translatedText||text }catch{return text} }
   const translateChunked=async(text,target)=>{ if(!text||target==='fr') return text; const words=text.split(' '); const chunks=[]; let current=''; for(const w of words){ if((current+' '+w).trim().length>420){ if(current.trim()) chunks.push(current.trim()); current=w } else { current=(current+' '+w).trim() } } if(current.trim()) chunks.push(current.trim()); const out=[]; for(const c of chunks){ out.push(await translateText(c,target)) } return out.join(' ') }
@@ -421,10 +448,10 @@ export default function App(){
               </div>
             ) : (
               <div style={{background:'linear-gradient(135deg,#1a3d7a,#0f2040)',borderRadius:16,padding:28,border:'2px solid #a8ff00',textAlign:'center'}}>
-                <img src={radioPlaylist[radioTrackIndex]?.image||'/logo.png'} style={{width:100,height:100,borderRadius:'50%',border:'3px solid rgba(255,255,255,0.9)',marginBottom:16,objectFit:'cover'}} alt="" />
-                <div style={{fontWeight:900,fontSize:16,marginBottom:4}}>{radioPlaylist[radioTrackIndex]?.title||'Rius Multimédia Radio'}</div>
-                <div style={{fontSize:11,opacity:0.7,marginBottom:18}}>{radioPlaylist.length? `Piste ${radioTrackIndex+1} / ${radioPlaylist.length}`:'Playlist vide — ajoute des pistes dans Supabase'}</div>
-                {radioPlaylist.length>0&&<>
+                <img src={radioMainTracks[radioTrackIndex]?.image||'/logo.png'} style={{width:100,height:100,borderRadius:'50%',border:'3px solid rgba(255,255,255,0.9)',marginBottom:16,objectFit:'cover'}} alt="" />
+                <div style={{fontWeight:900,fontSize:16,marginBottom:4}}>{radioMainTracks[radioTrackIndex]?.title||'Rius Multimédia Radio'}</div>
+                <div style={{fontSize:11,opacity:0.7,marginBottom:18}}>{radioMainTracks.length? `Piste ${radioTrackIndex+1} / ${radioMainTracks.length}`:'Playlist vide — ajoute des pistes dans Supabase'}</div>
+                {radioMainTracks.length>0&&<>
                   <div style={{display:'flex',gap:16,alignItems:'center',justifyContent:'center'}}>
                     <button onClick={prevRadioTrack} style={{background:'rgba(255,255,255,0.12)',border:0,color:'white',width:44,height:44,borderRadius:'50%',fontSize:16,cursor:'pointer'}}>⏮</button>
                     <button onClick={toggleRadioPlay} style={{background:'#a8ff00',border:0,color:'black',width:64,height:64,borderRadius:'50%',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>{radioIsPlaying?'⏸':'▶'}</button>
