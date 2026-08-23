@@ -46,7 +46,30 @@ export default function Admin() {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [blocks, setBlocks] = useState([{id:uid(), type:'text', content:''}]);
-  const [form, setForm] = useState({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[] });
+  const [form, setForm] = useState({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft' });
+  const [myRole, setMyRole] = useState(null);
+  const isDirector = myRole === 'director';
+  const hasLandedRef = useRef(false);
+
+  const TAB_ACCESS = {
+    articles: ['journaliste','director'],
+    flash: ['journaliste','director'],
+    radio: ['technicien','chef_programme','director'],
+    videotv: ['technicien','chef_programme','director'],
+    annonces: ['chef_programme','director'],
+    pubs: ['chef_programme','director'],
+    kiosque: ['chef_programme','director'],
+    encadres: ['chef_programme','director'],
+    users: ['director'],
+  };
+  const canAccess = (tab) => !!myRole && (TAB_ACCESS[tab]||[]).includes(myRole);
+
+  const landOnDefaultTab = (role) => {
+    setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false); setShowRadio(false); setShowVideoTV(false);
+    if(role==='technicien') setShowRadio(true);
+    else if(role==='chef_programme') setShowAnnonces(true);
+    // journaliste et director atterrissent sur l'editeur d'article par defaut
+  };
   const [gallery, setGallery] = useState([]);
   const [youtubeInput, setYoutubeInput] = useState('');
   const [youtubeCaption, setYoutubeCaption] = useState('');
@@ -61,7 +84,9 @@ export default function Admin() {
   const [showVideoTV, setShowVideoTV] = useState(false);
   const [showKiosque, setShowKiosque] = useState(false);
   const [showEncadres, setShowEncadres] = useState(false);
-  const [users, setUsers] = useState([{ user: 'Rius', pass: 'Rius2025', role: 'admin' }]);
+  const [users, setUsers] = useState([]);
+  const accessTokenRef = useRef(null);
+  const refreshTimerRef = useRef(null);
   const [articles, setArticles] = useState([]);
   const [flashes, setFlashes] = useState([]);
   const [annonces, setAnnonces] = useState([]);
@@ -94,8 +119,6 @@ export default function Admin() {
   const [newUneDate, setNewUneDate] = useState(new Date().toISOString().split('T')[0]);
   const [newUnePrice, setNewUnePrice] = useState('');
   const [newUnePdfPath, setNewUnePdfPath] = useState('');
-  const [newU, setNewU] = useState('');
-  const [newP, setNewP] = useState('');
   const [uploading, setUploading] = useState('');
   const [search, setSearch] = useState('');
   const galleryInputRef = useRef(null);
@@ -138,7 +161,14 @@ export default function Admin() {
   const [lastActivity, setLastActivity] = useState(Date.now());
   
   useEffect(() => {
-    fetch('/api/users').then(r=>r.json()).then(data=>{ if(data?.length) setUsers(data); }).catch(()=>{});
+    try{
+      const saved = JSON.parse(localStorage.getItem('rius_admin_session')||'null')
+      if(saved?.refresh_token){
+        setCurrentUser({ user: saved.email, role:'admin' })
+        setIsLogged(true)
+        doRefresh(saved.refresh_token, saved.email)
+      }
+    }catch{}
     fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres();
   }, []);
 
@@ -161,35 +191,35 @@ export default function Admin() {
   }, [isLogged, lastActivity]);
 
   const fetchArticles = () => {
-    fetch(`${supabaseUrl}/rest/v1/articles?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+    fetch(`${supabaseUrl}/rest/v1/articles?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setArticles(data); });
   };
   const fetchFlashes = () => {
-    fetch(`${supabaseUrl}/rest/v1/flash?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+    fetch(`${supabaseUrl}/rest/v1/flash?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setFlashes(data); });
   };
   const fetchAnnonces = () => {
-    fetch(`${supabaseUrl}/rest/v1/annonces_blanches?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+    fetch(`${supabaseUrl}/rest/v1/annonces_blanches?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setAnnonces(data); });
   };
   const fetchPubs = () => {
-    fetch(`${supabaseUrl}/rest/v1/pubs?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+    fetch(`${supabaseUrl}/rest/v1/pubs?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setPubs(data); });
   };
   const fetchUnes = () => {
-    fetch(`${supabaseUrl}/rest/v1/unes?select=*&order=date.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+    fetch(`${supabaseUrl}/rest/v1/unes?select=*&order=date.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setUnes(data); }).catch(()=>{});
   };
   const fetchRadioPlaylist = () => {
-    fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&order=id.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+    fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&order=id.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setRadioPlaylist(data); }).catch(()=>{});
   };
   const fetchVideoPlaylist = () => {
-    fetch(`${supabaseUrl}/rest/v1/video_playlist?select=*&order=id.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+    fetch(`${supabaseUrl}/rest/v1/video_playlist?select=*&order=id.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setVideoPlaylist(data); }).catch(()=>{});
   };
   const fetchEncadres = () => {
-    fetch(`${supabaseUrl}/rest/v1/encadres?select=*&order=order_index.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } })
+    fetch(`${supabaseUrl}/rest/v1/encadres?select=*&order=order_index.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setEncadres(data); }).catch(()=>{});
   };
 
@@ -229,7 +259,7 @@ export default function Admin() {
       const fileName = `UNE_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const res = await fetch(`${supabaseUrl}/storage/v1/object/images/${fileName}`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
         body: file
       });
       if(!res.ok) throw new Error(await res.text());
@@ -248,7 +278,7 @@ export default function Admin() {
       const fileName = `BLOC_${blockId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const res = await fetch(`${supabaseUrl}/storage/v1/object/images/${fileName}`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
         body: file
       });
       if(!res.ok) throw new Error(await res.text());
@@ -268,7 +298,7 @@ export default function Admin() {
         const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
         const res = await fetch(`${supabaseUrl}/storage/v1/object/pubs/${fileName}`, {
           method: 'POST',
-          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
           body: file
         });
         if(!res.ok) throw new Error(await res.text());
@@ -289,7 +319,7 @@ export default function Admin() {
       const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const res = await fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
         body: file
       });
       if(!res.ok) throw new Error(await res.text());
@@ -309,7 +339,7 @@ export default function Admin() {
       const fileName = `COVER_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const res = await fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': f.type },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': f.type },
         body: f
       });
       if(!res.ok) throw new Error(await res.text());
@@ -328,7 +358,7 @@ export default function Admin() {
       const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const res = await fetch(`${supabaseUrl}/storage/v1/object/kiosque-pdfs/${fileName}`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/pdf' },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type': 'application/pdf' },
         body: file
       });
       if(!res.ok) throw new Error(await res.text());
@@ -347,7 +377,7 @@ export default function Admin() {
       const fileName = `KIOSQUE_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const res = await fetch(`${supabaseUrl}/storage/v1/object/images/${fileName}`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': f.type },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': f.type },
         body: f
       });
       if(!res.ok) throw new Error(await res.text());
@@ -380,7 +410,7 @@ export default function Admin() {
       const fileName = `ENC_${mediaId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const res = await fetch(`${supabaseUrl}/storage/v1/object/encadres/${fileName}`, {
         method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'x-upsert': 'true', 'Content-Type': f.type },
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': f.type },
         body: f
       });
       if(!res.ok) throw new Error(await res.text());
@@ -410,7 +440,7 @@ export default function Admin() {
     };
     const url = editingEncadreId? `${supabaseUrl}/rest/v1/encadres?id=eq.${editingEncadreId}` : `${supabaseUrl}/rest/v1/encadres`;
     const method = editingEncadreId? 'PATCH' : 'POST';
-    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
     if(res.ok){ resetEncadreForm(); fetchEncadres(); alert(editingEncadreId? 'Encadre modifie!' : 'Encadre ajoute!'); } else alert(await res.text());
   };
 
@@ -425,36 +455,98 @@ export default function Admin() {
     window.scrollTo(0,0);
   };
   const handleCancelEncadreEdit = () => resetEncadreForm();
-  const handleDeleteEncadre = async (id) => { if(!confirm('Supprimer cet encadre?')) return; await fetch(`${supabaseUrl}/rest/v1/encadres?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchEncadres(); };
-  const handleToggleEncadre = async (enc) => { await fetch(`${supabaseUrl}/rest/v1/encadres?id=eq.${enc.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!enc.active }) }); fetchEncadres(); };
+  const handleDeleteEncadre = async (id) => { if(!confirm('Supprimer cet encadre?')) return; await fetch(`${supabaseUrl}/rest/v1/encadres?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchEncadres(); };
+  const handleToggleEncadre = async (enc) => { await fetch(`${supabaseUrl}/rest/v1/encadres?id=eq.${enc.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!enc.active }) }); fetchEncadres(); };
 
-  const saveUsers = (newList) => {
-    setUsers(newList);
-    fetch('/api/users', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(newList) });
+  const AUTH_STORAGE_KEY = 'rius_admin_session'
+
+  const persistSession = (session) => {
+    accessTokenRef.current = session?.access_token || null
+    try{
+      if(session) localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session))
+      else localStorage.removeItem(AUTH_STORAGE_KEY)
+    }catch{}
+  }
+
+  const scheduleRefresh = (session) => {
+    if(refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    if(!session?.refresh_token || !session?.expires_in) return
+    const delay = Math.max(30000, (session.expires_in - 120) * 1000)
+    refreshTimerRef.current = setTimeout(()=> doRefresh(session.refresh_token, session.email), delay)
+  }
+
+  const fetchMyRole = async (userId) => {
+    if(!userId){ setMyRole(null); return }
+    try{
+      const res = await fetch(`${supabaseUrl}/rest/v1/admin_profiles?id=eq.${userId}&select=role`, { headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+accessTokenRef.current } })
+      const data = await res.json()
+      const role = data?.[0]?.role || null
+      setMyRole(role)
+      if(!hasLandedRef.current){ hasLandedRef.current = true; landOnDefaultTab(role) }
+    }catch{ setMyRole(null) }
+  }
+
+  const doRefresh = async (refreshToken, email) => {
+    try{
+      const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+        method:'POST', headers:{ 'apikey':supabaseKey, 'Content-Type':'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      })
+      if(!res.ok) throw new Error('refresh failed')
+      const data = await res.json()
+      const session = { access_token:data.access_token, refresh_token:data.refresh_token, expires_in:data.expires_in, email: data.user?.email || email, uid: data.user?.id }
+      persistSession(session)
+      scheduleRefresh(session)
+      fetchMyRole(session.uid)
+    }catch{
+      handleLogout()
+    }
+  }
+
+  const handleLogin = async () => {
+    try{
+      const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+        method:'POST', headers:{ 'apikey':supabaseKey, 'Content-Type':'application/json' },
+        body: JSON.stringify({ email:user.trim(), password:pass })
+      })
+      const data = await res.json()
+      if(!res.ok || !data.access_token){ alert(data.error_description || data.msg || 'Identifiants incorrects'); return }
+      const session = { access_token:data.access_token, refresh_token:data.refresh_token, expires_in:data.expires_in, email:data.user?.email||user.trim(), uid:data.user?.id }
+      persistSession(session)
+      scheduleRefresh(session)
+      setCurrentUser({ user: session.email, role: 'admin' })
+      setIsLogged(true)
+      fetchMyRole(session.uid)
+      setPass('')
+      setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false)
+    }catch(e){ alert('Erreur de connexion: '+e.message) }
   };
 
-  const handleLogin = () => {
-    const found = users.find(u => u.user === user && u.pass === pass);
-    if (found) { setCurrentUser(found); setIsLogged(true); setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false); }
-    else alert('Identifiants incorrects');
-  };
-
-  const handleLogout = () => {
-    setIsLogged(false); setCurrentUser(null); setUser(''); setPass('');
-    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[] });
+  const handleLogout = async () => {
+    const token = accessTokenRef.current
+    persistSession(null)
+    if(refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    if(token){ try{ await fetch(`${supabaseUrl}/auth/v1/logout`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+token } }) }catch{} }
+    setIsLogged(false); setCurrentUser(null); setUser(''); setPass(''); setMyRole(null); hasLandedRef.current = false;
+    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft' });
     setBlocks([{id:uid(), type:'text', content:''}])
     setGallery([]);
     setYoutubeInput(''); setYoutubeCaption('');
     setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false);
   };
 
-  const handleChangeMyPass = () => {
-    const np = prompt(`Nouveau mot de passe pour ${currentUser.user} :`);
-    if(np && np.trim()){
-      const newList = users.map(x=> x.user===currentUser.user? {...x, pass:np.trim()}:x);
-      saveUsers(newList);
-      alert('Mot de passe change : ' + np.trim());
-    }
+  const handleChangeMyPass = async () => {
+    const np = prompt('Nouveau mot de passe (8 caracteres minimum) :');
+    if(!np || !np.trim()) return
+    if(np.trim().length < 8) return alert('Le mot de passe doit faire au moins 8 caracteres')
+    try{
+      const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        method:'PUT', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+accessTokenRef.current, 'Content-Type':'application/json' },
+        body: JSON.stringify({ password: np.trim() })
+      })
+      if(res.ok) alert('Mot de passe change avec succes.')
+      else { const d = await res.json(); alert(d.error_description || d.msg || 'Erreur lors du changement de mot de passe') }
+    }catch(e){ alert('Erreur: '+e.message) }
   };
 
   const translateText = async (text, target) => {
@@ -537,7 +629,8 @@ export default function Admin() {
         content: textContent || "Contenu en blocs", 
         translations: form.translations, 
         gallery: compiledGallery.length? compiledGallery : null,
-        blocks: blocks
+        blocks: blocks,
+        status: form.status || 'draft'
       }
       if(!payload.image && compiledGallery.length){
         const firstYt = compiledGallery.find(g=> g.url && (g.url.includes('youtube') || g.url.includes('youtu.be')))
@@ -554,7 +647,7 @@ export default function Admin() {
       let url = form.id? `${supabaseUrl}/rest/v1/articles?id=eq.${form.id}` : `${supabaseUrl}/rest/v1/articles`
       let method = form.id? 'PATCH' : 'POST'
       let res = await fetch(url, {
-        method, headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        method, headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
         body: JSON.stringify(payload)
       });
       if(!res.ok){
@@ -562,7 +655,7 @@ export default function Admin() {
         if(txt.includes('blocks')){
           delete payload.blocks
           res = await fetch(url, {
-            method, headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            method, headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
             body: JSON.stringify(payload)
           });
           if(res.ok) alert('Publie sans colonne blocks (ajoute colonne blocks jsonb dans Supabase).');
@@ -580,7 +673,7 @@ export default function Admin() {
   };
 
   const afterPublish = () => {
-    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[] }); 
+    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft' }); 
     setBlocks([{id:uid(), type:'text', content:''}])
     setGallery([]); setEditLang('fr'); fetchArticles(); setShowArticles(true);
   }
@@ -588,29 +681,29 @@ export default function Admin() {
   const handleAddFlash = async () => {
     if(!newFlash.trim()) return;
     const res = await fetch(`${supabaseUrl}/rest/v1/flash`, {
-      method:'POST', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+      method:'POST', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
       body: JSON.stringify({ text: newFlash.trim(), active: true })
     });
     if(res.ok){ setNewFlash(''); fetchFlashes(); } else alert(await res.text());
   };
-  const handleDeleteFlash = async (id) => { if(!confirm('Supprimer ce flash?')) return; await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }); fetchFlashes(); };
-  const handleToggleFlash = async (f) => { await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${f.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!f.active }) }); fetchFlashes(); };
+  const handleDeleteFlash = async (id) => { if(!confirm('Supprimer ce flash?')) return; await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchFlashes(); };
+  const handleToggleFlash = async (f) => { await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${f.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!f.active }) }); fetchFlashes(); };
 
   const handleAddAnnonce = async () => {
     if(!newAnnonce.trim()) return;
     const res = await fetch(`${supabaseUrl}/rest/v1/annonces_blanches`, {
-      method:'POST', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+      method:'POST', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
       body: JSON.stringify({ text: newAnnonce.trim(), active: true })
     });
     if(res.ok){ setNewAnnonce(''); fetchAnnonces(); } else alert(await res.text());
   };
-  const handleDeleteAnnonce = async (id) => { if(!confirm('Supprimer cette annonce?')) return; await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }); fetchAnnonces(); };
-  const handleToggleAnnonce = async (a) => { await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${a.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!a.active }) }); fetchAnnonces(); };
+  const handleDeleteAnnonce = async (id) => { if(!confirm('Supprimer cette annonce?')) return; await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchAnnonces(); };
+  const handleToggleAnnonce = async (a) => { await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${a.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!a.active }) }); fetchAnnonces(); };
 
-  const handleAddPub = async () => { if(!newPubImage) return alert('Mets une image'); const res=await fetch(`${supabaseUrl}/rest/v1/pubs`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ image:newPubImage, link:newPubLink||null, slot:newPubSlot, active:true }) }); if(res.ok){ setNewPubImage(''); setNewPubLink(''); setNewPubSlot('header'); fetchPubs(); alert('Pub ajoutee!'); } else alert(await res.text()); };
-  const handleDeletePub = async (id) => { if(!confirm('Supprimer cette pub?')) return; await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchPubs(); };
-  const handleTogglePub = async (p) => { await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!p.active }) }); fetchPubs(); };
-  const handleChangePubSlot = async (p, slot) => { await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ slot }) }); fetchPubs(); };
+  const handleAddPub = async () => { if(!newPubImage) return alert('Mets une image'); const res=await fetch(`${supabaseUrl}/rest/v1/pubs`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ image:newPubImage, link:newPubLink||null, slot:newPubSlot, active:true }) }); if(res.ok){ setNewPubImage(''); setNewPubLink(''); setNewPubSlot('header'); fetchPubs(); alert('Pub ajoutee!'); } else alert(await res.text()); };
+  const handleDeletePub = async (id) => { if(!confirm('Supprimer cette pub?')) return; await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchPubs(); };
+  const handleTogglePub = async (p) => { await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!p.active }) }); fetchPubs(); };
+  const handleChangePubSlot = async (p, slot) => { await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ slot }) }); fetchPubs(); };
 
   const handleAddRadioTrack = async () => {
     if(!newRadioAudio) return alert('Ajoute un fichier audio');
@@ -618,13 +711,13 @@ export default function Admin() {
     const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, active:true };
     const url = editingRadioId? `${supabaseUrl}/rest/v1/radio_playlist?id=eq.${editingRadioId}` : `${supabaseUrl}/rest/v1/radio_playlist`;
     const method = editingRadioId? 'PATCH' : 'POST';
-    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
     if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setNewRadioIsJingle(false); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : 'Piste ajoutee a la radio!'); } else alert(await res.text());
   };
   const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); window.scrollTo(0,0); };
   const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setNewRadioIsJingle(false); };
-  const handleDeleteRadioTrack = async (id) => { if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchRadioPlaylist(); };
-  const handleToggleRadioTrack = async (t) => { await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
+  const handleDeleteRadioTrack = async (id) => { if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioPlaylist(); };
+  const handleToggleRadioTrack = async (t) => { await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
   const getYtId = (url) => getYoutubeId(url);
   const handleAddVideoTrack = async () => {
@@ -636,28 +729,28 @@ export default function Admin() {
     const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, active:true };
     const url = editingVideoId? `${supabaseUrl}/rest/v1/video_playlist?id=eq.${editingVideoId}` : `${supabaseUrl}/rest/v1/video_playlist`;
     const method = editingVideoId? 'PATCH' : 'POST';
-    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
     if(res.ok){ setNewVideoTitle(''); setNewVideoUrl(''); setEditingVideoId(null); fetchVideoPlaylist(); alert(editingVideoId? 'Video modifiee!' : 'Video ajoutee a la playlist TV!'); } else alert(await res.text());
   };
   const handleEditVideoTrack = (v) => { setEditingVideoId(v.id); setNewVideoTitle(v.title||''); setNewVideoUrl(v.url||''); window.scrollTo(0,0); };
   const handleCancelVideoEdit = () => { setEditingVideoId(null); setNewVideoTitle(''); setNewVideoUrl(''); };
-  const handleDeleteVideoTrack = async (id) => { if(!confirm('Supprimer cette video?')) return; await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchVideoPlaylist(); };
-  const handleToggleVideoTrack = async (v) => { await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!v.active }) }); fetchVideoPlaylist(); };
+  const handleDeleteVideoTrack = async (id) => { if(!confirm('Supprimer cette video?')) return; await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchVideoPlaylist(); };
+  const handleToggleVideoTrack = async (v) => { await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!v.active }) }); fetchVideoPlaylist(); };
 
   const handleAddUne = async () => {
     if(!newUneImage) return alert('Image obligatoire');
     const res=await fetch(`${supabaseUrl}/rest/v1/unes`, {
       method:'POST',
-      headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+      headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
       body: JSON.stringify({ journal:newUneJournal.trim(), title:newUneTitle.trim()||newUneJournal.trim()||'Kiosque', image:newUneImage, date:newUneDate, price:newUnePrice?parseInt(newUnePrice,10):null, pdf_path:newUnePdfPath||null, active:true })
     });
     if(res.ok){ setNewUneImage(''); setNewUneJournal(''); setNewUneTitle(''); setNewUnePrice(''); setNewUnePdfPath(''); fetchUnes(); alert('Une ajoutee au Kiosque!'); } else { alert(await res.text()); }
   };
-  const handleDeleteUne = async (id) => { if(!confirm('Supprimer cette Une?')) return; await fetch(`${supabaseUrl}/rest/v1/unes?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}` } }); fetchUnes(); };
-  const handleToggleUne = async (u) => { await fetch(`${supabaseUrl}/rest/v1/unes?id=eq.${u.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!u.active }) }); fetchUnes(); };
+  const handleDeleteUne = async (id) => { if(!confirm('Supprimer cette Une?')) return; await fetch(`${supabaseUrl}/rest/v1/unes?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchUnes(); };
+  const handleToggleUne = async (u) => { await fetch(`${supabaseUrl}/rest/v1/unes?id=eq.${u.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!u.active }) }); fetchUnes(); };
 
   const handleEdit = (art) => { 
-    setForm({ id: art.id, title: art.title, category: art.category, image: art.image||'', translations: art.translations||{}, gallery: art.gallery||[] }); 
+    setForm({ id: art.id, title: art.title, category: art.category, image: art.image||'', translations: art.translations||{}, gallery: art.gallery||[], status: art.status||'draft' }); 
     if(art.blocks && Array.isArray(art.blocks) && art.blocks.length){
       setBlocks(art.blocks)
     } else {
@@ -675,9 +768,7 @@ export default function Admin() {
     setGallery(art.gallery||[]);
     setEditLang('fr'); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false); window.scrollTo(0,0); 
   };
-  const handleDelete = async (id) => { if(!confirm('Supprimer definitivement cet article?')) return; const res = await fetch(`${supabaseUrl}/rest/v1/articles?id=eq.${id}`, { method: 'DELETE', headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }); if(res.ok) fetchArticles(); };
-  const handleAddUser = () => { if(!newU ||!newP) return; saveUsers([...users, { user: newU, pass: newP, role: 'journaliste' }]); setNewU(''); setNewP(''); };
-  const handleDeleteUser = (u) => { if(u==='Rius') return alert('On ne supprime pas le compte principal'); if(confirm(`Supprimer ${u}?`)) saveUsers(users.filter(x=>x.user!==u)); };
+  const handleDelete = async (id) => { if(!confirm('Supprimer definitivement cet article?')) return; const res = await fetch(`${supabaseUrl}/rest/v1/articles?id=eq.${id}`, { method: 'DELETE', headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); if(res.ok) fetchArticles(); };
   const filtered = articles.filter(a => a.title.toLowerCase().includes(search.toLowerCase()));
 
   const currentTitle = editLang==='fr'? form.title : (form.translations[editLang]?.title || '')
@@ -691,8 +782,8 @@ export default function Admin() {
             <h2 style={{margin:'10px 0 6px', color:'#2e4fb0'}}>Rius Multimedia</h2>
             <div style={{color:'#444'}}><Slogan size={1} /></div>
           </div>
-          <input placeholder="Utilisateur" value={user} onChange={e=>setUser(e.target.value)} style={{width:'100%',padding:12,marginBottom:10,borderRadius:10,border:'1px solid #d1d5db'}} />
-          <input type="password" placeholder="Mot de passe" value={pass} onChange={e=>setPass(e.target.value)} style={{width:'100%',padding:12,marginBottom:14,borderRadius:10,border:'1px solid #d1d5db'}} />
+          <input type="email" placeholder="Email" value={user} onChange={e=>setUser(e.target.value)} style={{width:'100%',padding:12,marginBottom:10,borderRadius:10,border:'1px solid #d1d5db'}} autoComplete="username" />
+          <input type="password" placeholder="Mot de passe" value={pass} onChange={e=>setPass(e.target.value)} style={{width:'100%',padding:12,marginBottom:14,borderRadius:10,border:'1px solid #d1d5db'}} autoComplete="current-password" />
           <button type="submit" style={{width:'100%',padding:12,background:'#2e4fb0',color:'white',fontWeight:800,borderRadius:10,border:0, cursor:'pointer'}}>SE CONNECTER</button>
         </form>
       </div>
@@ -719,23 +810,34 @@ export default function Admin() {
 
       <div style={{maxWidth:900, margin:'20px auto', padding:'0 12px'}}>
         <div style={{display:'flex', gap:6, marginBottom:16, overflowX:'auto', flexWrap:'wrap'}}>
-          <button onClick={()=>{setShowArticles(!showArticles); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>
-          <button onClick={()=>{setShowFlash(!showFlash); setShowArticles(false); setShowUsers(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>
-          <button onClick={()=>{setShowAnnonces(!showAnnonces); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>
-          <button onClick={()=>{setShowPubs(!showPubs); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>
-          <button onClick={()=>{setShowRadio(!showRadio); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>
-          <button onClick={()=>{setShowVideoTV(!showVideoTV); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fecaca', background: showVideoTV? '#dc2626':'white', color: showVideoTV? 'white':'#dc2626', fontWeight:800}}>Videos TV ({videoPlaylist.length})</button>
-          <button onClick={()=>{setShowKiosque(!showKiosque); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>
-          <button onClick={()=>{setShowEncadres(!showEncadres); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #a855f7', background: showEncadres? '#a855f7':'white', color: showEncadres? 'white':'#a855f7', fontWeight:900}}>ESPACE BUSINESS ({encadres.length})</button>
-          {currentUser.role==='admin'&&(<button onClick={()=>{setShowUsers(!showUsers); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
-          <button onClick={()=>{setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background:!showArticles &&!showUsers &&!showFlash &&!showAnnonces &&!showPubs &&!showKiosque &&!showRadio &&!showVideoTV &&!showEncadres? '#ffcc00':'white', color:'#0f2040', fontWeight:900}}>Nouveau</button>
+          {canAccess('articles') && <button onClick={()=>{setShowArticles(!showArticles); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>}
+          {canAccess('flash') && <button onClick={()=>{setShowFlash(!showFlash); setShowArticles(false); setShowUsers(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>}
+          {canAccess('annonces') && <button onClick={()=>{setShowAnnonces(!showAnnonces); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>}
+          {canAccess('pubs') && <button onClick={()=>{setShowPubs(!showPubs); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>}
+          {canAccess('radio') && <button onClick={()=>{setShowRadio(!showRadio); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>}
+          {canAccess('videotv') && <button onClick={()=>{setShowVideoTV(!showVideoTV); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fecaca', background: showVideoTV? '#dc2626':'white', color: showVideoTV? 'white':'#dc2626', fontWeight:800}}>Videos TV ({videoPlaylist.length})</button>}
+          {canAccess('kiosque') && <button onClick={()=>{setShowKiosque(!showKiosque); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>}
+          {canAccess('encadres') && <button onClick={()=>{setShowEncadres(!showEncadres); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #a855f7', background: showEncadres? '#a855f7':'white', color: showEncadres? 'white':'#a855f7', fontWeight:900}}>ESPACE BUSINESS ({encadres.length})</button>}
+          {canAccess('users') && (<button onClick={()=>{setShowUsers(!showUsers); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
+          {canAccess('articles') && <button onClick={()=>{setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background:!showArticles &&!showUsers &&!showFlash &&!showAnnonces &&!showPubs &&!showKiosque &&!showRadio &&!showVideoTV &&!showEncadres? '#ffcc00':'white', color:'#0f2040', fontWeight:900}}>Nouveau</button>}
         </div>
 
         {showUsers? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #2e4fb0'}}>
-            <h3 style={{marginTop:0, color:'#2e4fb0'}}>Gestion utilisateurs</h3>
-            {users.map(u=>(<div key={u.user} style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid #eef2ff',fontSize:13}}><span><b>{u.user}</b></span><button onClick={()=>handleDeleteUser(u.user)} style={{color:'#ef4444',background:'none',border:0,fontSize:11,cursor:'pointer',fontWeight:700}}>Supprimer</button></div>))}
-            <div style={{marginTop:14, display:'flex',gap:6}}><input placeholder="Nouvel user" value={newU} onChange={e=>setNewU(e.target.value)} style={{flex:1,padding:10,borderRadius:10,border:'1px solid #c7d2fe'}}/><input placeholder="Mot de passe" value={newP} onChange={e=>setNewP(e.target.value)} style={{flex:1,padding:10,borderRadius:10,border:'1px solid #c7d2fe'}}/><button onClick={handleAddUser} style={{background:'#2e4fb0',color:'white',borderRadius:10,border:0,padding:'0 16px',fontWeight:800}}>AJOUTER</button></div>
+            <h3 style={{marginTop:0, color:'#2e4fb0'}}>Gestion des comptes admin</h3>
+            <div style={{fontSize:12, color:'#334155', lineHeight:1.7, background:'#f0f7ff', border:'1px solid #c7d2fe', borderRadius:10, padding:14}}>
+              Pour des raisons de securite, les comptes (toi et les journalistes) ne se creent plus depuis cette page.
+              <br/><br/>
+              <b>Pour ajouter quelqu'un :</b>
+              <ol style={{margin:'8px 0 0', paddingLeft:18}}>
+                <li>Va dans ton tableau de bord Supabase</li>
+                <li>Authentication &gt; Users &gt; Add User</li>
+                <li>Renseigne son email et un mot de passe temporaire</li>
+                <li>Il pourra se connecter ici avec cet email + mot de passe, et le changer via le bouton "Mdp" en haut a droite</li>
+              </ol>
+              <br/>
+              <b>Pour retirer un acces :</b> supprime la personne dans Supabase (Authentication &gt; Users), meme endroit.
+            </div>
           </div>
         ) : showFlash? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #ffcc00'}}>
@@ -1001,16 +1103,24 @@ export default function Admin() {
         ) : showArticles? (
           <div style={{background:'white', padding:14, borderRadius:14, borderTop:'4px solid #2e4fb0'}}>
             <input placeholder="Rechercher..." value={search} onChange={e=>setSearch(e.target.value)} style={{width:'100%', padding:'11px 12px', borderRadius:10, border:'1px solid #c7d2fe', marginBottom:12}} />
-            {filtered.map(a=>(
+            {filtered.map(a=>{
+              const statusInfo = a.status==='published'? {label:'Publie', bg:'#dcfce7', color:'#16a34a'} : a.status==='pending_review'? {label:'En attente', bg:'#fef3c7', color:'#b45309'} : {label:'Brouillon', bg:'#e2e8f0', color:'#475569'}
+              return (
               <div key={a.id} style={{border:'1px solid #e0e7ff', padding:10, borderRadius:12, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
                 <img src={a.image} style={{width:54,height:54,objectFit:'cover',borderRadius:8}} alt="" />
-                <div style={{flex:1, minWidth:0}}><div style={{fontWeight:800,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</div><div style={{fontSize:11,color:'#64748b'}}>{a.category}</div></div>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
+                    <span style={{background:statusInfo.bg,color:statusInfo.color,fontSize:9,fontWeight:900,padding:'2px 7px',borderRadius:10}}>{statusInfo.label}</span>
+                  </div>
+                  <div style={{fontWeight:800,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</div>
+                  <div style={{fontSize:11,color:'#64748b'}}>{a.category}</div>
+                </div>
                 <button onClick={()=>handleEdit(a)} style={{background:'#2e4fb0',color:'white',border:0,borderRadius:8,padding:'8px 12px',fontSize:12,cursor:'pointer'}}>Edit</button>
-                <button onClick={()=>handleDelete(a.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:8,padding:'8px 12px',fontSize:12,cursor:'pointer'}}>Suppr</button>
+                {isDirector && <button onClick={()=>handleDelete(a.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:8,padding:'8px 12px',fontSize:12,cursor:'pointer'}}>Suppr</button>}
               </div>
-            ))}
+            )})}
           </div>
-        ) : (
+        ) : canAccess('articles') ? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #2e4fb0'}}>
             <div style={{display:'flex', gap:6, marginBottom:12, flexWrap:'wrap', alignItems:'center'}}>
               <span style={{fontSize:11, fontWeight:900}}>Langue :</span>
@@ -1019,7 +1129,23 @@ export default function Admin() {
             </div>
             <div style={{display:'grid', gap:12}}>
               <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>TITRE * [{editLang.toUpperCase()}]</label><input placeholder="Titre..." value={editLang==='fr'? form.title : (form.translations[editLang]?.title||'')} onChange={e=>{ if(editLang==='fr') setForm({...form,title:e.target.value}); else setForm({...form, translations:{...form.translations, [editLang]:{...form.translations[editLang], title:e.target.value}}}) }} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontWeight:700,fontSize:14}} /></div>
+              {!isDirector && form.id && form.status==='published' && (
+                <div style={{background:'#fee2e2',border:'2px solid #ef4444',borderRadius:10,padding:12,fontSize:12,color:'#991b1b',fontWeight:700}}>
+                  Cet article est deja publie. Seul le directeur peut le modifier ou le depublier.
+                </div>
+              )}
+
               <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>CATEGORIE</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe'}}><option>ACCUEIL</option><option>POLITIQUE</option><option>CULTURE</option><option>SOCIETE</option><option>SANTE</option><option>SPORT</option><option>ENVIRONNEMENT</option><option>INTERNATIONAL</option><option>ESPACE BUSINESS</option></select></div>
+
+              <div style={{border:'2px solid #f59e0b', padding:12, borderRadius:12, background:'#fffbeb'}}>
+                <label style={{fontSize:11,fontWeight:800,color:'#b45309'}}>STATUT EDITORIAL</label>
+                <select value={form.status||'draft'} onChange={e=>setForm({...form,status:e.target.value})} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #fcd34d',fontWeight:700}}>
+                  <option value="draft">Brouillon (visible par l'equipe uniquement)</option>
+                  <option value="pending_review">En attente de publication</option>
+                  {isDirector && <option value="published">Publie (visible sur le site)</option>}
+                </select>
+                {!isDirector && <div style={{fontSize:10,color:'#b45309',marginTop:6}}>Seul le directeur peut publier un article sur le site. Choisis "En attente de publication" quand c'est pret pour lui.</div>}
+              </div>
               
               <div style={{border:'2px dashed #93c5fd', padding:12, borderRadius:12, background:'#f0f7ff'}}>
                 <div style={{fontSize:11,fontWeight:900,color:'#2e4fb0', marginBottom:6}}>PHOTO PRINCIPALE</div>
@@ -1102,10 +1228,14 @@ export default function Admin() {
               </div>
 
               <div style={{display:'flex',gap:8}}>
-                {form.id && <button onClick={()=>{setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[] }); setBlocks([{id:uid(), type:'text', content:''}]); setGallery([]);}} style={{flex:1,padding:'14px',background:'#e0e7ff',borderRadius:12,border:0,fontWeight:800,cursor:'pointer', color:'#2e4fb0'}}>Annuler</button>}
-                <button onClick={handlePublish} style={{flex:2,padding:'14px',background: form.id? '#f59e0b' : '#2e4fb0',color:'white',fontWeight:900,borderRadius:12,border:0,cursor:'pointer',fontSize:14}}>{form.id? 'METTRE A JOUR' : 'PUBLIER'}</button>
+                {form.id && <button onClick={()=>{setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft' }); setBlocks([{id:uid(), type:'text', content:''}]); setGallery([]);}} style={{flex:1,padding:'14px',background:'#e0e7ff',borderRadius:12,border:0,fontWeight:800,cursor:'pointer', color:'#2e4fb0'}}>Annuler</button>}
+                <button onClick={handlePublish} disabled={!isDirector && form.id && form.status==='published'} style={{flex:2,padding:'14px',background: (!isDirector && form.id && form.status==='published')? '#94a3b8' : form.status==='published'? '#16a34a' : form.id? '#f59e0b' : '#2e4fb0',color:'white',fontWeight:900,borderRadius:12,border:0,cursor:(!isDirector && form.id && form.status==='published')?'not-allowed':'pointer',fontSize:14}}>{form.status==='published'? (form.id?'METTRE A JOUR (PUBLIE)':'PUBLIER') : form.status==='pending_review'? 'SOUMETTRE POUR VALIDATION' : (form.id?'ENREGISTRER LE BROUILLON':'ENREGISTRER EN BROUILLON')}</button>
               </div>
             </div>
+          </div>
+        ) : (
+          <div style={{background:'white', padding:30, borderRadius:14, textAlign:'center', color:'#64748b'}}>
+            Ton compte n'a pas acces a cette section. Utilise l'un des onglets disponibles ci-dessus.
           </div>
         )}
       </div>
