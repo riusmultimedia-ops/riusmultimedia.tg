@@ -119,6 +119,10 @@ export default function Admin() {
   const [newUneDate, setNewUneDate] = useState(new Date().toISOString().split('T')[0]);
   const [newUnePrice, setNewUnePrice] = useState('');
   const [newUnePdfPath, setNewUnePdfPath] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState('journaliste');
+  const [creatingUser, setCreatingUser] = useState(false);
   const [uploading, setUploading] = useState('');
   const [search, setSearch] = useState('');
   const galleryInputRef = useRef(null);
@@ -459,6 +463,30 @@ export default function Admin() {
   const handleToggleEncadre = async (enc) => { await fetch(`${supabaseUrl}/rest/v1/encadres?id=eq.${enc.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!enc.active }) }); fetchEncadres(); };
 
   const AUTH_STORAGE_KEY = 'rius_admin_session'
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+    let pwd = '';
+    for(let i=0;i<14;i++) pwd += chars[Math.floor(Math.random()*chars.length)];
+    setNewUserPassword(pwd);
+  };
+
+  const handleCreateUser = async () => {
+    if(!newUserEmail.trim() || !newUserPassword.trim() || !newUserRole) return alert('Remplis tous les champs');
+    setCreatingUser(true);
+    try{
+      const res = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer '+accessTokenRef.current },
+        body: JSON.stringify({ email: newUserEmail.trim(), password: newUserPassword, role: newUserRole })
+      });
+      const data = await res.json();
+      if(!res.ok){ alert(data.error || 'Erreur lors de la creation'); return; }
+      alert(`Compte cree !\n\nEmail : ${data.email}\nMot de passe : ${newUserPassword}\nRole : ${data.role}\n\nTransmets ces identifiants a la personne de maniere securisee (pas par email ou SMS non chiffres si possible).`);
+      setNewUserEmail(''); setNewUserPassword(''); setNewUserRole('journaliste');
+    }catch(e){ alert('Erreur: '+e.message) }
+    finally{ setCreatingUser(false) }
+  };
 
   const persistSession = (session) => {
     accessTokenRef.current = session?.access_token || null
@@ -824,19 +852,31 @@ export default function Admin() {
 
         {showUsers? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #2e4fb0'}}>
-            <h3 style={{marginTop:0, color:'#2e4fb0'}}>Gestion des comptes admin</h3>
-            <div style={{fontSize:12, color:'#334155', lineHeight:1.7, background:'#f0f7ff', border:'1px solid #c7d2fe', borderRadius:10, padding:14}}>
-              Pour des raisons de securite, les comptes (toi et les journalistes) ne se creent plus depuis cette page.
+            <h3 style={{marginTop:0, color:'#2e4fb0'}}>Ajouter un utilisateur</h3>
+            <div style={{border:'2px dashed #93c5fd', padding:14, borderRadius:12, background:'#f0f7ff', marginBottom:16}}>
+              <label style={{fontSize:10,fontWeight:800,color:'#2e4fb0'}}>EMAIL</label>
+              <input type="email" placeholder="prenom.nom@riusmultimedia.com" value={newUserEmail} onChange={e=>setNewUserEmail(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #c7d2fe'}} />
+
+              <label style={{fontSize:10,fontWeight:800,color:'#2e4fb0'}}>MOT DE PASSE TEMPORAIRE</label>
+              <div style={{display:'flex',gap:6,marginTop:4,marginBottom:10}}>
+                <input type="text" placeholder="Au moins 8 caracteres" value={newUserPassword} onChange={e=>setNewUserPassword(e.target.value)} style={{flex:1,padding:10,borderRadius:8,border:'1px solid #c7d2fe'}} />
+                <button type="button" onClick={generateRandomPassword} style={{background:'#e0e7ff',color:'#2e4fb0',border:0,borderRadius:8,padding:'0 14px',fontWeight:800,fontSize:11,cursor:'pointer'}}>Generer</button>
+              </div>
+
+              <label style={{fontSize:10,fontWeight:800,color:'#2e4fb0'}}>ROLE</label>
+              <select value={newUserRole} onChange={e=>setNewUserRole(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:12,borderRadius:8,border:'1px solid #c7d2fe',fontWeight:700}}>
+                <option value="journaliste">Journaliste (Articles, Flash)</option>
+                <option value="technicien">Technicien (Radio, Videos TV)</option>
+                <option value="chef_programme">Chef de programme (Annonces, Pubs, Kiosque, Espace Business, Radio, Videos TV)</option>
+                <option value="director">Directeur (acces total)</option>
+              </select>
+
+              <button onClick={handleCreateUser} disabled={creatingUser} style={{width:'100%',padding:12,background: creatingUser?'#94a3b8':'#2e4fb0',color:'white',fontWeight:900,borderRadius:10,border:0,cursor:creatingUser?'default':'pointer',fontSize:13}}>{creatingUser? 'Creation...' : 'CREER LE COMPTE'}</button>
+            </div>
+            <div style={{fontSize:11, color:'#64748b', lineHeight:1.6}}>
+              Communique l'email et le mot de passe a la personne de maniere securisee. Elle pourra changer son mot de passe une fois connectee (bouton "Mdp" en haut a droite).
               <br/><br/>
-              <b>Pour ajouter quelqu'un :</b>
-              <ol style={{margin:'8px 0 0', paddingLeft:18}}>
-                <li>Va dans ton tableau de bord Supabase</li>
-                <li>Authentication &gt; Users &gt; Add User</li>
-                <li>Renseigne son email et un mot de passe temporaire</li>
-                <li>Il pourra se connecter ici avec cet email + mot de passe, et le changer via le bouton "Mdp" en haut a droite</li>
-              </ol>
-              <br/>
-              <b>Pour retirer un acces :</b> supprime la personne dans Supabase (Authentication &gt; Users), meme endroit.
+              <b>Pour retirer un acces :</b> Supabase &gt; Authentication &gt; Users &gt; supprimer la personne.
             </div>
           </div>
         ) : showFlash? (
