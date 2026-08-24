@@ -27,7 +27,7 @@ const UI = {
 }
 const CATS = ['ACCUEIL','POLITIQUE','CULTURE','SOCIÉTÉ','SANTÉ','SPORT','ENVIRONNEMENT','INTERNATIONAL','ESPACE BUSINESS','KIOSQUE']
 
-const globalCss = "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');*{box-sizing:border-box}html,body{margin:0;padding:0;overflow-x:clip}::-webkit-scrollbar{width:6px!important;height:6px!important}::-webkit-scrollbar-track{background:transparent!important}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.3)!important;border-radius:10px!important;transition:background 0.1s ease!important}::-webkit-scrollbar-thumb:hover{background:#ffcc00!important}html{scrollbar-width:thin;scrollbar-color: rgba(255,255,255,0.3) transparent} @keyframes defile{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}} @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,59,59,0.7)}70%{box-shadow:0 0 0 10px rgba(255,59,59,0)}100%{box-shadow:0 0 0 0 rgba(255,59,59,0)}} @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}} .dot{width:8px;height:8px;background:#ff3b3b;border-radius:50%;display:inline-block;animation:pulse 2s infinite} .dot-blink{width:7px;height:7px;background:#ff3b3b;border-radius:50%;display:inline-block;animation:blink 1s infinite} .live-text{animation:defile 120s linear infinite;white-space:nowrap;display:inline-block} .live-text2{animation:defile 90s linear infinite;white-space:nowrap;display:inline-block} .yellow-dot{width:8px;height:8px;background:#ffcc00;border-radius:50%;display:inline-block;flex-shrink:0} .nav-white:hover{color:#ffcc00!important} .sep-small{color:rgba(255,255,255,0.5);font-size:9px;margin:0 2px} .nav-scroll::-webkit-scrollbar{display:none!important} .nav-scroll{scrollbar-width:none!important} .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px} .grid-pod{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;padding:0 20px} @media (max-width:768px){ .article-layout{flex-direction:column !important} .article-main{width:100% !important;flex:1 1 auto !important} .article-sidebar{width:100% !important} .direct-grid{flex-direction:column !important;grid-template-columns:1fr !important} .direct-grid>div{flex:none !important;width:100% !important} .footer-grid{grid-template-columns:1fr !important} .bbc-grid{grid-template-columns:1fr !important} .grid-4{grid-template-columns:1fr !important} .grid-pod{grid-template-columns:1fr !important} .hide-mobile{display:none !important} .hero-container{flex-direction:column !important;height:auto !important;min-height:0 !important;gap:14px !important} .hero-main{width:100% !important;flex:none !important;height:400px !important;min-height:400px !important} .hero-side{width:100% !important;flex:none !important;height:auto !important;min-height:0 !important} .encadre-flex{flex-direction:column !important} }";
+const globalCss = "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');*{box-sizing:border-box}html,body{margin:0;padding:0;overflow-x:clip}::-webkit-scrollbar{width:6px!important;height:6px!important}::-webkit-scrollbar-track{background:transparent!important}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.3)!important;border-radius:10px!important;transition:background 0.1s ease!important}::-webkit-scrollbar-thumb:hover{background:#ffcc00!important}html{scrollbar-width:thin;scrollbar-color: rgba(255,255,255,0.3) transparent} @keyframes defile{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}} @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,59,59,0.7)}70%{box-shadow:0 0 0 10px rgba(255,59,59,0)}100%{box-shadow:0 0 0 0 rgba(255,59,59,0)}} @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}} .dot{width:8px;height:8px;background:#ff3b3b;border-radius:50%;display:inline-block;animation:pulse 2s infinite} .dot-blink{width:7px;height:7px;background:#ff3b3b;border-radius:50%;display:inline-block;animation:blink 1s infinite} .live-text{animation:defile 120s linear infinite;white-space:nowrap;display:inline-block} .live-text2{animation:defile 90s linear infinite;white-space:nowrap;display:inline-block} .yellow-dot{width:8px;height:8px;background:#ffcc00;border-radius:50%;display:inline-block;flex-shrink:0} .nav-white:hover{color:#ffcc00!important} .sep-small{color:rgba(255,255,255,0.5);font-size:9px;margin:0 2px} .nav-scroll::-webkit-scrollbar{display:none!important} .nav-scroll{scrollbar-width:none!important} .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px} .grid-pod{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;padding:0 20px} @media (max-width:768px){ .article-layout{flex-direction:column !important} .article-main{width:100% !important;flex:1 1 auto !important} .article-sidebar{width:100% !important} .direct-grid{flex-direction:column !important;grid-template-columns:1fr !important} .direct-grid>div{flex:none !important;width:100% !important} .footer-grid{grid-template-columns:1fr !important} .bbc-grid{grid-template-columns:1fr !important} .grid-4{grid-template-columns:1fr !important} .grid-pod{grid-template-columns:1fr !important} .hide-mobile{display:none !important} .hero-container{flex-direction:column !important;height:auto !important;min-height:0 !important;gap:14px !important} .hero-main{width:100% !important;flex:none !important;height:400px !important;min-height:400px !important} .hero-side{width:100% !important;flex:none !important;height:auto !important;min-height:0 !important} .encadre-flex{flex-direction:column !important} } .tv-fullscreen-container:fullscreen{width:100vw!important;height:100vh!important} .tv-fullscreen-container:fullscreen iframe,.tv-fullscreen-container:fullscreen .tv-video-frame{width:100%!important;height:100%!important} .tv-fullscreen-container:-webkit-full-screen{width:100vw!important;height:100vh!important} .tv-fullscreen-container:-webkit-full-screen iframe,.tv-fullscreen-container:-webkit-full-screen .tv-video-frame{width:100%!important;height:100%!important}";
 
 
 function getYoutubeIdRaw(url){
@@ -43,35 +43,129 @@ const shuffleArray = (arr) => { const a=[...arr]; for(let i=a.length-1;i>0;i--){
 
 let tvReplayMemory = { videoId: null, time: 0 }
 
-function TvReplayPlayer({ids}){
+function TvWatermark({settings}){
+  if(!settings || settings.enabled===false) return null
+  const posStyles = {
+    'top-left': {top:12, left:12},
+    'top-right': {top:12, right:12},
+    'bottom-left': {bottom:12, left:12},
+    'bottom-right': {bottom:12, right:12},
+  }
+  const pos = posStyles[settings.position] || posStyles['top-right']
+  const hasLabel = !!(settings.label && settings.label.trim())
+  const logoHeight = settings.size_px || 70
+  return (
+    <div style={{position:'absolute', ...pos, zIndex:5, display:'flex', alignItems:'center', gap:8, background: hasLabel? 'rgba(15,32,64,0.6)' : 'transparent', padding: hasLabel? '6px 12px' : 0, borderRadius:8, pointerEvents:'none'}}>
+      <img src={settings.logo_url||'/logo.png'} style={{height:logoHeight, width:'auto', maxWidth:280, objectFit:'contain', filter: hasLabel? 'none':'drop-shadow(0 2px 6px rgba(0,0,0,0.7))'}} alt="" />
+      {hasLabel && <span style={{color:'white',fontSize:Math.max(11,Math.round(logoHeight*0.2)),fontWeight:900,textShadow:'0 1px 2px rgba(0,0,0,0.8)'}}>{settings.label}</span>}
+    </div>
+  )
+}
+
+function TvReplayPlayer({clips, jingles, ads}){
   const containerRef = useRef(null)
   const playerRef = useRef(null)
   const intervalRef = useRef(null)
+  const adCheckIntervalRef = useRef(null)
+  const clipIndexRef = useRef(0)
+  const clipsSinceJingleRef = useRef(0)
+  const jingleThresholdRef = useRef(3 + Math.floor(Math.random()*3))
+  const phaseRef = useRef('clip')
+  const pausedForAdRef = useRef(null)
+  const playedAdSlotsRef = useRef(new Set())
 
   useEffect(()=>{
-    if(!ids.length) return
+    if(!clips.length) return
     let destroyed = false
+
+    const findStartIndex = () => {
+      if(tvReplayMemory.videoId){ const idx = clips.indexOf(tvReplayMemory.videoId); if(idx>=0) return idx }
+      return 0
+    }
+
+    const playClip = (idx, startSeconds=0) => {
+      if(!playerRef.current || !clips.length) return
+      phaseRef.current='clip'
+      clipIndexRef.current = ((idx % clips.length) + clips.length) % clips.length
+      const id = clips[clipIndexRef.current]
+      if(!id) return
+      try{ playerRef.current.loadVideoById({videoId:id, startSeconds}) }catch{}
+    }
+
+    const playJingle = () => {
+      if(!jingles.length || !playerRef.current){ playClip(clipIndexRef.current+1, 0); return }
+      phaseRef.current='jingle'
+      const j = jingles[Math.floor(Math.random()*jingles.length)]
+      try{ playerRef.current.loadVideoById({videoId:j}) }catch{}
+    }
+
+    const advanceAfterClip = () => {
+      clipsSinceJingleRef.current += 1
+      const nextIdx = ((clipIndexRef.current+1) % clips.length + clips.length) % clips.length
+      clipIndexRef.current = nextIdx
+      if(jingles.length && clipsSinceJingleRef.current >= jingleThresholdRef.current){
+        clipsSinceJingleRef.current = 0
+        jingleThresholdRef.current = 3 + Math.floor(Math.random()*3)
+        playJingle()
+      } else {
+        playClip(nextIdx, 0)
+      }
+    }
+
+    const maybeTriggerAd = () => {
+      if(destroyed || phaseRef.current==='ad' || !ads.length) return
+      if(!playerRef.current || !playerRef.current.getCurrentTime) return
+      const now = new Date()
+      const nowKey = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
+      const todayStr = now.toISOString().slice(0,10)
+      const due = ads.find(a => Array.isArray(a.ad_times) && a.ad_times.includes(nowKey))
+      if(!due) return
+      const slotKey = `${todayStr}_${nowKey}_${due.id}`
+      if(playedAdSlotsRef.current.has(slotKey)) return
+      playedAdSlotsRef.current.add(slotKey)
+      let resumeTime = 0
+      try{ resumeTime = playerRef.current.getCurrentTime()||0 }catch{}
+      pausedForAdRef.current = { time: resumeTime }
+      phaseRef.current='ad'
+      try{ playerRef.current.loadVideoById({videoId: due.ytId}) }catch{}
+    }
+
+    const onPlayerStateChange = (e) => {
+      if(!(window.YT && e.data===window.YT.PlayerState.ENDED)) return
+      if(phaseRef.current==='ad'){
+        const resume = pausedForAdRef.current; pausedForAdRef.current=null
+        playClip(clipIndexRef.current, resume? resume.time : 0)
+      } else if(phaseRef.current==='jingle'){
+        playClip(clipIndexRef.current, 0)
+      } else {
+        advanceAfterClip()
+      }
+    }
 
     const setup = () => {
       if(destroyed || !containerRef.current || !window.YT || !window.YT.Player) return
-      const startId = (tvReplayMemory.videoId && ids.includes(tvReplayMemory.videoId)) ? tvReplayMemory.videoId : ids[0]
+      const startIdx = findStartIndex()
+      clipIndexRef.current = startIdx
       playerRef.current = new window.YT.Player(containerRef.current, {
         width:'100%', height:'100%',
-        videoId: startId,
-        playerVars: { autoplay:1, playlist: ids.join(','), loop:1 },
+        videoId: clips[startIdx],
+        playerVars: { autoplay:1, fs:0 },
         events: {
           onReady: (e)=>{
-            if(tvReplayMemory.videoId===startId && tvReplayMemory.time>2){
+            if(tvReplayMemory.videoId===clips[startIdx] && tvReplayMemory.time>2){
               try{ e.target.seekTo(tvReplayMemory.time, true) }catch{}
             }
             intervalRef.current = setInterval(()=>{
               try{
+                if(phaseRef.current!=='clip') return
                 const t = e.target.getCurrentTime()
                 const data = e.target.getVideoData()
                 if(data && data.video_id){ tvReplayMemory = { videoId: data.video_id, time: t } }
               }catch{}
             }, 2000)
-          }
+            adCheckIntervalRef.current = setInterval(maybeTriggerAd, 20000)
+          },
+          onStateChange: onPlayerStateChange
         }
       })
     }
@@ -92,17 +186,20 @@ function TvReplayPlayer({ids}){
     return ()=>{
       destroyed = true
       if(intervalRef.current) clearInterval(intervalRef.current)
+      if(adCheckIntervalRef.current) clearInterval(adCheckIntervalRef.current)
       if(playerRef.current){
         try{
-          const t = playerRef.current.getCurrentTime()
-          const data = playerRef.current.getVideoData()
-          if(data && data.video_id) tvReplayMemory = { videoId: data.video_id, time: t }
+          if(phaseRef.current==='clip'){
+            const t = playerRef.current.getCurrentTime()
+            const data = playerRef.current.getVideoData()
+            if(data && data.video_id) tvReplayMemory = { videoId: data.video_id, time: t }
+          }
         }catch{}
         try{ playerRef.current.destroy() }catch{}
         playerRef.current = null
       }
     }
-  }, [ids.join(',')])
+  }, [clips.join(','), jingles.join(','), JSON.stringify(ads.map(a=>a.id+':'+(a.ad_times||[]).join(',')))])
 
   return <div ref={containerRef} style={{width:'100%',height:'100%'}} />
 }
@@ -236,7 +333,7 @@ const HeroCarousel = React.memo(function HeroCarousel({items, openArticle, T, al
 export default function App(){
   if(typeof window!=='undefined'&&window.location.pathname==='/admin') return <Admin />
   const [lang,setLang]=useState(()=>{ if(typeof window==='undefined') return 'fr'; return localStorage.getItem('rius_lang')||'fr' })
-  const [articles,setArticles]=useState([]); const [flashes,setFlashes]=useState([]); const [annonces,setAnnonces]=useState([]); const [pubs,setPubs]=useState([]); const [unes,setUnes]=useState([]); const [selectedUne,setSelectedUne]=useState(null); const [encadres,setEncadres]=useState([]); const [purchasedUnes,setPurchasedUnes]=useState(()=>{ if(typeof window==='undefined') return new Set(); try{ return new Set(JSON.parse(localStorage.getItem('rius_purchased_unes')||'[]')) }catch{ return new Set() } }); const [buyingUneId,setBuyingUneId]=useState(null); const [currentPub,setCurrentPub]=useState(0); const [actif,setActif]=useState('ACCUEIL'); const [meteo,setMeteo]=useState({temp:'32°C',icon:'☀'}); const [dateJour,setDateJour]=useState(''); const [heureTU,setHeureTU]=useState(''); const [deferredPrompt,setDeferredPrompt]=useState(null); const [selected,setSelected]=useState(null); const [newsletterEmail,setNewsletterEmail]=useState(''); const [contactForm,setContactForm]=useState({name:'',email:'',subject:'',message:''}); const [contactStatus,setContactStatus]=useState(''); const [translatedCache,setTranslatedCache]=useState({}); const [searchTerm,setSearchTerm]=useState(''); const [searchHistory,setSearchHistory]=useState(()=>{ if(typeof window==='undefined') return []; try{return JSON.parse(localStorage.getItem('rius_search_hist')||'[]')}catch{return []} }); const [currentAudio,setCurrentAudio]=useState(null); const audioRef=useRef(null); const [directMenuOpen,setDirectMenuOpen]=useState(false); const [directMenuPos,setDirectMenuPos]=useState({top:0,left:0}); const directBtnRef=useRef(null); const [youtubeLive,setYoutubeLive]=useState(null); const [radioPlaylist,setRadioPlaylist]=useState([]); const [videoPlaylist,setVideoPlaylist]=useState([]); const [radioTrackIndex,setRadioTrackIndex]=useState(0); const radioTrackIndexRef=useRef(0); const [radioIsPlaying,setRadioIsPlaying]=useState(false); const [shareMenuOpen,setShareMenuOpen]=useState(false); const urlOpenedRef=useRef(false); const T=UI[lang]||UI.fr
+  const [articles,setArticles]=useState([]); const [flashes,setFlashes]=useState([]); const [annonces,setAnnonces]=useState([]); const [pubs,setPubs]=useState([]); const [unes,setUnes]=useState([]); const [selectedUne,setSelectedUne]=useState(null); const [encadres,setEncadres]=useState([]); const [purchasedUnes,setPurchasedUnes]=useState(()=>{ if(typeof window==='undefined') return new Set(); try{ return new Set(JSON.parse(localStorage.getItem('rius_purchased_unes')||'[]')) }catch{ return new Set() } }); const [buyingUneId,setBuyingUneId]=useState(null); const [currentPub,setCurrentPub]=useState(0); const [actif,setActif]=useState('ACCUEIL'); const [meteo,setMeteo]=useState({temp:'32°C',icon:'☀'}); const [dateJour,setDateJour]=useState(''); const [heureTU,setHeureTU]=useState(''); const [deferredPrompt,setDeferredPrompt]=useState(null); const [selected,setSelected]=useState(null); const [newsletterEmail,setNewsletterEmail]=useState(''); const [contactForm,setContactForm]=useState({name:'',email:'',subject:'',message:''}); const [contactStatus,setContactStatus]=useState(''); const [translatedCache,setTranslatedCache]=useState({}); const [searchTerm,setSearchTerm]=useState(''); const [searchHistory,setSearchHistory]=useState(()=>{ if(typeof window==='undefined') return []; try{return JSON.parse(localStorage.getItem('rius_search_hist')||'[]')}catch{return []} }); const [currentAudio,setCurrentAudio]=useState(null); const audioRef=useRef(null); const [directMenuOpen,setDirectMenuOpen]=useState(false); const [directMenuPos,setDirectMenuPos]=useState({top:0,left:0}); const directBtnRef=useRef(null); const [youtubeLive,setYoutubeLive]=useState(null); const [radioPlaylist,setRadioPlaylist]=useState([]); const [videoPlaylist,setVideoPlaylist]=useState([]); const [tvWatermark,setTvWatermark]=useState(null); const [radioTrackIndex,setRadioTrackIndex]=useState(0); const radioTrackIndexRef=useRef(0); const [radioIsPlaying,setRadioIsPlaying]=useState(false); const [shareMenuOpen,setShareMenuOpen]=useState(false); const urlOpenedRef=useRef(false); const tvContainerRef=useRef(null); const T=UI[lang]||UI.fr
 
   useEffect(()=>{ const h=(e)=>{ e.preventDefault(); setDeferredPrompt(e) }; window.addEventListener('beforeinstallprompt',h); return()=>window.removeEventListener('beforeinstallprompt',h) },[])
   useEffect(()=>{ if(typeof window==='undefined') return; localStorage.setItem('rius_lang',lang); document.documentElement.dir=lang==='ar'?'rtl':'ltr'; document.documentElement.lang=lang; const locale=lang==='zh'?'zh-CN':lang==='ar'?'ar-EG':lang; const d=new Date().toLocaleDateString(locale,{weekday:'long',day:'numeric',month:'short',year:'numeric'}); setDateJour(d.charAt(0).toUpperCase()+d.slice(1)) },[lang])
@@ -252,6 +349,7 @@ export default function App(){
     fetch(`${supabaseUrl}/rest/v1/pubs?select=*&active=eq.true&order=created_at.desc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)&&d.length>0) setPubs(d) }).catch(()=>{}) 
     fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setRadioPlaylist(shuffleArray(d)) }).catch(()=>{})
     fetch(`${supabaseUrl}/rest/v1/video_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setVideoPlaylist(shuffleArray(d)) }).catch(()=>{})
+    fetch(`${supabaseUrl}/rest/v1/tv_watermark?select=*&id=eq.1`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)&&d[0]) setTvWatermark(d[0]) }).catch(()=>{})
   },[])
   const headerPubs = pubs.filter(p=>(p.slot||'header')==='header')
   useEffect(()=>{ if(headerPubs.length<=1) return; const id=setInterval(()=>setCurrentPub(p=>(p+1)%headerPubs.length),5000); return()=>clearInterval(id) },[headerPubs.length])
@@ -272,9 +370,11 @@ export default function App(){
   const audioCtxRef=useRef(null); const sourceNodeRef=useRef(null); const gainNodeRef=useRef(null); const bufferCacheRef=useRef({}); const pausedOffsetRef=useRef(0); const ctxStartTimeRef=useRef(0); const manualStopRef=useRef(false); const playTokenRef=useRef(0);
   const getAudioCtx=()=>{ if(!audioCtxRef.current){ const Ctx=window.AudioContext||window.webkitAudioContext; audioCtxRef.current=new Ctx(); gainNodeRef.current=audioCtxRef.current.createGain(); gainNodeRef.current.connect(audioCtxRef.current.destination) } return audioCtxRef.current }
   const decodeTrack=async(url)=>{ if(bufferCacheRef.current[url]) return bufferCacheRef.current[url]; const ctx=getAudioCtx(); const res=await fetch(url); const arr=await res.arrayBuffer(); const buffer=await ctx.decodeAudioData(arr); const data=buffer.getChannelData(0); const threshold=0.02; const step=200; let leadIn=0; for(let i=0;i<data.length;i+=step){ if(Math.abs(data[i])>threshold){ leadIn=i/buffer.sampleRate; break } } let contentEnd=buffer.duration; for(let i=data.length-1;i>=0;i-=step){ if(Math.abs(data[i])>threshold){ contentEnd=i/buffer.sampleRate; break } } const info={buffer, leadIn, contentEnd}; bufferCacheRef.current[url]=info; return info }
-  const radioMainTracks = radioPlaylist.filter(t=>!t.is_jingle)
+  const radioMainTracks = radioPlaylist.filter(t=>!t.is_jingle && !t.is_ad)
   const radioJingles = radioPlaylist.filter(t=>t.is_jingle)
+  const radioAds = radioPlaylist.filter(t=>t.is_ad && t.active)
   const radioPhaseRef = useRef('track')
+  const playedAdSlotsRef = useRef(new Set())
 
   const playSource = async (url, fromOffset, onEndedCb) => {
     const myToken=++playTokenRef.current; const ctx=getAudioCtx(); if(ctx.state==='suspended'){ try{ await ctx.resume() }catch{} }
@@ -307,6 +407,28 @@ export default function App(){
   useEffect(()=>{ if(actif!=='DIRECT-RADIO') pausePlayback() },[actif])
   const prevRadioTrack=()=>{ if(!radioMainTracks.length) return; const pi=radioTrackIndexRef.current>0? radioTrackIndexRef.current-1: radioMainTracks.length-1; radioTrackIndexRef.current=pi; pausedOffsetRef.current=0; setRadioTrackIndex(pi); startPlayback(pi,0) }
 
+  const maybeTriggerAd = () => {
+    if(actif!=='DIRECT-RADIO') return
+    if(radioPhaseRef.current==='ad' || radioPhaseRef.current==='jingle') return
+    if(!radioIsPlaying) return
+    if(!radioAds.length) return
+    const now = new Date()
+    const hh = String(now.getHours()).padStart(2,'0')
+    const mm = String(now.getMinutes()).padStart(2,'0')
+    const nowKey = `${hh}:${mm}`
+    const todayStr = now.toISOString().slice(0,10)
+    const dueAd = radioAds.find(ad => Array.isArray(ad.ad_times) && ad.ad_times.includes(nowKey))
+    if(!dueAd) return
+    const slotKey = `${todayStr}_${nowKey}_${dueAd.id}`
+    if(playedAdSlotsRef.current.has(slotKey)) return
+    playedAdSlotsRef.current.add(slotKey)
+    const elapsed = (audioCtxRef.current && sourceNodeRef.current) ? audioCtxRef.current.currentTime-ctxStartTimeRef.current : 0
+    const resumeOffset = pausedOffsetRef.current + elapsed
+    radioPhaseRef.current='ad'
+    playSource(dueAd.url, 0, ()=>{ radioPhaseRef.current='track'; startPlayback(radioTrackIndexRef.current, resumeOffset) })
+  }
+  useEffect(()=>{ if(actif!=='DIRECT-RADIO') return; const id=setInterval(maybeTriggerAd, 20000); maybeTriggerAd(); return()=>clearInterval(id) },[actif, radioPlaylist, radioIsPlaying])
+
   const translateText=async(text,target)=>{ if(!text||target==='fr') return text; try{ const q=encodeURIComponent(text.slice(0,450)); const res=await fetch(`https://api.mymemory.translated.net/get?q=${q}&langpair=fr|${target}`); const data=await res.json(); return data?.responseData?.translatedText||text }catch{return text} }
   const translateChunked=async(text,target)=>{ if(!text||target==='fr') return text; const words=text.split(' '); const chunks=[]; let current=''; for(const w of words){ if((current+' '+w).trim().length>420){ if(current.trim()) chunks.push(current.trim()); current=w } else { current=(current+' '+w).trim() } } if(current.trim()) chunks.push(current.trim()); const out=[]; for(const c of chunks){ out.push(await translateText(c,target)) } return out.join(' ') }
   const getTranslated=(art)=>{ if(!art) return art; if(lang==='fr') return art; if(art.translations&&art.translations[lang]&&art.translations[lang].title){ return {...art,title:art.translations[lang].title,content:art.translations[lang].content||art.content,blocks:art.translations[lang].blocks||art.blocks} } if(translatedCache[art.id]?.[lang]){ return {...art,...translatedCache[art.id][lang]} } return art }
@@ -314,6 +436,33 @@ export default function App(){
   useEffect(()=>{ if(lang!=='fr'&&articles.length){ articles.slice(0,8).forEach(a=>{ if(!a.translations?.[lang]) handleLiveTranslate(a) }) } },[lang,articles])
   const openArticle=(art)=>{ const td=getTranslated(art); setSelected(td); if(lang!=='fr'&&!art.translations?.[lang]) handleLiveTranslate(art); window.scrollTo(0,0); if(typeof window!=='undefined'){ try{ window.history.pushState(null,'','?a='+art.id) }catch{} } }
   const closeArticle=()=>{ setSelected(null); if(typeof window!=='undefined'){ try{ window.history.pushState(null,'',window.location.pathname) }catch{} } }
+  const [isTvFullscreen, setIsTvFullscreen] = useState(false)
+  const [tvControlsHover, setTvControlsHover] = useState(false)
+  const tvHoverTimeoutRef = useRef(null)
+  const handleTvMouseMove = () => {
+    setTvControlsHover(true)
+    if(tvHoverTimeoutRef.current) clearTimeout(tvHoverTimeoutRef.current)
+    tvHoverTimeoutRef.current = setTimeout(()=>setTvControlsHover(false), 2500)
+  }
+  useEffect(()=>{ return ()=>{ if(tvHoverTimeoutRef.current) clearTimeout(tvHoverTimeoutRef.current) } },[])
+  useEffect(()=>{
+    const handler = () => setIsTvFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement))
+    document.addEventListener('fullscreenchange', handler)
+    document.addEventListener('webkitfullscreenchange', handler)
+    return ()=>{ document.removeEventListener('fullscreenchange', handler); document.removeEventListener('webkitfullscreenchange', handler) }
+  },[])
+  const handleTvFullscreen = () => {
+    const isFs = document.fullscreenElement || document.webkitFullscreenElement
+    if(isFs){
+      const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen
+      if(exit) exit.call(document)
+      return
+    }
+    const el = tvContainerRef.current
+    if(!el) return
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen
+    if(req) req.call(el)
+  }
   useEffect(()=>{ if(urlOpenedRef.current||!articles.length||typeof window==='undefined') return; const params=new URLSearchParams(window.location.search); const aid=params.get('a'); if(aid){ const found=articles.find(a=>String(a.id)===aid); if(found){ urlOpenedRef.current=true; openArticle(found) } } },[articles])
   const handleAcheterUne = async (une) => {
     setBuyingUneId(une.id)
@@ -434,7 +583,7 @@ export default function App(){
         </div>
       
       ): actif==='DIRECT-TV'?(
-        <div style={{background:'#2e4fb0',color:'white',minHeight:'100vh',padding:20}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:14}}><h2 style={{color:'#ff3b3b',margin:0,display:'flex',alignItems:'center',gap:8}}><span className="dot-blink"></span> {T.liveTitle}</h2>{youtubeLive&&youtubeLive.videoId? <span style={{background:'#ff3b3b',color:'white',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:900}}>● EN DIRECT</span> : videoPlaylist.length>0 && <span style={{background:'rgba(255,255,255,0.15)',color:'white',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:800}}>Rediffusions</span>}<div style={{display:'flex',gap:8}}><a href={YOUTUBE_CHANNEL_URL} target="_blank" rel="noreferrer" style={{background:'#ff0000',color:'white',padding:'8px 14px',borderRadius:20,fontWeight:900,fontSize:11,textDecoration:'none'}}>▶ Voir sur YouTube</a><a href={`${YOUTUBE_CHANNEL_URL}?sub_confirmation=1`} target="_blank" rel="noreferrer" style={{background:'white',color:'black',padding:'8px 14px',borderRadius:20,fontWeight:900,fontSize:11,textDecoration:'none'}}>{T.abonner}</a></div></div><p style={{opacity:0.8,fontSize:12,marginTop:0}}>{T.liveDesc} - {YOUTUBE_CHANNEL_URL}</p><div className="direct-grid" style={{display:'flex',gap:14,marginTop:16}}><div style={{flex:2,background:'black',borderRadius:12,overflow:'hidden',border:'2px solid #ff3b3b',minHeight:400}}>{youtubeLive&&youtubeLive.videoId? <iframe width="100%" height="520" src={`https://www.youtube.com/embed/${youtubeLive.videoId}?autoplay=1`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe> : videoPlaylist.length>0? (()=>{ const ids=videoPlaylist.map(v=>getYoutubeIdRaw(v.url)).filter(Boolean); return ids.length? <div style={{width:'100%',height:520}}><TvReplayPlayer ids={ids} /></div> : null })() : <iframe width="100%" height="520" src={`https://www.youtube.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe>}</div><div style={{flex:1,background:'#111',borderRadius:12,border:'1px solid rgba(255,255,255,0.15)',overflow:'hidden',minHeight:400,display:'flex',flexDirection:'column'}}><div style={{padding:'10px 12px',background:'#1a1a1a',fontWeight:900,fontSize:11,borderBottom:'1px solid rgba(255,255,255,0.1)'}}>💬 {T.chat}</div><div style={{padding:20,fontSize:11,opacity:0.6,flex:1}}>Le chat YouTube s'affiche ici quand tu es en live.<br/><br/>Tes abonnés peuvent discuter en direct depuis YouTube.</div><div style={{padding:10,background:'#0f0f0f'}}><a href={`${YOUTUBE_CHANNEL_URL}/live`} target="_blank" rel="noreferrer" style={{background:'#ff0000',color:'white',padding:'8px 12px',borderRadius:8,fontSize:11,fontWeight:800,textDecoration:'none',display:'block',textAlign:'center'}}>Ouvrir le chat sur YouTube</a></div></div></div><div style={{marginTop:16,background:'rgba(255,255,255,0.06)',borderRadius:10,padding:14}}><h4 style={{margin:'0 0 8px 0',fontSize:12,color:'#ffcc00'}}>Dernières vidéos de la chaîne</h4><iframe width="100%" height="300" src={`https://www.youtube.com/embed?listType=user&list=${YOUTUBE_HANDLE}`} style={{border:0,borderRadius:8}} allowFullScreen loading="lazy" title="Playlist"></iframe></div></div>
+        <div style={{background:'#2e4fb0',color:'white',minHeight:'100vh',padding:20}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:14}}><h2 style={{color:'#ff3b3b',margin:0,display:'flex',alignItems:'center',gap:8}}><span className="dot-blink"></span> {T.liveTitle}</h2>{youtubeLive&&youtubeLive.videoId? <span style={{background:'#ff3b3b',color:'white',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:900}}>● EN DIRECT</span> : videoPlaylist.length>0 && <span style={{background:'rgba(255,255,255,0.15)',color:'white',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:800}}>Rediffusions</span>}<div style={{display:'flex',gap:8}}><a href={YOUTUBE_CHANNEL_URL} target="_blank" rel="noreferrer" style={{background:'#ff0000',color:'white',padding:'8px 14px',borderRadius:20,fontWeight:900,fontSize:11,textDecoration:'none'}}>▶ Voir sur YouTube</a><a href={`${YOUTUBE_CHANNEL_URL}?sub_confirmation=1`} target="_blank" rel="noreferrer" style={{background:'white',color:'black',padding:'8px 14px',borderRadius:20,fontWeight:900,fontSize:11,textDecoration:'none'}}>{T.abonner}</a></div></div><p style={{opacity:0.8,fontSize:12,marginTop:0}}>{T.liveDesc} - {YOUTUBE_CHANNEL_URL}</p><div className="direct-grid" style={{display:'flex',gap:14,marginTop:16}}><div ref={tvContainerRef} className="tv-fullscreen-container" onMouseMove={handleTvMouseMove} style={{flex:2,background:'black',borderRadius:12,overflow:'hidden',border:'2px solid #ff3b3b',minHeight:400,position:'relative'}}><TvWatermark settings={tvWatermark} /><button onClick={handleTvFullscreen} title={isTvFullscreen? "Quitter le plein ecran":"Plein ecran"} style={{position:'absolute',bottom:12,right:12,zIndex:6,background:'rgba(15,32,64,0.7)',color:'white',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,fontWeight:800,cursor:'pointer',opacity: tvControlsHover?1:0,pointerEvents: tvControlsHover?'auto':'none',transition:'opacity 0.2s'}}>{isTvFullscreen? '✕ Quitter le plein écran' : '⛶ Plein écran'}</button>{youtubeLive&&youtubeLive.videoId? <iframe width="100%" height="520" src={`https://www.youtube.com/embed/${youtubeLive.videoId}?autoplay=1&fs=0`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe> : videoPlaylist.length>0? (()=>{ const clips=videoPlaylist.filter(v=>!v.is_jingle&&!v.is_ad).map(v=>getYoutubeIdRaw(v.url)).filter(Boolean); const jingles=videoPlaylist.filter(v=>v.is_jingle).map(v=>getYoutubeIdRaw(v.url)).filter(Boolean); const ads=videoPlaylist.filter(v=>v.is_ad).map(v=>({id:v.id, ytId:getYoutubeIdRaw(v.url), ad_times:v.ad_times||[]})).filter(a=>a.ytId); return clips.length? <div className="tv-video-frame" style={{width:'100%',height:520}}><TvReplayPlayer clips={clips} jingles={jingles} ads={ads} /></div> : null })() : <iframe width="100%" height="520" src={`https://www.youtube.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&fs=0`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe>}</div><div style={{flex:1,background:'#111',borderRadius:12,border:'1px solid rgba(255,255,255,0.15)',overflow:'hidden',minHeight:400,display:'flex',flexDirection:'column'}}><div style={{padding:'10px 12px',background:'#1a1a1a',fontWeight:900,fontSize:11,borderBottom:'1px solid rgba(255,255,255,0.1)'}}>💬 {T.chat}</div><div style={{padding:20,fontSize:11,opacity:0.6,flex:1}}>Le chat YouTube s'affiche ici quand tu es en live.<br/><br/>Tes abonnés peuvent discuter en direct depuis YouTube.</div><div style={{padding:10,background:'#0f0f0f'}}><a href={`${YOUTUBE_CHANNEL_URL}/live`} target="_blank" rel="noreferrer" style={{background:'#ff0000',color:'white',padding:'8px 12px',borderRadius:8,fontSize:11,fontWeight:800,textDecoration:'none',display:'block',textAlign:'center'}}>Ouvrir le chat sur YouTube</a></div></div></div><div style={{marginTop:16,background:'rgba(255,255,255,0.06)',borderRadius:10,padding:14}}><h4 style={{margin:'0 0 8px 0',fontSize:12,color:'#ffcc00'}}>Dernières vidéos de la chaîne</h4><iframe width="100%" height="300" src={`https://www.youtube.com/embed?listType=user&list=${YOUTUBE_HANDLE}`} style={{border:0,borderRadius:8}} allowFullScreen loading="lazy" title="Playlist"></iframe></div></div>
       ): actif==='DIRECT-RADIO'?(
         <div style={{background:'#2e4fb0',color:'white',minHeight:'100vh',padding:20,display:'flex',flexDirection:'column',alignItems:'center'}}>
           <div style={{width:'100%',maxWidth:560}}>

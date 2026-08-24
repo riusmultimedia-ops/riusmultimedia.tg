@@ -107,8 +107,15 @@ export default function Admin() {
   const [newPubSlot, setNewPubSlot] = useState('header');
   const [newRadioTitle, setNewRadioTitle] = useState('');
   const [newRadioIsJingle, setNewRadioIsJingle] = useState(false);
+  const [newRadioIsAd, setNewRadioIsAd] = useState(false);
+  const [newRadioAdTimes, setNewRadioAdTimes] = useState([]);
+  const [adTimeInput, setAdTimeInput] = useState('');
   const [editingRadioId, setEditingRadioId] = useState(null);
   const [newVideoTitle, setNewVideoTitle] = useState('');
+  const [newVideoIsJingle, setNewVideoIsJingle] = useState(false);
+  const [newVideoIsAd, setNewVideoIsAd] = useState(false);
+  const [newVideoAdTimes, setNewVideoAdTimes] = useState([]);
+  const [videoAdTimeInput, setVideoAdTimeInput] = useState('');
   const [newVideoUrl, setNewVideoUrl] = useState('');
   const [editingVideoId, setEditingVideoId] = useState(null);
   const [newRadioAudio, setNewRadioAudio] = useState('');
@@ -124,6 +131,8 @@ export default function Admin() {
   const [newUserRole, setNewUserRole] = useState('journaliste');
   const [creatingUser, setCreatingUser] = useState(false);
   const [uploading, setUploading] = useState('');
+  const [tvWatermark, setTvWatermark] = useState(null);
+  const [savingWatermark, setSavingWatermark] = useState(false);
   const [search, setSearch] = useState('');
   const galleryInputRef = useRef(null);
   const blockFileRef = useRef({});
@@ -173,7 +182,7 @@ export default function Admin() {
         doRefresh(saved.refresh_token, saved.email)
       }
     }catch{}
-    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres();
+    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark();
   }, []);
 
   useEffect(() => {
@@ -225,6 +234,19 @@ export default function Admin() {
   const fetchEncadres = () => {
     fetch(`${supabaseUrl}/rest/v1/encadres?select=*&order=order_index.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setEncadres(data); }).catch(()=>{});
+  };
+  const fetchTvWatermark = () => {
+    fetch(`${supabaseUrl}/rest/v1/tv_watermark?select=*&id=eq.1`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)&&data[0]) setTvWatermark(data[0]); }).catch(()=>{});
+  };
+  const handleSaveWatermark = async () => {
+    if(!tvWatermark) return;
+    setSavingWatermark(true);
+    try{
+      const res = await fetch(`${supabaseUrl}/rest/v1/tv_watermark?id=eq.1`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ enabled:tvWatermark.enabled, position:tvWatermark.position, label:tvWatermark.label, logo_url:tvWatermark.logo_url||null, size_px:tvWatermark.size_px||70 }) });
+      if(res.ok) alert('Reglages de l\'incrustation enregistres!'); else alert(await res.text());
+    }catch(e){ alert('Erreur: '+e.message) }
+    finally{ setSavingWatermark(false) }
   };
 
   const addBlock = (type, afterId=null) => {
@@ -369,6 +391,25 @@ export default function Admin() {
       setNewUnePdfPath(fileName);
       return fileName;
     }catch(e){ alert('Erreur upload PDF: '+e.message); return null; }
+    finally{ setUploading(''); }
+  };
+
+  const uploadWatermarkLogo = async (file) => {
+    if(!file) return null;
+    // Pas de compression ici : compressImage convertit en JPEG et detruit la transparence des PNG (fond qui devient noir)
+    setUploading('watermark');
+    try{
+      const fileName = `WATERMARK_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/images/${fileName}`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
+        body: file
+      });
+      if(!res.ok) throw new Error(await res.text());
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/images/${fileName}`;
+      setTvWatermark(w=>({...w, logo_url: publicUrl}));
+      return publicUrl;
+    }catch(e){ alert('Erreur upload logo: '+e.message); return null; }
     finally{ setUploading(''); }
   };
 
@@ -733,35 +774,53 @@ export default function Admin() {
   const handleTogglePub = async (p) => { await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!p.active }) }); fetchPubs(); };
   const handleChangePubSlot = async (p, slot) => { await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ slot }) }); fetchPubs(); };
 
+  const addAdTime = () => {
+    if(!adTimeInput) return
+    if(newRadioAdTimes.includes(adTimeInput)) return
+    setNewRadioAdTimes([...newRadioAdTimes, adTimeInput].sort())
+    setAdTimeInput('')
+  }
+  const removeAdTime = (t) => setNewRadioAdTimes(newRadioAdTimes.filter(x=>x!==t))
+
   const handleAddRadioTrack = async () => {
     if(!newRadioAudio) return alert('Ajoute un fichier audio');
     if(!newRadioTitle.trim()) return alert('Mets un titre pour la piste');
-    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, active:true };
+    if(newRadioIsAd && newRadioAdTimes.length===0) return alert('Ajoute au moins une heure de diffusion pour cette pub');
+    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, is_ad:newRadioIsAd, ad_times:newRadioIsAd? newRadioAdTimes : [], active:true };
     const url = editingRadioId? `${supabaseUrl}/rest/v1/radio_playlist?id=eq.${editingRadioId}` : `${supabaseUrl}/rest/v1/radio_playlist`;
     const method = editingRadioId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setNewRadioIsJingle(false); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : 'Piste ajoutee a la radio!'); } else alert(await res.text());
+    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : 'Piste ajoutee a la radio!'); } else alert(await res.text());
   };
-  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); window.scrollTo(0,0); };
-  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setNewRadioIsJingle(false); };
+  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); window.scrollTo(0,0); };
+  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); };
   const handleDeleteRadioTrack = async (id) => { if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioPlaylist(); };
   const handleToggleRadioTrack = async (t) => { await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
   const getYtId = (url) => getYoutubeId(url);
+  const addVideoAdTime = () => {
+    if(!videoAdTimeInput) return
+    if(newVideoAdTimes.includes(videoAdTimeInput)) return
+    setNewVideoAdTimes([...newVideoAdTimes, videoAdTimeInput].sort())
+    setVideoAdTimeInput('')
+  }
+  const removeVideoAdTime = (t) => setNewVideoAdTimes(newVideoAdTimes.filter(x=>x!==t))
+
   const handleAddVideoTrack = async () => {
     if(!newVideoUrl.trim()) return alert('Colle un lien YouTube');
     const id = getYtId(newVideoUrl.trim());
     if(!id) return alert('Lien YouTube invalide');
     if(!newVideoTitle.trim()) return alert('Mets un titre pour la video');
+    if(newVideoIsAd && newVideoAdTimes.length===0) return alert('Ajoute au moins une heure de diffusion pour cette pub');
     const thumb = getYoutubeThumb(newVideoUrl.trim());
-    const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, active:true };
+    const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, is_jingle:newVideoIsJingle, is_ad:newVideoIsAd, ad_times:newVideoIsAd? newVideoAdTimes : [], active:true };
     const url = editingVideoId? `${supabaseUrl}/rest/v1/video_playlist?id=eq.${editingVideoId}` : `${supabaseUrl}/rest/v1/video_playlist`;
     const method = editingVideoId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewVideoTitle(''); setNewVideoUrl(''); setEditingVideoId(null); fetchVideoPlaylist(); alert(editingVideoId? 'Video modifiee!' : 'Video ajoutee a la playlist TV!'); } else alert(await res.text());
+    if(res.ok){ setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setEditingVideoId(null); fetchVideoPlaylist(); alert(editingVideoId? 'Video modifiee!' : 'Video ajoutee a la playlist TV!'); } else alert(await res.text());
   };
-  const handleEditVideoTrack = (v) => { setEditingVideoId(v.id); setNewVideoTitle(v.title||''); setNewVideoUrl(v.url||''); window.scrollTo(0,0); };
-  const handleCancelVideoEdit = () => { setEditingVideoId(null); setNewVideoTitle(''); setNewVideoUrl(''); };
+  const handleEditVideoTrack = (v) => { setEditingVideoId(v.id); setNewVideoTitle(v.title||''); setNewVideoUrl(v.url||''); setNewVideoIsJingle(!!v.is_jingle); setNewVideoIsAd(!!v.is_ad); setNewVideoAdTimes(v.ad_times||[]); window.scrollTo(0,0); };
+  const handleCancelVideoEdit = () => { setEditingVideoId(null); setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); };
   const handleDeleteVideoTrack = async (id) => { if(!confirm('Supprimer cette video?')) return; await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchVideoPlaylist(); };
   const handleToggleVideoTrack = async (v) => { await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!v.active }) }); fetchVideoPlaylist(); };
 
@@ -949,6 +1008,28 @@ export default function Admin() {
                 <input type="checkbox" checked={newRadioIsJingle} onChange={e=>setNewRadioIsJingle(e.target.checked)} />
                 C'est un jingle (s'intercale automatiquement entre les pistes, pas dans la numerotation)
               </label>
+              <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,color:'#d97706',marginBottom:10,cursor:'pointer'}}>
+                <input type="checkbox" checked={newRadioIsAd} onChange={e=>setNewRadioIsAd(e.target.checked)} />
+                C'est une pub (diffusee a des heures precises que tu choisis)
+              </label>
+              {newRadioIsAd && (
+                <div style={{border:'1px solid #fde68a', background:'#fffbeb', borderRadius:8, padding:10, marginBottom:12}}>
+                  <label style={{fontSize:10,fontWeight:800,color:'#d97706'}}>HEURES DE DIFFUSION (ex: 07:50, 11:30, 18:55)</label>
+                  <div style={{display:'flex',gap:6,marginTop:4}}>
+                    <input type="time" value={adTimeInput} onChange={e=>setAdTimeInput(e.target.value)} style={{flex:1,padding:8,borderRadius:6,border:'1px solid #fde68a'}} />
+                    <button type="button" onClick={addAdTime} style={{background:'#d97706',color:'white',border:0,borderRadius:6,padding:'0 14px',fontWeight:800,fontSize:11,cursor:'pointer'}}>+ Ajouter</button>
+                  </div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:8}}>
+                    {newRadioAdTimes.map(t=>(
+                      <span key={t} style={{background:'#fde68a',color:'#92400e',padding:'4px 8px',borderRadius:20,fontSize:11,fontWeight:800,display:'flex',alignItems:'center',gap:6}}>
+                        {t}
+                        <button type="button" onClick={()=>removeAdTime(t)} style={{background:'none',border:0,color:'#92400e',cursor:'pointer',fontWeight:900}}>×</button>
+                      </span>
+                    ))}
+                    {newRadioAdTimes.length===0 && <span style={{fontSize:11,color:'#92400e',opacity:0.7}}>Aucune heure ajoutee</span>}
+                  </div>
+                </div>
+              )}
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>FICHIER AUDIO (MP3) *</label>
               <input type="file" accept="audio/*" onChange={e=>uploadRadioAudio(e.target.files[0])} style={{width:'100%',fontSize:12,marginTop:4}} />
               {uploading==='radio-audio' && <div style={{fontSize:11,color:'#16a34a',marginTop:6}}>Upload audio...</div>}
@@ -964,7 +1045,8 @@ export default function Admin() {
               <div key={t.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
                 <img src={t.image||'/logo.png'} style={{width:40,height:40,objectFit:'cover',borderRadius:6}} alt="" />
                 <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{t.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : `${i+1}.`} {t.title}</div>
+                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{t.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : t.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {t.title}</div>
+                  {t.is_ad && <div style={{fontSize:10,color:'#92400e',marginTop:2}}>Diffusion : {(t.ad_times||[]).join(', ')||'aucune heure'}</div>}
                 </div>
                 <button onClick={()=>handleEditRadioTrack(t)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleRadioTrack(t)} style={{background: t.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{t.active?'ON':'OFF'}</button>
@@ -977,12 +1059,69 @@ export default function Admin() {
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #dc2626'}}>
             <h3 style={{marginTop:0, color:'#dc2626'}}>TV - Videos de secours</h3>
             <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Ces videos jouent en boucle sur la page DIRECT &gt; TV quand tu n'es pas en direct sur YouTube. Colle simplement des liens YouTube.</div>
+
+            {tvWatermark && (
+              <div style={{border:'2px solid #0f2040', borderRadius:12, padding:14, background:'#f8fafc', marginBottom:16}}>
+                <div style={{fontSize:12,fontWeight:900,color:'#0f2040',marginBottom:10}}>INCRUSTATION LOGO / NOM (direct + rediffusions)</div>
+                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,marginBottom:10,cursor:'pointer'}}>
+                  <input type="checkbox" checked={tvWatermark.enabled} onChange={e=>setTvWatermark({...tvWatermark, enabled:e.target.checked})} />
+                  Afficher l'incrustation
+                </label>
+                <label style={{fontSize:10,fontWeight:800}}>LOGO (optionnel, sinon logo du site)</label>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginTop:4,marginBottom:10}}>
+                  {tvWatermark.logo_url && <img src={tvWatermark.logo_url} style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',border:'1px solid #c7d2fe'}} alt="" />}
+                  <input type="file" accept="image/*" onChange={e=>uploadWatermarkLogo(e.target.files[0])} style={{flex:1,fontSize:11}} />
+                  {tvWatermark.logo_url && <button type="button" onClick={()=>setTvWatermark({...tvWatermark, logo_url:null})} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:10,cursor:'pointer'}}>Retirer</button>}
+                </div>
+                {uploading==='watermark' && <div style={{fontSize:11,color:'#0f2040',marginBottom:8}}>Upload logo...</div>}
+                <label style={{fontSize:10,fontWeight:800}}>TEXTE AFFICHE (optionnel)</label>
+                <div style={{fontSize:10,color:'#64748b',marginTop:2,marginBottom:4}}>Laisse vide si ton logo contient deja le nom \u2014 seul le logo s'affichera alors.</div>
+                <input value={tvWatermark.label||''} onChange={e=>setTvWatermark({...tvWatermark, label:e.target.value})} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #c7d2fe'}} />
+                <label style={{fontSize:10,fontWeight:800}}>POSITION</label>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginTop:6,marginBottom:12,maxWidth:260}}>
+                  {[['top-left','Haut - Gauche'],['top-right','Haut - Droite'],['bottom-left','Bas - Gauche'],['bottom-right','Bas - Droite']].map(([val,label])=>(
+                    <button key={val} type="button" onClick={()=>setTvWatermark({...tvWatermark, position:val})} style={{padding:'8px 6px',borderRadius:8,border: tvWatermark.position===val? '2px solid #0f2040':'1px solid #c7d2fe',background: tvWatermark.position===val? '#0f2040':'white',color: tvWatermark.position===val? 'white':'#0f2040',fontWeight:800,fontSize:11,cursor:'pointer'}}>{label}</button>
+                  ))}
+                </div>
+                <label style={{fontSize:10,fontWeight:800}}>TAILLE DU LOGO ({tvWatermark.size_px||70}px de haut)</label>
+                <input type="range" min="30" max="180" step="5" value={tvWatermark.size_px||70} onChange={e=>setTvWatermark({...tvWatermark, size_px:parseInt(e.target.value,10)})} style={{width:'100%',marginTop:6,marginBottom:4,maxWidth:280}} />
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:'#94a3b8',maxWidth:280,marginBottom:12}}><span>Petit</span><span>Grand</span></div>
+                <button onClick={handleSaveWatermark} disabled={savingWatermark} style={{padding:'10px 18px',background: savingWatermark?'#94a3b8':'#0f2040',color:'white',fontWeight:900,borderRadius:8,border:0,cursor:savingWatermark?'default':'pointer',fontSize:12}}>{savingWatermark?'Enregistrement...':'Enregistrer les reglages'}</button>
+              </div>
+            )}
+
             <div style={{border:'2px dashed #fca5a5', padding:12, borderRadius:12, background:'#fef2f2', marginBottom:12}}>
               <label style={{fontSize:10,fontWeight:800,color:'#dc2626'}}>TITRE DE LA VIDEO *</label>
               <input placeholder="Ex: Reportage Marche de Lome" value={newVideoTitle} onChange={e=>setNewVideoTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
               <label style={{fontSize:10,fontWeight:800,color:'#dc2626'}}>LIEN YOUTUBE *</label>
               <input placeholder="https://www.youtube.com/watch?v=..." value={newVideoUrl} onChange={e=>setNewVideoUrl(e.target.value)} style={{width:'100%',padding:10,marginTop:4,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
               {newVideoUrl && getYtId(newVideoUrl) && <img src={getYoutubeThumb(newVideoUrl)} style={{width:'100%',maxHeight:160,objectFit:'cover',borderRadius:8,marginTop:8}} alt="" />}
+              <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,color:'#0f2040',marginTop:12,marginBottom:10,cursor:'pointer'}}>
+                <input type="checkbox" checked={newVideoIsJingle} onChange={e=>setNewVideoIsJingle(e.target.checked)} />
+                C'est un jingle video (s'intercale toutes les 3 a 5 videos)
+              </label>
+              <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,color:'#d97706',marginBottom:10,cursor:'pointer'}}>
+                <input type="checkbox" checked={newVideoIsAd} onChange={e=>setNewVideoIsAd(e.target.checked)} />
+                C'est une pub video (diffusee a des heures precises que tu choisis)
+              </label>
+              {newVideoIsAd && (
+                <div style={{border:'1px solid #fde68a', background:'#fffbeb', borderRadius:8, padding:10, marginBottom:12}}>
+                  <label style={{fontSize:10,fontWeight:800,color:'#d97706'}}>HEURES DE DIFFUSION (ex: 07:50, 11:30, 18:55)</label>
+                  <div style={{display:'flex',gap:6,marginTop:4}}>
+                    <input type="time" value={videoAdTimeInput} onChange={e=>setVideoAdTimeInput(e.target.value)} style={{flex:1,padding:8,borderRadius:6,border:'1px solid #fde68a'}} />
+                    <button type="button" onClick={addVideoAdTime} style={{background:'#d97706',color:'white',border:0,borderRadius:6,padding:'0 14px',fontWeight:800,fontSize:11,cursor:'pointer'}}>+ Ajouter</button>
+                  </div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:8}}>
+                    {newVideoAdTimes.map(t=>(
+                      <span key={t} style={{background:'#fde68a',color:'#92400e',padding:'4px 8px',borderRadius:20,fontSize:11,fontWeight:800,display:'flex',alignItems:'center',gap:6}}>
+                        {t}
+                        <button type="button" onClick={()=>removeVideoAdTime(t)} style={{background:'none',border:0,color:'#92400e',cursor:'pointer',fontWeight:900}}>×</button>
+                      </span>
+                    ))}
+                    {newVideoAdTimes.length===0 && <span style={{fontSize:11,color:'#92400e',opacity:0.7}}>Aucune heure ajoutee</span>}
+                  </div>
+                </div>
+              )}
               <button onClick={handleAddVideoTrack} style={{width:'100%',marginTop:10,padding:10,background:'#dc2626',color:'white',fontWeight:800,borderRadius:8,border:0}}>{editingVideoId? 'Modifier la video' : 'Ajouter a la playlist TV'}</button>
               {editingVideoId && <button onClick={handleCancelVideoEdit} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#dc2626',fontWeight:700,borderRadius:8,border:'1px solid #dc2626'}}>Annuler la modification</button>}
             </div>
@@ -990,7 +1129,8 @@ export default function Admin() {
               <div key={v.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap'}}>
                 <img src={v.image} style={{width:60,height:36,objectFit:'cover',borderRadius:6}} alt="" />
                 <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{i+1}. {v.title}</div>
+                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{v.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : v.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {v.title}</div>
+                  {v.is_ad && <div style={{fontSize:10,color:'#92400e',marginTop:2}}>Diffusion : {(v.ad_times||[]).join(', ')||'aucune heure'}</div>}
                 </div>
                 <button onClick={()=>handleEditVideoTrack(v)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleVideoTrack(v)} style={{background: v.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{v.active?'ON':'OFF'}</button>
