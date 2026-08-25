@@ -56,6 +56,8 @@ export default function Admin() {
     flash: ['journaliste','director'],
     radio: ['technicien','chef_programme','director'],
     videotv: ['technicien','chef_programme','director'],
+    grille: ['technicien','chef_programme','director'],
+    emissions: ['technicien','chef_programme','director'],
     annonces: ['chef_programme','director'],
     pubs: ['chef_programme','director'],
     kiosque: ['chef_programme','director'],
@@ -65,7 +67,7 @@ export default function Admin() {
   const canAccess = (tab) => !!myRole && (TAB_ACCESS[tab]||[]).includes(myRole);
 
   const landOnDefaultTab = (role) => {
-    setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false); setShowRadio(false); setShowVideoTV(false);
+    resetTabs();
     if(role==='technicien') setShowRadio(true);
     else if(role==='chef_programme') setShowAnnonces(true);
     // journaliste et director atterrissent sur l'editeur d'article par defaut
@@ -84,6 +86,10 @@ export default function Admin() {
   const [showVideoTV, setShowVideoTV] = useState(false);
   const [showKiosque, setShowKiosque] = useState(false);
   const [showEncadres, setShowEncadres] = useState(false);
+  const [showGrille, setShowGrille] = useState(false);
+  const [showEmissions, setShowEmissions] = useState(false);
+  const resetTabs = () => { setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false); setShowGrille(false); setShowEmissions(false); };
+  const allTabsHidden = !showArticles && !showUsers && !showFlash && !showAnnonces && !showPubs && !showKiosque && !showRadio && !showVideoTV && !showEncadres && !showGrille && !showEmissions;
   const [users, setUsers] = useState([]);
   const accessTokenRef = useRef(null);
   const refreshTimerRef = useRef(null);
@@ -133,6 +139,22 @@ export default function Admin() {
   const [uploading, setUploading] = useState('');
   const [tvWatermark, setTvWatermark] = useState(null);
   const [savingWatermark, setSavingWatermark] = useState(false);
+  const [programmeGrid, setProgrammeGrid] = useState([]);
+  const [newProgTitle, setNewProgTitle] = useState('');
+  const [newProgDesc, setNewProgDesc] = useState('');
+  const [newProgDays, setNewProgDays] = useState([]);
+  const [newProgTime, setNewProgTime] = useState('');
+  const [newProgType, setNewProgType] = useState('radio');
+  const [editingProgId, setEditingProgId] = useState(null);
+  const [emissions, setEmissions] = useState([]);
+  const [newEmTitle, setNewEmTitle] = useState('');
+  const [newEmDesc, setNewEmDesc] = useState('');
+  const [newEmCategory, setNewEmCategory] = useState('radio');
+  const [newEmMediaType, setNewEmMediaType] = useState('audio');
+  const [newEmMediaUrl, setNewEmMediaUrl] = useState('');
+  const [newEmImage, setNewEmImage] = useState('');
+  const [newEmDate, setNewEmDate] = useState(new Date().toISOString().split('T')[0]);
+  const [editingEmId, setEditingEmId] = useState(null);
   const [search, setSearch] = useState('');
   const galleryInputRef = useRef(null);
   const blockFileRef = useRef({});
@@ -182,7 +204,7 @@ export default function Admin() {
         doRefresh(saved.refresh_token, saved.email)
       }
     }catch{}
-    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark();
+    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions();
   }, []);
 
   useEffect(() => {
@@ -248,6 +270,72 @@ export default function Admin() {
     }catch(e){ alert('Erreur: '+e.message) }
     finally{ setSavingWatermark(false) }
   };
+
+  const fetchProgrammeGrid = () => {
+    fetch(`${supabaseUrl}/rest/v1/programme_grid?select=*&order=time.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setProgrammeGrid(data); }).catch(()=>{});
+  };
+  const toggleProgDay = (d) => setNewProgDays(prev=> prev.includes(d)? prev.filter(x=>x!==d) : [...prev, d]);
+  const resetProgForm = () => { setNewProgTitle(''); setNewProgDesc(''); setNewProgDays([]); setNewProgTime(''); setNewProgType('radio'); setEditingProgId(null); };
+  const handleAddProg = async () => {
+    if(!newProgTitle.trim()) return alert('Mets un titre');
+    if(!newProgTime) return alert('Choisis une heure');
+    if(newProgDays.length===0) return alert('Choisis au moins un jour');
+    const payload = { title:newProgTitle.trim(), description:newProgDesc.trim()||null, days:newProgDays, time:newProgTime, type:newProgType, active:true };
+    const url = editingProgId? `${supabaseUrl}/rest/v1/programme_grid?id=eq.${editingProgId}` : `${supabaseUrl}/rest/v1/programme_grid`;
+    const method = editingProgId? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    if(res.ok){ resetProgForm(); fetchProgrammeGrid(); alert(editingProgId? 'Programme modifie!' : 'Programme ajoute!'); } else alert(await res.text());
+  };
+  const handleEditProg = (p) => { setEditingProgId(p.id); setNewProgTitle(p.title||''); setNewProgDesc(p.description||''); setNewProgDays(p.days||[]); setNewProgTime(p.time||''); setNewProgType(p.type||'radio'); window.scrollTo(0,0); };
+  const handleDeleteProg = async (id) => { if(!confirm('Supprimer ce programme?')) return; await fetch(`${supabaseUrl}/rest/v1/programme_grid?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchProgrammeGrid(); };
+  const handleToggleProg = async (p) => { await fetch(`${supabaseUrl}/rest/v1/programme_grid?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!p.active }) }); fetchProgrammeGrid(); };
+
+  const fetchEmissions = () => {
+    fetch(`${supabaseUrl}/rest/v1/emissions?select=*&order=date_diffusion.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setEmissions(data); }).catch(()=>{});
+  };
+  const uploadEmissionAudio = async (file) => {
+    if(!file) return null;
+    setUploading('emission-audio');
+    try{
+      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert':'true', 'Content-Type':file.type }, body:file });
+      if(!res.ok) throw new Error(await res.text());
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/radio/${fileName}`;
+      setNewEmMediaUrl(publicUrl);
+      return publicUrl;
+    }catch(e){ alert('Erreur upload audio: '+e.message); return null; }
+    finally{ setUploading(''); }
+  };
+  const uploadEmissionImage = async (file) => {
+    if(!file) return null;
+    let f=file;
+    if(file.type.startsWith('image/')){ f = await compressImage(file, 700, 0.7); }
+    setUploading('emission-image');
+    try{
+      const fileName = `EMISSION_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/images/${fileName}`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert':'true', 'Content-Type':f.type }, body:f });
+      if(!res.ok) throw new Error(await res.text());
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/images/${fileName}`;
+      setNewEmImage(publicUrl);
+      return publicUrl;
+    }catch(e){ alert('Erreur upload image: '+e.message); return null; }
+    finally{ setUploading(''); }
+  };
+  const resetEmForm = () => { setNewEmTitle(''); setNewEmDesc(''); setNewEmCategory('radio'); setNewEmMediaType('audio'); setNewEmMediaUrl(''); setNewEmImage(''); setNewEmDate(new Date().toISOString().split('T')[0]); setEditingEmId(null); };
+  const handleAddEmission = async () => {
+    if(!newEmTitle.trim()) return alert('Mets un titre');
+    if(!newEmMediaUrl.trim()) return alert(newEmMediaType==='audio'? 'Ajoute un fichier audio' : 'Colle un lien YouTube');
+    const payload = { title:newEmTitle.trim(), description:newEmDesc.trim()||null, category:newEmCategory, media_type:newEmMediaType, media_url:newEmMediaUrl.trim(), image:newEmImage||null, date_diffusion:newEmDate, active:true };
+    const url = editingEmId? `${supabaseUrl}/rest/v1/emissions?id=eq.${editingEmId}` : `${supabaseUrl}/rest/v1/emissions`;
+    const method = editingEmId? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    if(res.ok){ resetEmForm(); fetchEmissions(); alert(editingEmId? 'Emission modifiee!' : 'Emission ajoutee!'); } else alert(await res.text());
+  };
+  const handleEditEmission = (e) => { setEditingEmId(e.id); setNewEmTitle(e.title||''); setNewEmDesc(e.description||''); setNewEmCategory(e.category||'radio'); setNewEmMediaType(e.media_type||'audio'); setNewEmMediaUrl(e.media_url||''); setNewEmImage(e.image||''); setNewEmDate(e.date_diffusion||new Date().toISOString().split('T')[0]); window.scrollTo(0,0); };
+  const handleDeleteEmission = async (id) => { if(!confirm('Supprimer cette emission?')) return; await fetch(`${supabaseUrl}/rest/v1/emissions?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchEmissions(); };
+  const handleToggleEmission = async (e) => { await fetch(`${supabaseUrl}/rest/v1/emissions?id=eq.${e.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!e.active }) }); fetchEmissions(); };
 
   const addBlock = (type, afterId=null) => {
     const newBlock = { id:uid(), type, content:'', url:'', caption:'', title:'', position:'center' }
@@ -587,7 +675,7 @@ export default function Admin() {
       setIsLogged(true)
       fetchMyRole(session.uid)
       setPass('')
-      setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false)
+      resetTabs();
     }catch(e){ alert('Erreur de connexion: '+e.message) }
   };
 
@@ -601,7 +689,7 @@ export default function Admin() {
     setBlocks([{id:uid(), type:'text', content:''}])
     setGallery([]);
     setYoutubeInput(''); setYoutubeCaption('');
-    setShowUsers(false); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false);
+    resetTabs();
   };
 
   const handleChangeMyPass = async () => {
@@ -853,7 +941,7 @@ export default function Admin() {
       setBlocks(b)
     }
     setGallery(art.gallery||[]);
-    setEditLang('fr'); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowEncadres(false); window.scrollTo(0,0); 
+    setEditLang('fr'); resetTabs(); window.scrollTo(0,0); 
   };
   const handleDelete = async (id) => { if(!confirm('Supprimer definitivement cet article?')) return; const res = await fetch(`${supabaseUrl}/rest/v1/articles?id=eq.${id}`, { method: 'DELETE', headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); if(res.ok) fetchArticles(); };
   const filtered = articles.filter(a => a.title.toLowerCase().includes(search.toLowerCase()));
@@ -897,16 +985,18 @@ export default function Admin() {
 
       <div style={{maxWidth:900, margin:'20px auto', padding:'0 12px'}}>
         <div style={{display:'flex', gap:6, marginBottom:16, overflowX:'auto', flexWrap:'wrap'}}>
-          {canAccess('articles') && <button onClick={()=>{setShowArticles(!showArticles); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>}
-          {canAccess('flash') && <button onClick={()=>{setShowFlash(!showFlash); setShowArticles(false); setShowUsers(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>}
-          {canAccess('annonces') && <button onClick={()=>{setShowAnnonces(!showAnnonces); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>}
-          {canAccess('pubs') && <button onClick={()=>{setShowPubs(!showPubs); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>}
-          {canAccess('radio') && <button onClick={()=>{setShowRadio(!showRadio); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>}
-          {canAccess('videotv') && <button onClick={()=>{setShowVideoTV(!showVideoTV); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fecaca', background: showVideoTV? '#dc2626':'white', color: showVideoTV? 'white':'#dc2626', fontWeight:800}}>Videos TV ({videoPlaylist.length})</button>}
-          {canAccess('kiosque') && <button onClick={()=>{setShowKiosque(!showKiosque); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>}
-          {canAccess('encadres') && <button onClick={()=>{setShowEncadres(!showEncadres); setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #a855f7', background: showEncadres? '#a855f7':'white', color: showEncadres? 'white':'#a855f7', fontWeight:900}}>ESPACE BUSINESS ({encadres.length})</button>}
-          {canAccess('users') && (<button onClick={()=>{setShowUsers(!showUsers); setShowArticles(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
-          {canAccess('articles') && <button onClick={()=>{setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background:!showArticles &&!showUsers &&!showFlash &&!showAnnonces &&!showPubs &&!showKiosque &&!showRadio &&!showVideoTV &&!showEncadres? '#ffcc00':'white', color:'#0f2040', fontWeight:900}}>Nouveau</button>}
+          {canAccess('articles') && <button onClick={()=>{const v=!showArticles; resetTabs(); setShowArticles(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>}
+          {canAccess('flash') && <button onClick={()=>{const v=!showFlash; resetTabs(); setShowFlash(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>}
+          {canAccess('annonces') && <button onClick={()=>{const v=!showAnnonces; resetTabs(); setShowAnnonces(v);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>}
+          {canAccess('pubs') && <button onClick={()=>{const v=!showPubs; resetTabs(); setShowPubs(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>}
+          {canAccess('radio') && <button onClick={()=>{const v=!showRadio; resetTabs(); setShowRadio(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>}
+          {canAccess('videotv') && <button onClick={()=>{const v=!showVideoTV; resetTabs(); setShowVideoTV(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fecaca', background: showVideoTV? '#dc2626':'white', color: showVideoTV? 'white':'#dc2626', fontWeight:800}}>Videos TV ({videoPlaylist.length})</button>}
+          {canAccess('grille') && <button onClick={()=>{const v=!showGrille; resetTabs(); setShowGrille(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #93c5fd', background: showGrille? '#1d4ed8':'white', color: showGrille? 'white':'#1d4ed8', fontWeight:800}}>Grille ({programmeGrid.length})</button>}
+          {canAccess('emissions') && <button onClick={()=>{const v=!showEmissions; resetTabs(); setShowEmissions(v);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #99f6e4', background: showEmissions? '#0d9488':'white', color: showEmissions? 'white':'#0d9488', fontWeight:800}}>Emissions ({emissions.length})</button>}
+          {canAccess('kiosque') && <button onClick={()=>{const v=!showKiosque; resetTabs(); setShowKiosque(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>}
+          {canAccess('encadres') && <button onClick={()=>{const v=!showEncadres; resetTabs(); setShowEncadres(v);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #a855f7', background: showEncadres? '#a855f7':'white', color: showEncadres? 'white':'#a855f7', fontWeight:900}}>ESPACE BUSINESS ({encadres.length})</button>}
+          {canAccess('users') && (<button onClick={()=>{const v=!showUsers; resetTabs(); setShowUsers(v);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
+          {canAccess('articles') && <button onClick={resetTabs} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: allTabsHidden? '#ffcc00':'white', color:'#0f2040', fontWeight:900}}>Nouveau</button>}
         </div>
 
         {showUsers? (
@@ -1138,6 +1228,107 @@ export default function Admin() {
               </div>
             ))}
             {videoPlaylist.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucune video pour l'instant. Ajoute ta premiere video ci-dessus.</div>}
+          </div>
+        ) : showGrille? (
+          <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #1d4ed8'}}>
+            <h3 style={{marginTop:0, color:'#1d4ed8'}}>Grille des programmes</h3>
+            <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Dis a tes auditeurs/spectateurs ce qui passe et a quelle heure. N'est pas liee aux fichiers audio/video eux-memes.</div>
+            <div style={{border:'2px dashed #93c5fd', padding:12, borderRadius:12, background:'#eff6ff', marginBottom:12}}>
+              <label style={{fontSize:10,fontWeight:800,color:'#1d4ed8'}}>TITRE *</label>
+              <input placeholder="Ex: Debat Politique" value={newProgTitle} onChange={e=>setNewProgTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #bfdbfe',fontSize:12}} />
+              <label style={{fontSize:10,fontWeight:800,color:'#1d4ed8'}}>DESCRIPTION (optionnel)</label>
+              <input placeholder="Ex: Debat en direct avec des invites" value={newProgDesc} onChange={e=>setNewProgDesc(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #bfdbfe',fontSize:12}} />
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                <div><label style={{fontSize:10,fontWeight:800,color:'#1d4ed8'}}>HEURE *</label><input type="time" value={newProgTime} onChange={e=>setNewProgTime(e.target.value)} style={{width:'100%',padding:10,marginTop:4,borderRadius:8,border:'1px solid #bfdbfe'}} /></div>
+                <div><label style={{fontSize:10,fontWeight:800,color:'#1d4ed8'}}>TYPE</label>
+                  <select value={newProgType} onChange={e=>setNewProgType(e.target.value)} style={{width:'100%',padding:10,marginTop:4,borderRadius:8,border:'1px solid #bfdbfe',fontWeight:700}}>
+                    <option value="radio">📻 Radio</option>
+                    <option value="tv">📺 TV</option>
+                  </select>
+                </div>
+              </div>
+              <label style={{fontSize:10,fontWeight:800,color:'#1d4ed8'}}>JOURS *</label>
+              <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6,marginBottom:12}}>
+                {[['lun','Lun'],['mar','Mar'],['mer','Mer'],['jeu','Jeu'],['ven','Ven'],['sam','Sam'],['dim','Dim'],['tous','Tous les jours']].map(([val,label])=>(
+                  <button key={val} type="button" onClick={()=>toggleProgDay(val)} style={{padding:'6px 10px',borderRadius:20,border: newProgDays.includes(val)? '2px solid #1d4ed8':'1px solid #bfdbfe',background: newProgDays.includes(val)? '#1d4ed8':'white',color: newProgDays.includes(val)? 'white':'#1d4ed8',fontWeight:800,fontSize:11,cursor:'pointer'}}>{label}</button>
+                ))}
+              </div>
+              <button onClick={handleAddProg} style={{width:'100%',padding:12,background:'#1d4ed8',color:'white',fontWeight:900,borderRadius:10,border:0, cursor:'pointer', fontSize:13}}>{editingProgId? 'METTRE A JOUR' : 'AJOUTER AU PROGRAMME'}</button>
+              {editingProgId && <button onClick={resetProgForm} style={{width:'100%',marginTop:8,padding:10,background:'transparent',color:'#1d4ed8',fontWeight:700,borderRadius:10,border:'1px solid #1d4ed8',cursor:'pointer'}}>Annuler la modification</button>}
+            </div>
+            {programmeGrid.map(p=>(
+              <div key={p.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap', opacity:p.active?1:0.6}}>
+                <span style={{background: p.type==='tv'?'#fee2e2':'#dcfce7', color: p.type==='tv'?'#dc2626':'#16a34a', fontSize:9, fontWeight:900, padding:'3px 8px', borderRadius:10}}>{p.type==='tv'?'📺 TV':'📻 RADIO'}</span>
+                <div style={{flex:1, minWidth:140}}>
+                  <div style={{fontSize:12,fontWeight:700}}>{p.time} - {p.title}</div>
+                  <div style={{fontSize:10,color:'#64748b',marginTop:2}}>{(p.days||[]).join(', ')}</div>
+                </div>
+                <button onClick={()=>handleEditProg(p)} style={{background:'#dbeafe',color:'#1d4ed8',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
+                <button onClick={()=>handleToggleProg(p)} style={{background: p.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'6px 8px', fontSize:10}}>{p.active?'ON':'OFF'}</button>
+                <button onClick={()=>handleDeleteProg(p.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+              </div>
+            ))}
+            {programmeGrid.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucun programme pour l'instant. Ajoute ta premiere ligne ci-dessus.</div>}
+          </div>
+        ) : showEmissions? (
+          <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #0d9488'}}>
+            <h3 style={{marginTop:0, color:'#0d9488'}}>Emissions passees (archive)</h3>
+            <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Contenu consultable a tout moment, separe de la playlist en boucle Radio/TV.</div>
+            <div style={{border:'2px dashed #5eead4', padding:12, borderRadius:12, background:'#f0fdfa', marginBottom:12}}>
+              <label style={{fontSize:10,fontWeight:800,color:'#0d9488'}}>TITRE *</label>
+              <input placeholder="Ex: Emission Societe du 12 aout" value={newEmTitle} onChange={e=>setNewEmTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #99f6e4',fontSize:12}} />
+              <label style={{fontSize:10,fontWeight:800,color:'#0d9488'}}>DESCRIPTION (optionnel)</label>
+              <textarea placeholder="Resume de l'emission..." value={newEmDesc} onChange={e=>setNewEmDesc(e.target.value)} style={{width:'100%',minHeight:70,padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #99f6e4',fontSize:12}} />
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                <div><label style={{fontSize:10,fontWeight:800,color:'#0d9488'}}>CATEGORIE</label>
+                  <select value={newEmCategory} onChange={e=>setNewEmCategory(e.target.value)} style={{width:'100%',padding:10,marginTop:4,borderRadius:8,border:'1px solid #99f6e4',fontWeight:700}}>
+                    <option value="radio">📻 Radio</option>
+                    <option value="tv">📺 TV</option>
+                  </select>
+                </div>
+                <div><label style={{fontSize:10,fontWeight:800,color:'#0d9488'}}>DATE DE DIFFUSION</label><input type="date" value={newEmDate} onChange={e=>setNewEmDate(e.target.value)} style={{width:'100%',padding:10,marginTop:4,borderRadius:8,border:'1px solid #99f6e4'}} /></div>
+              </div>
+              <label style={{fontSize:10,fontWeight:800,color:'#0d9488'}}>TYPE DE MEDIA</label>
+              <div style={{display:'flex',gap:8,marginTop:6,marginBottom:10}}>
+                <button type="button" onClick={()=>{setNewEmMediaType('audio'); setNewEmMediaUrl('')}} style={{flex:1,padding:'8px',borderRadius:8,border: newEmMediaType==='audio'?'2px solid #0d9488':'1px solid #99f6e4',background: newEmMediaType==='audio'?'#0d9488':'white',color: newEmMediaType==='audio'?'white':'#0d9488',fontWeight:800,fontSize:11,cursor:'pointer'}}>🎧 Audio</button>
+                <button type="button" onClick={()=>{setNewEmMediaType('video'); setNewEmMediaUrl('')}} style={{flex:1,padding:'8px',borderRadius:8,border: newEmMediaType==='video'?'2px solid #0d9488':'1px solid #99f6e4',background: newEmMediaType==='video'?'#0d9488':'white',color: newEmMediaType==='video'?'white':'#0d9488',fontWeight:800,fontSize:11,cursor:'pointer'}}>🎬 Video (YouTube)</button>
+              </div>
+              {newEmMediaType==='audio' ? (
+                <div>
+                  <input type="file" accept="audio/*" onChange={e=>uploadEmissionAudio(e.target.files[0])} style={{width:'100%',fontSize:12,marginBottom:6}} />
+                  {uploading==='emission-audio' && <div style={{fontSize:11,color:'#0d9488',marginBottom:6}}>Upload audio...</div>}
+                  {newEmMediaUrl && <audio controls src={newEmMediaUrl} style={{width:'100%',marginBottom:10}} />}
+                </div>
+              ) : (
+                <input placeholder="https://www.youtube.com/watch?v=..." value={newEmMediaUrl} onChange={e=>setNewEmMediaUrl(e.target.value)} style={{width:'100%',padding:10,marginBottom:10,borderRadius:8,border:'1px solid #99f6e4',fontSize:12}} />
+              )}
+              <label style={{fontSize:10,fontWeight:800,color:'#0d9488'}}>MINIATURE (optionnel)</label>
+              <input type="file" accept="image/*" onChange={e=>uploadEmissionImage(e.target.files[0])} style={{width:'100%',fontSize:12,marginTop:4,marginBottom:8}} />
+              {uploading==='emission-image' && <div style={{fontSize:11,color:'#0d9488',marginBottom:8}}>Upload image...</div>}
+              {newEmImage && <img src={newEmImage} style={{width:'100%',maxHeight:160,objectFit:'cover',borderRadius:8,marginBottom:10}} alt="" />}
+              <button onClick={handleAddEmission} style={{width:'100%',padding:12,background:'#0d9488',color:'white',fontWeight:900,borderRadius:10,border:0, cursor:'pointer', fontSize:13}}>{editingEmId? 'METTRE A JOUR' : 'AJOUTER A L\u2019ARCHIVE'}</button>
+              {editingEmId && <button onClick={resetEmForm} style={{width:'100%',marginTop:8,padding:10,background:'transparent',color:'#0d9488',fontWeight:700,borderRadius:10,border:'1px solid #0d9488',cursor:'pointer'}}>Annuler la modification</button>}
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:10}}>
+              {emissions.map(e=>(
+                <div key={e.id} style={{border:'1px solid #e5e7eb', borderRadius:10, overflow:'hidden', background: e.active? 'white':'#f1f5f9', opacity: e.active?1:0.6}}>
+                  <div style={{position:'relative', aspectRatio:'16/9', background:'#f5f5f5'}}>
+                    {e.image && <img src={e.image} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />}
+                    <span style={{position:'absolute',top:6,left:6,background: e.category==='tv'?'#fee2e2':'#dcfce7', color: e.category==='tv'?'#dc2626':'#16a34a', fontSize:9, fontWeight:900, padding:'3px 8px', borderRadius:10}}>{e.category==='tv'?'📺 TV':'📻 RADIO'}</span>
+                  </div>
+                  <div style={{padding:8}}>
+                    <div style={{fontSize:11,fontWeight:800,lineHeight:1.2}}>{e.title?.substring(0,40)}</div>
+                    <div style={{fontSize:10,color:'#64748b',marginTop:4}}>{e.date_diffusion? new Date(e.date_diffusion).toLocaleDateString('fr-FR'):''}</div>
+                    <div style={{display:'flex',gap:6,marginTop:8}}>
+                      <button onClick={()=>handleEditEmission(e)} style={{flex:1,background:'#dbeafe', color:'#1d4ed8', border:0, borderRadius:6, padding:'6px', fontSize:10, fontWeight:800}}>Modifier</button>
+                      <button onClick={()=>handleToggleEmission(e)} style={{flex:1,background: e.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'6px', fontSize:10, fontWeight:800}}>{e.active?'ON':'OFF'}</button>
+                      <button onClick={()=>handleDeleteEmission(e.id)} style={{flex:1,background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px',fontSize:10}}>Suppr</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {emissions.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucune emission pour l'instant. Ajoute la premiere ci-dessus.</div>}
           </div>
         ) : showKiosque? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #ffcc00'}}>
