@@ -265,7 +265,7 @@ export default function Admin() {
     if(!tvWatermark) return;
     setSavingWatermark(true);
     try{
-      const res = await fetch(`${supabaseUrl}/rest/v1/tv_watermark?id=eq.1`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ enabled:tvWatermark.enabled, position:tvWatermark.position, label:tvWatermark.label, logo_url:tvWatermark.logo_url||null, size_px:tvWatermark.size_px||70 }) });
+      const res = await fetch(`${supabaseUrl}/rest/v1/tv_watermark?id=eq.1`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ enabled:tvWatermark.enabled, position:tvWatermark.position, label:tvWatermark.label, logo_url:tvWatermark.logo_url||null, size_px:tvWatermark.size_px||70, tickers_enabled:tvWatermark.tickers_enabled!==false }) });
       if(res.ok) alert('Reglages de l\'incrustation enregistres!'); else alert(await res.text());
     }catch(e){ alert('Erreur: '+e.message) }
     finally{ setSavingWatermark(false) }
@@ -1149,6 +1149,17 @@ export default function Admin() {
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #dc2626'}}>
             <h3 style={{marginTop:0, color:'#dc2626'}}>TV - Videos de secours</h3>
             <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Ces videos jouent en boucle sur la page DIRECT &gt; TV quand tu n'es pas en direct sur YouTube. Colle simplement des liens YouTube.</div>
+
+            {tvWatermark && (
+              <div style={{border:'2px solid #16a34a', borderRadius:12, padding:14, background:'#f0fdf4', marginBottom:16}}>
+                <div style={{fontSize:12,fontWeight:900,color:'#16a34a',marginBottom:10}}>BANDEAUX INFO / ANNONCES (bas de l'ecran TV)</div>
+                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,cursor:'pointer'}}>
+                  <input type="checkbox" checked={tvWatermark.tickers_enabled!==false} onChange={e=>setTvWatermark({...tvWatermark, tickers_enabled:e.target.checked})} />
+                  Afficher les bandeaux Info et Annonces sur l'ecran TV
+                </label>
+                <div style={{fontSize:10,color:'#64748b',marginTop:6}}>Reprend automatiquement le contenu de tes onglets Flash et Annonces existants, rien d'autre a configurer.</div>
+              </div>
+            )}
 
             {tvWatermark && (
               <div style={{border:'2px solid #0f2040', borderRadius:12, padding:14, background:'#f8fafc', marginBottom:16}}>
