@@ -381,7 +381,7 @@ export default function App(){
     fetch(`${supabaseUrl}/rest/v1/articles?select=*&status=eq.published&order=id.desc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setArticles(d) }); 
     fetch(`${supabaseUrl}/rest/v1/flash?select=*&active=eq.true&order=created_at.desc&limit=15`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)&&d.length>0) setFlashes(d.map(x=>x.text)) }).catch(()=>{}); 
     fetch(`${supabaseUrl}/rest/v1/annonces_blanches?select=*&active=eq.true&order=created_at.desc&limit=15`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)&&d.length>0) setAnnonces(d.map(x=>x.text)) }).catch(()=>{}); 
-    fetch(`${supabaseUrl}/rest/v1/unes?select=*&active=eq.true&order=date.desc&limit=50`,{headers:{'apikey':supabaseKey,'Authorization':`Bearer ${supabaseKey}`}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)){ console.log('UNES chargees:', d); setUnes(d) } }).catch(()=>{});
+    fetch(`${supabaseUrl}/rest/v1/unes?select=*&active=eq.true&order=date.desc&limit=50`,{headers:{'apikey':supabaseKey,'Authorization':`Bearer ${supabaseKey}`}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)){ setUnes(d) } }).catch(()=>{});
     fetch(`${supabaseUrl}/rest/v1/encadres?select=*&active=eq.true&order=order_index.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setEncadres(d) }).catch(()=>{});
     fetch(`${supabaseUrl}/rest/v1/pubs?select=*&active=eq.true&order=created_at.desc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)&&d.length>0) setPubs(d) }).catch(()=>{}) 
     fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setRadioPlaylist(shuffleArray(d)) }).catch(()=>{})
@@ -429,8 +429,15 @@ export default function App(){
 
   // Telecharge le fichier une seule fois : sert a la fois a construire une URL de lecture (Blob)
   // et a detecter les silences en debut/fin de piste (via une analyse audio ponctuelle).
+  const bufferCacheOrderRef = useRef([])
+  const CACHE_MAX_TRACKS = 40
   const decodeTrack = async (url) => {
-    if(bufferCacheRef.current[url]) return bufferCacheRef.current[url]
+    if(bufferCacheRef.current[url]){
+      // Marque cette piste comme recemment utilisee (deplace en fin de la liste)
+      bufferCacheOrderRef.current = bufferCacheOrderRef.current.filter(u=>u!==url)
+      bufferCacheOrderRef.current.push(url)
+      return bufferCacheRef.current[url]
+    }
     const res = await fetch(url)
     const arr = await res.arrayBuffer()
     const blobUrl = URL.createObjectURL(new Blob([arr], {type: res.headers.get('content-type')||'audio/mpeg'}))
@@ -448,6 +455,15 @@ export default function App(){
     }catch{}
     const info = { blobUrl, leadIn, contentEnd }
     bufferCacheRef.current[url] = info
+    bufferCacheOrderRef.current.push(url)
+    // Libere les pistes les plus anciennes si le cache grossit trop (evite une fuite memoire sur une tres longue session)
+    while(bufferCacheOrderRef.current.length > CACHE_MAX_TRACKS){
+      const oldestUrl = bufferCacheOrderRef.current.shift()
+      if(oldestUrl===currentUrlRef.current) continue
+      const oldInfo = bufferCacheRef.current[oldestUrl]
+      if(oldInfo?.blobUrl){ try{ URL.revokeObjectURL(oldInfo.blobUrl) }catch{} }
+      delete bufferCacheRef.current[oldestUrl]
+    }
     return info
   }
 
