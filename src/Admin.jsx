@@ -265,7 +265,7 @@ export default function Admin() {
     if(!tvWatermark) return;
     setSavingWatermark(true);
     try{
-      const res = await fetch(`${supabaseUrl}/rest/v1/tv_watermark?id=eq.1`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ enabled:tvWatermark.enabled, position:tvWatermark.position, label:tvWatermark.label, logo_url:tvWatermark.logo_url||null, size_px:tvWatermark.size_px||70, tickers_enabled:tvWatermark.tickers_enabled!==false }) });
+      const res = await fetch(`${supabaseUrl}/rest/v1/tv_watermark?id=eq.1`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ enabled:tvWatermark.enabled, position:tvWatermark.position, label:tvWatermark.label, logo_url:tvWatermark.logo_url||null, size_px:tvWatermark.size_px||70, ticker_info_enabled:tvWatermark.ticker_info_enabled!==false, ticker_annonces_enabled:tvWatermark.ticker_annonces_enabled!==false }) });
       if(res.ok) alert('Reglages de l\'incrustation enregistres!'); else alert(await res.text());
     }catch(e){ alert('Erreur: '+e.message) }
     finally{ setSavingWatermark(false) }
@@ -1153,11 +1153,15 @@ export default function Admin() {
             {tvWatermark && (
               <div style={{border:'2px solid #16a34a', borderRadius:12, padding:14, background:'#f0fdf4', marginBottom:16}}>
                 <div style={{fontSize:12,fontWeight:900,color:'#16a34a',marginBottom:10}}>BANDEAUX INFO / ANNONCES (bas de l'ecran TV)</div>
-                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,cursor:'pointer'}}>
-                  <input type="checkbox" checked={tvWatermark.tickers_enabled!==false} onChange={e=>setTvWatermark({...tvWatermark, tickers_enabled:e.target.checked})} />
-                  Afficher les bandeaux Info et Annonces sur l'ecran TV
+                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,cursor:'pointer',marginBottom:8}}>
+                  <input type="checkbox" checked={tvWatermark.ticker_info_enabled!==false} onChange={e=>setTvWatermark({...tvWatermark, ticker_info_enabled:e.target.checked})} />
+                  Afficher le bandeau INFO (Flash)
                 </label>
-                <div style={{fontSize:10,color:'#64748b',marginTop:6}}>Reprend automatiquement le contenu de tes onglets Flash et Annonces existants, rien d'autre a configurer.</div>
+                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,cursor:'pointer'}}>
+                  <input type="checkbox" checked={tvWatermark.ticker_annonces_enabled!==false} onChange={e=>setTvWatermark({...tvWatermark, ticker_annonces_enabled:e.target.checked})} />
+                  Afficher le bandeau ANNONCES
+                </label>
+                <div style={{fontSize:10,color:'#64748b',marginTop:6}}>Chacun peut etre active ou desactive independamment. Reprend automatiquement le contenu de tes onglets Flash et Annonces existants, rien d'autre a configurer.</div>
               </div>
             )}
 
