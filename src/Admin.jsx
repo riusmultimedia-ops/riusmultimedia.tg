@@ -265,7 +265,7 @@ export default function Admin() {
     if(!tvWatermark) return;
     setSavingWatermark(true);
     try{
-      const res = await fetch(`${supabaseUrl}/rest/v1/tv_watermark?id=eq.1`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ enabled:tvWatermark.enabled, position:tvWatermark.position, label:tvWatermark.label, logo_url:tvWatermark.logo_url||null, size_px:tvWatermark.size_px||70, ticker_info_enabled:tvWatermark.ticker_info_enabled!==false, ticker_annonces_enabled:tvWatermark.ticker_annonces_enabled!==false }) });
+      const res = await fetch(`${supabaseUrl}/rest/v1/tv_watermark?id=eq.1`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ enabled:tvWatermark.enabled, position:tvWatermark.position, label:tvWatermark.label, logo_url:tvWatermark.logo_url||null, size_px:tvWatermark.size_px||70, ticker_info_enabled:tvWatermark.ticker_info_enabled!==false, ticker_annonces_enabled:tvWatermark.ticker_annonces_enabled!==false, clock_enabled:tvWatermark.clock_enabled!==false, weather_enabled:tvWatermark.weather_enabled!==false, clock_weather_position:tvWatermark.clock_weather_position||'top-left', clock_color:tvWatermark.clock_color||'#ffffff', weather_color:tvWatermark.weather_color||'#ff3b3b' }) });
       if(res.ok) alert('Reglages de l\'incrustation enregistres!'); else alert(await res.text());
     }catch(e){ alert('Erreur: '+e.message) }
     finally{ setSavingWatermark(false) }
@@ -1162,6 +1162,39 @@ export default function Admin() {
                   Afficher le bandeau ANNONCES
                 </label>
                 <div style={{fontSize:10,color:'#64748b',marginTop:6}}>Chacun peut etre active ou desactive independamment. Reprend automatiquement le contenu de tes onglets Flash et Annonces existants, rien d'autre a configurer.</div>
+              </div>
+            )}
+
+            {tvWatermark && (
+              <div style={{border:'2px solid #ea580c', borderRadius:12, padding:14, background:'#fff7ed', marginBottom:16}}>
+                <div style={{fontSize:12,fontWeight:900,color:'#ea580c',marginBottom:10}}>HEURE / METEO (bas de l'ecran TV)</div>
+                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,cursor:'pointer',marginBottom:8}}>
+                  <input type="checkbox" checked={tvWatermark.clock_enabled!==false} onChange={e=>setTvWatermark({...tvWatermark, clock_enabled:e.target.checked})} />
+                  Afficher l'heure
+                </label>
+                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,cursor:'pointer',marginBottom:12}}>
+                  <input type="checkbox" checked={tvWatermark.weather_enabled!==false} onChange={e=>setTvWatermark({...tvWatermark, weather_enabled:e.target.checked})} />
+                  Afficher la meteo
+                </label>
+
+                <label style={{fontSize:10,fontWeight:800,color:'#ea580c'}}>POSITION</label>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginTop:6,marginBottom:12,maxWidth:260}}>
+                  {[['top-left','Haut - Gauche'],['top-right','Haut - Droite'],['bottom-left','Bas - Gauche'],['bottom-right','Bas - Droite']].map(([val,label])=>(
+                    <button key={val} type="button" onClick={()=>setTvWatermark({...tvWatermark, clock_weather_position:val})} style={{padding:'8px 6px',borderRadius:8,border: (tvWatermark.clock_weather_position||'top-left')===val? '2px solid #ea580c':'1px solid #fed7aa',background: (tvWatermark.clock_weather_position||'top-left')===val? '#ea580c':'white',color: (tvWatermark.clock_weather_position||'top-left')===val? 'white':'#ea580c',fontWeight:800,fontSize:11,cursor:'pointer'}}>{label}</button>
+                  ))}
+                </div>
+
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,maxWidth:280}}>
+                  <div>
+                    <label style={{fontSize:10,fontWeight:800,color:'#ea580c'}}>COULEUR HEURE</label>
+                    <input type="color" value={tvWatermark.clock_color||'#ffffff'} onChange={e=>setTvWatermark({...tvWatermark, clock_color:e.target.value})} style={{width:'100%',height:34,marginTop:4,borderRadius:6,border:'1px solid #fed7aa',cursor:'pointer'}} />
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,fontWeight:800,color:'#ea580c'}}>COULEUR METEO</label>
+                    <input type="color" value={tvWatermark.weather_color||'#ff3b3b'} onChange={e=>setTvWatermark({...tvWatermark, weather_color:e.target.value})} style={{width:'100%',height:34,marginTop:4,borderRadius:6,border:'1px solid #fed7aa',cursor:'pointer'}} />
+                  </div>
+                </div>
+                <div style={{fontSize:10,color:'#64748b',marginTop:10}}>Par defaut : heure en blanc, meteo en rouge. Change les couleurs ici si un fond te pose probleme de lisibilite.</div>
               </div>
             )}
 
