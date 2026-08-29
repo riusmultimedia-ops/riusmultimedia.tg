@@ -681,6 +681,38 @@ export default function App(){
   useEffect(()=>{ if(lang!=='fr'&&articles.length){ articles.slice(0,8).forEach(a=>{ if(!a.translations?.[lang]) handleLiveTranslate(a) }) } },[lang,articles])
   const openArticle=(art)=>{ const td=getTranslated(art); setSelected(td); if(lang!=='fr'&&!art.translations?.[lang]) handleLiveTranslate(art); window.scrollTo(0,0); if(typeof window!=='undefined'){ try{ window.history.pushState(null,'','?a='+art.id) }catch{} } }
   const closeArticle=()=>{ setSelected(null); if(typeof window!=='undefined'){ try{ window.history.pushState(null,'',window.location.pathname) }catch{} } }
+
+  useEffect(()=>{
+    if(typeof document==='undefined') return
+    if(selected){
+      document.title = `${selected.title} - Rius Multimédia`
+      const excerptSrc = (selected.content||'').replace(/<[^>]*>/g,'').replace(/\*\*/g,'').replace(/_/g,'').trim()
+      const jsonLd = {
+        "@context":"https://schema.org",
+        "@type":"NewsArticle",
+        "headline": selected.title,
+        "image": selected.image? [selected.image] : undefined,
+        "datePublished": selected.created_at || undefined,
+        "author": { "@type":"Organization", "name": selected.author&&selected.author.trim()? selected.author : "Rius Multimédia" },
+        "publisher": { "@type":"Organization", "name":"Rius Multimédia", "logo": { "@type":"ImageObject", "url": (typeof window!=='undefined'? window.location.origin:'')+'/logo.png' } },
+        "description": excerptSrc.substring(0,160)
+      }
+      let script = document.getElementById('article-jsonld')
+      if(!script){ script = document.createElement('script'); script.id='article-jsonld'; script.type='application/ld+json'; document.head.appendChild(script) }
+      script.textContent = JSON.stringify(jsonLd)
+    } else {
+      document.title = 'Rius Multimédia - Voir, Vérifier, Informer.'
+      const script = document.getElementById('article-jsonld')
+      if(script) script.remove()
+    }
+  },[selected])
+
+  useEffect(()=>{
+    if(typeof window==='undefined' || typeof window.gtag!=='function') return
+    const path = selected? `/article/${selected.id}` : `/${actif.toLowerCase().replace(/\s+/g,'-')}`
+    const title = selected? selected.title : actif
+    window.gtag('event','page_view', { page_path: path, page_title: title, page_location: window.location.href })
+  },[actif, selected])
   const [isTvFullscreen, setIsTvFullscreen] = useState(false)
   const [tvControlsHover, setTvControlsHover] = useState(false)
   const [isTouchDevice, setIsTouchDevice] = useState(false)

@@ -129,6 +129,8 @@ export default function Admin() {
   const [newVideoUrl, setNewVideoUrl] = useState('');
   const [editingVideoId, setEditingVideoId] = useState(null);
   const [newRadioAudio, setNewRadioAudio] = useState('');
+  const [newRadioAudioFilename, setNewRadioAudioFilename] = useState('');
+  const [newRadioFolder, setNewRadioFolder] = useState('');
   const [newRadioImage, setNewRadioImage] = useState('');
   const [newUneImage, setNewUneImage] = useState('');
   const [newUneJournal, setNewUneJournal] = useState('');
@@ -493,6 +495,9 @@ export default function Admin() {
 
   const uploadRadioAudio = async (file) => {
     if(!file) return null;
+    const targetFolder = newRadioFolder.trim()||null;
+    const dup = radioPlaylist.find(t=> t.original_filename===file.name && (t.folder||null)===targetFolder);
+    if(dup){ alert(`Ce fichier ("${file.name}") existe deja dans ${targetFolder? `le groupe "${targetFolder}"` : 'la playlist generale (sans groupe)'}. Change de groupe si tu veux quand meme l'importer, ou choisis un autre fichier.`); return null; }
     setUploading('radio-audio');
     try{
       const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
@@ -504,6 +509,7 @@ export default function Admin() {
       if(!res.ok) throw new Error(await res.text());
       const publicUrl = `${supabaseUrl}/storage/v1/object/public/radio/${fileName}`;
       setNewRadioAudio(publicUrl);
+      setNewRadioAudioFilename(file.name);
       return publicUrl;
     }catch(e){ alert('Erreur upload audio: '+e.message); return null; }
     finally{ setUploading(''); }
@@ -516,11 +522,15 @@ export default function Admin() {
     if(!files.length) return alert('Aucun fichier audio trouve dans la selection.');
     const folderName = bulkImportFolder.trim() || null;
     if(!confirm(`Importer ${files.length} fichier(s) audio dans la playlist radio${folderName? ` (groupe "${folderName}")`:''} ?`)) return;
-    setBulkImportProgress({current:0, total:files.length, ok:0});
-    let ok = 0;
+    setBulkImportProgress({current:0, total:files.length, ok:0, skipped:0});
+    let ok = 0, skipped = 0;
+    // Cle "nomdufichier|||groupe" deja presentes, pour reperer les doublons deja en playlist ET ceux repetes dans le meme lot
+    const seen = new Set(radioPlaylist.map(t=>`${t.original_filename||''}|||${t.folder||''}`));
     for(let i=0;i<files.length;i++){
       const file = files[i];
-      setBulkImportProgress({current:i+1, total:files.length, ok});
+      setBulkImportProgress({current:i+1, total:files.length, ok, skipped});
+      const key = `${file.name}|||${folderName||''}`;
+      if(seen.has(key)){ skipped++; setBulkImportProgress({current:i+1, total:files.length, ok, skipped}); continue; }
       try{
         const fileName = `${Date.now()}_${i}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
         const res = await fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
@@ -531,14 +541,14 @@ export default function Admin() {
         const title = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g,' ').trim() || 'Sans titre';
         const insertRes = await fetch(`${supabaseUrl}/rest/v1/radio_playlist`, {
           method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-          body: JSON.stringify({ title, url:publicUrl, image:null, is_jingle:false, is_ad:false, ad_times:[], active:true, folder:folderName })
+          body: JSON.stringify({ title, url:publicUrl, image:null, is_jingle:false, is_ad:false, ad_times:[], active:true, folder:folderName, original_filename:file.name })
         });
-        if(insertRes.ok){ ok++; setBulkImportProgress({current:i+1, total:files.length, ok}); }
+        if(insertRes.ok){ ok++; seen.add(key); setBulkImportProgress({current:i+1, total:files.length, ok, skipped}); }
       }catch(e){ /* on continue avec le fichier suivant */ }
     }
     setBulkImportProgress(null);
     fetchRadioPlaylist();
-    alert(`${ok} / ${files.length} piste(s) importee(s) avec succes.`);
+    alert(`${ok} / ${files.length} piste(s) importee(s) avec succes.${skipped>0? ` ${skipped} ignoree(s) car deja presente(s) dans ce groupe.`:''}`);
   };
 
   const uploadRadioImage = async (file) => {
@@ -972,14 +982,14 @@ export default function Admin() {
     if(!newRadioAudio) return alert('Ajoute un fichier audio');
     if(!newRadioTitle.trim()) return alert('Mets un titre pour la piste');
     if(newRadioIsAd && newRadioAdTimes.length===0) return alert('Ajoute au moins une heure de diffusion pour cette pub');
-    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, is_ad:newRadioIsAd, ad_times:newRadioIsAd? newRadioAdTimes : [], active:true };
+    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, is_ad:newRadioIsAd, ad_times:newRadioIsAd? newRadioAdTimes : [], active:true, folder:newRadioFolder.trim()||null, original_filename:newRadioAudioFilename||null };
     const url = editingRadioId? `${supabaseUrl}/rest/v1/radio_playlist?id=eq.${editingRadioId}` : `${supabaseUrl}/rest/v1/radio_playlist`;
     const method = editingRadioId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : 'Piste ajoutee a la radio!'); } else alert(await res.text());
+    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : 'Piste ajoutee a la radio!'); } else alert(await res.text());
   };
-  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); window.scrollTo(0,0); };
-  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); };
+  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioAudioFilename(t.original_filename||''); setNewRadioFolder(t.folder||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); window.scrollTo(0,0); };
+  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); };
   const handleDeleteRadioTrack = async (id) => { if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioPlaylist(); };
   const handleToggleRadioTrack = async (t) => { await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
@@ -998,6 +1008,9 @@ export default function Admin() {
     if(!id) return alert('Lien YouTube invalide');
     if(!newVideoTitle.trim()) return alert('Mets un titre pour la video');
     if(newVideoIsAd && newVideoAdTimes.length===0) return alert('Ajoute au moins une heure de diffusion pour cette pub');
+    const targetFolder = newVideoFolder.trim()||null;
+    const dup = videoPlaylist.find(v => v.id!==editingVideoId && getYtId(v.url||'')===id && (v.folder||null)===targetFolder);
+    if(dup) return alert(`Cette video est deja dans ${targetFolder? `le groupe "${targetFolder}"`:'la playlist generale (sans groupe)'}. Change de groupe si tu veux quand meme l'ajouter.`);
     const thumb = getYoutubeThumb(newVideoUrl.trim());
     const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, is_jingle:newVideoIsJingle, is_ad:newVideoIsAd, ad_times:newVideoIsAd? newVideoAdTimes : [], active:true, folder:newVideoFolder.trim()||null };
     const url = editingVideoId? `${supabaseUrl}/rest/v1/video_playlist?id=eq.${editingVideoId}` : `${supabaseUrl}/rest/v1/video_playlist`;
@@ -1219,7 +1232,7 @@ export default function Admin() {
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>NOM DU GROUPE (optionnel, ex: "Slow") - permet de le programmer sur une plage horaire plus bas</label>
               <input placeholder="Laisse vide pour un import normal (sans groupe)" value={bulkImportFolder} onChange={e=>setBulkImportFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #86efac',fontSize:12}} />
               {bulkImportProgress ? (
-                <div style={{fontSize:12,fontWeight:700,color:'#16a34a'}}>Import en cours... {bulkImportProgress.current} / {bulkImportProgress.total} ({bulkImportProgress.ok} reussis)</div>
+                <div style={{fontSize:12,fontWeight:700,color:'#16a34a'}}>Import en cours... {bulkImportProgress.current} / {bulkImportProgress.total} ({bulkImportProgress.ok} reussis{bulkImportProgress.skipped>0? `, ${bulkImportProgress.skipped} doublons ignores`:''})</div>
               ) : (
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                   <label style={{background:'#16a34a',color:'white',padding:'10px 16px',borderRadius:8,fontWeight:800,fontSize:12,cursor:'pointer'}}>
@@ -1295,6 +1308,8 @@ export default function Admin() {
                   </div>
                 </div>
               )}
+              <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>GROUPE (optionnel, pour la programmation par plage horaire)</label>
+              <input placeholder='Ex: Slow' value={newRadioFolder} onChange={e=>setNewRadioFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #bbf7d0',fontSize:12}} />
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>FICHIER AUDIO (MP3) *</label>
               <input type="file" accept="audio/*" onChange={e=>uploadRadioAudio(e.target.files[0])} style={{width:'100%',fontSize:12,marginTop:4}} />
               {uploading==='radio-audio' && <div style={{fontSize:11,color:'#16a34a',marginTop:6}}>Upload audio...</div>}
