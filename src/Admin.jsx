@@ -154,6 +154,8 @@ export default function Admin() {
   const [newTvBlockDays, setNewTvBlockDays] = useState([]);
   const [editingTvBlockId, setEditingTvBlockId] = useState(null);
   const [newBlockFolder, setNewBlockFolder] = useState('');
+  const [reassignFolderName, setReassignFolderName] = useState('');
+  const [reassignSelectedIds, setReassignSelectedIds] = useState(new Set());
   const [newBlockStart, setNewBlockStart] = useState('');
   const [newBlockEnd, setNewBlockEnd] = useState('');
   const [newBlockDays, setNewBlockDays] = useState([]);
@@ -312,6 +314,8 @@ export default function Admin() {
     if(!newBlockFolder.trim()) return alert('Indique le nom du groupe/dossier a programmer');
     if(!newBlockStart || !newBlockEnd) return alert('Choisis une heure de debut et de fin');
     if(newBlockDays.length===0) return alert('Choisis au moins un jour');
+    const dupBlock = radioTimeBlocks.find(b=> b.id!==editingBlockId && b.folder.trim().toLowerCase()===newBlockFolder.trim().toLowerCase());
+    if(dupBlock) return alert(`Le groupe "${newBlockFolder.trim()}" est deja programme (${dupBlock.start_time} - ${dupBlock.end_time}). Modifie cette plage existante au lieu d'en creer une nouvelle, ou choisis un autre nom de groupe.`);
     const payload = { folder:newBlockFolder.trim(), start_time:newBlockStart, end_time:newBlockEnd, days:newBlockDays, active:true };
     const url = editingBlockId? `${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${editingBlockId}` : `${supabaseUrl}/rest/v1/radio_time_blocks`;
     const method = editingBlockId? 'PATCH' : 'POST';
@@ -321,6 +325,53 @@ export default function Admin() {
   const handleEditTimeBlock = (b) => { setEditingBlockId(b.id); setNewBlockFolder(b.folder||''); setNewBlockStart(b.start_time||''); setNewBlockEnd(b.end_time||''); setNewBlockDays(b.days||[]); };
   const handleDeleteTimeBlock = async (id) => { if(!confirm('Supprimer cette plage horaire?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioTimeBlocks(); };
   const handleToggleTimeBlock = async (b) => { await fetch(`${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${b.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!b.active }) }); fetchRadioTimeBlocks(); };
+  const toggleReassignSelect = (id) => setReassignSelectedIds(prev=>{ const next=new Set(prev); if(next.has(id)) next.delete(id); else next.add(id); return next; });
+  const handleReassignFolder = async () => {
+    if(!reassignFolderName.trim()) return alert('Indique le nom du groupe a assigner');
+    if(reassignSelectedIds.size===0) return alert('Coche au moins une piste');
+    const targetFolder = reassignFolderName.trim();
+    const destPool = radioPlaylist.filter(t=>t.folder===targetFolder);
+    const selectedTracks = radioPlaylist.filter(t=>reassignSelectedIds.has(t.id));
+    const toAssign = [];
+    const conflicts = [];
+    selectedTracks.forEach(t=>{
+      const clash = t.original_filename && destPool.some(d=>d.original_filename===t.original_filename);
+      if(clash) conflicts.push(t); else toAssign.push(t);
+    });
+    if(toAssign.length===0){
+      return alert(`Impossible : toutes les pistes cochees portent un nom de fichier deja present dans le groupe "${targetFolder}".`);
+    }
+    if(conflicts.length>0 && !confirm(`${conflicts.length} piste(s) cochee(s) porte(nt) deja le meme nom de fichier dans "${targetFolder}" et seront ignorees (doublon evite). Continuer avec les ${toAssign.length} autre(s) ?`)) return;
+    for(const t of toAssign){
+      await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ folder: targetFolder }) });
+    }
+    setReassignSelectedIds(new Set()); setReassignFolderName('');
+    fetchRadioPlaylist();
+    alert(`${toAssign.length} piste(s) assignee(s) au groupe "${targetFolder}".${conflicts.length>0? ` ${conflicts.length} ignoree(s) (doublon evite).`:''}`);
+  };
+  const handleDeleteFolder = async (folderName) => {
+    const tracks = radioPlaylist.filter(t=>t.folder===folderName);
+    if(!confirm(`Supprimer definitivement le groupe "${folderName}" ET ses ${tracks.length} fichier(s) ? Cette action est irreversible.`)) return;
+    for(const t of tracks){
+      try{
+        const marker = '/storage/v1/object/public/radio/';
+        const idx = (t.url||'').indexOf(marker);
+        if(idx>=0){
+          const path = t.url.substring(idx+marker.length);
+          await fetch(`${supabaseUrl}/storage/v1/object/radio/${path}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } });
+        }
+      }catch(e){ /* on continue meme si le fichier de stockage est deja absent */ }
+      await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } });
+    }
+    // Nettoie aussi une eventuelle plage horaire encore associee a ce groupe
+    const orphanBlocks = radioTimeBlocks.filter(b=>b.folder===folderName);
+    for(const b of orphanBlocks){
+      await fetch(`${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${b.id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } });
+    }
+    fetchRadioPlaylist();
+    fetchRadioTimeBlocks();
+    alert(`Groupe "${folderName}" supprime avec ses ${tracks.length} fichier(s).`);
+  };
 
   const fetchTvTimeBlocks = () => {
     fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?select=*&order=start_time.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
@@ -332,6 +383,8 @@ export default function Admin() {
     if(!newTvBlockFolder.trim()) return alert('Indique le nom du groupe a programmer');
     if(!newTvBlockStart || !newTvBlockEnd) return alert('Choisis une heure de debut et de fin');
     if(newTvBlockDays.length===0) return alert('Choisis au moins un jour');
+    const dupBlock = tvTimeBlocks.find(b=> b.id!==editingTvBlockId && b.folder.trim().toLowerCase()===newTvBlockFolder.trim().toLowerCase());
+    if(dupBlock) return alert(`Le groupe "${newTvBlockFolder.trim()}" est deja programme (${dupBlock.start_time} - ${dupBlock.end_time}). Modifie cette plage existante au lieu d'en creer une nouvelle, ou choisis un autre nom de groupe.`);
     const payload = { folder:newTvBlockFolder.trim(), start_time:newTvBlockStart, end_time:newTvBlockEnd, days:newTvBlockDays, active:true };
     const url = editingTvBlockId? `${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${editingTvBlockId}` : `${supabaseUrl}/rest/v1/tv_time_blocks`;
     const method = editingTvBlockId? 'PATCH' : 'POST';
@@ -517,16 +570,22 @@ export default function Admin() {
 
   const [bulkImportProgress, setBulkImportProgress] = useState(null);
   const [bulkImportFolder, setBulkImportFolder] = useState('');
+  const bulkImportCancelRef = useRef(false);
   const handleBulkImportRadio = async (fileList) => {
     const files = Array.from(fileList||[]).filter(f=>f.type.startsWith('audio/'));
     if(!files.length) return alert('Aucun fichier audio trouve dans la selection.');
     const folderName = bulkImportFolder.trim() || null;
-    if(!confirm(`Importer ${files.length} fichier(s) audio dans la playlist radio${folderName? ` (groupe "${folderName}")`:''} ?`)) return;
+    const confirmMsg = folderName
+      ? `Importer ${files.length} fichier(s) audio dans le GROUPE "${folderName}" ?`
+      : `⚠️ ATTENTION : le champ "Nom du groupe" est VIDE.\n\nImporter ${files.length} fichier(s) SANS groupe (playlist generale, pas de programmation par plage horaire possible) ?\n\nSi tu voulais un groupe, clique Annuler et remplis d'abord le champ ci-dessus.`;
+    if(!confirm(confirmMsg)) return;
+    bulkImportCancelRef.current = false;
     setBulkImportProgress({current:0, total:files.length, ok:0, skipped:0});
     let ok = 0, skipped = 0;
     // Cle "nomdufichier|||groupe" deja presentes, pour reperer les doublons deja en playlist ET ceux repetes dans le meme lot
     const seen = new Set(radioPlaylist.map(t=>`${t.original_filename||''}|||${t.folder||''}`));
     for(let i=0;i<files.length;i++){
+      if(bulkImportCancelRef.current) break;
       const file = files[i];
       setBulkImportProgress({current:i+1, total:files.length, ok, skipped});
       const key = `${file.name}|||${folderName||''}`;
@@ -546,10 +605,12 @@ export default function Admin() {
         if(insertRes.ok){ ok++; seen.add(key); setBulkImportProgress({current:i+1, total:files.length, ok, skipped}); }
       }catch(e){ /* on continue avec le fichier suivant */ }
     }
+    const wasCancelled = bulkImportCancelRef.current;
     setBulkImportProgress(null);
     fetchRadioPlaylist();
-    alert(`${ok} / ${files.length} piste(s) importee(s) avec succes.${skipped>0? ` ${skipped} ignoree(s) car deja presente(s) dans ce groupe.`:''}`);
+    alert(`${ok} / ${files.length} piste(s) importee(s) avec succes.${skipped>0? ` ${skipped} ignoree(s) car deja presente(s) dans ce groupe.`:''}${wasCancelled? ' (Import arrete manuellement.)':''}`);
   };
+
 
   const uploadRadioImage = async (file) => {
     if(!file) return null;
@@ -1232,7 +1293,10 @@ export default function Admin() {
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>NOM DU GROUPE (optionnel, ex: "Slow") - permet de le programmer sur une plage horaire plus bas</label>
               <input placeholder="Laisse vide pour un import normal (sans groupe)" value={bulkImportFolder} onChange={e=>setBulkImportFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #86efac',fontSize:12}} />
               {bulkImportProgress ? (
-                <div style={{fontSize:12,fontWeight:700,color:'#16a34a'}}>Import en cours... {bulkImportProgress.current} / {bulkImportProgress.total} ({bulkImportProgress.ok} reussis{bulkImportProgress.skipped>0? `, ${bulkImportProgress.skipped} doublons ignores`:''})</div>
+                <>
+                  <div style={{fontSize:12,fontWeight:700,color:'#16a34a',marginBottom:8}}>Import en cours... {bulkImportProgress.current} / {bulkImportProgress.total} ({bulkImportProgress.ok} reussis{bulkImportProgress.skipped>0? `, ${bulkImportProgress.skipped} doublons ignores`:''})</div>
+                  <button type="button" onClick={()=>{ bulkImportCancelRef.current = true; }} style={{background:'#dc2626',color:'white',border:0,padding:'8px 16px',borderRadius:8,fontWeight:800,fontSize:12,cursor:'pointer'}}>✕ Arreter l'import</button>
+                </>
               ) : (
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                   <label style={{background:'#16a34a',color:'white',padding:'10px 16px',borderRadius:8,fontWeight:800,fontSize:12,cursor:'pointer'}}>
@@ -1250,6 +1314,29 @@ export default function Admin() {
             <div style={{border:'2px solid #7c3aed', padding:12, borderRadius:12, background:'#f5f3ff', marginBottom:16}}>
               <div style={{fontSize:12,fontWeight:900,color:'#7c3aed',marginBottom:8}}>PROGRAMMATION PAR GROUPE (ex: 05h-07h jouer "Slow")</div>
               <div style={{fontSize:10,color:'#64748b',marginBottom:10}}>Pendant cette plage, seules les pistes du groupe indique sont jouees. En dehors des plages programmees, les pistes sans groupe jouent normalement.</div>
+              {(()=>{ const folderCounts={}; radioPlaylist.forEach(t=>{ if(t.folder){ if(!folderCounts[t.folder]) folderCounts[t.folder]={count:0, lastDate:null}; folderCounts[t.folder].count++; if(t.created_at && (!folderCounts[t.folder].lastDate || t.created_at>folderCounts[t.folder].lastDate)) folderCounts[t.folder].lastDate=t.created_at } }); const names=Object.keys(folderCounts); if(!names.length) return null; return (
+                <div style={{background:'white', border:'1px solid #ddd6fe', borderRadius:8, padding:10, marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:900,color:'#7c3aed',marginBottom:6}}>DOSSIERS EXISTANTS</div>
+                  {names.map(n=>(<div key={n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:11,color:'#334155',padding:'3px 0'}}><span>📁 <b>{n}</b> — {folderCounts[n].count} fichier{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, dernier ajout le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</span><button type="button" onClick={()=>handleDeleteFolder(n)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,cursor:'pointer',flexShrink:0}}>🗑️ Supprimer ce groupe</button></div>))}
+                </div>
+              ) })()}
+              {(()=>{ const orphans = radioPlaylist.filter(t=>!t.folder && !t.is_jingle && !t.is_ad); if(!orphans.length) return null; return (
+                <div style={{background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8, padding:10, marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:900,color:'#b45309',marginBottom:6}}>REASSIGNER UN GROUPE ({orphans.length} piste{orphans.length>1?'s':''} sans groupe)</div>
+                  <div style={{maxHeight:150, overflowY:'auto', marginBottom:8}}>
+                    {orphans.map(t=>(
+                      <label key={t.id} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,padding:'3px 0',cursor:'pointer'}}>
+                        <input type="checkbox" checked={reassignSelectedIds.has(t.id)} onChange={()=>toggleReassignSelect(t.id)} />
+                        {t.title}
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{display:'flex',gap:6}}>
+                    <input placeholder='Nom du groupe a assigner' value={reassignFolderName} onChange={e=>setReassignFolderName(e.target.value)} style={{flex:1,padding:8,borderRadius:8,border:'1px solid #fde68a',fontSize:12}} />
+                    <button type="button" onClick={handleReassignFolder} style={{background:'#b45309',color:'white',border:0,borderRadius:8,padding:'0 14px',fontWeight:800,fontSize:11,cursor:'pointer'}}>Assigner</button>
+                  </div>
+                </div>
+              ) })()}
               <label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>NOM DU GROUPE *</label>
               <input placeholder='Ex: Slow' value={newBlockFolder} onChange={e=>setNewBlockFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #ddd6fe',fontSize:12}} />
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
@@ -1328,6 +1415,7 @@ export default function Admin() {
                   <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{t.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : t.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {t.title}</div>
                   {t.is_ad && <div style={{fontSize:10,color:'#92400e',marginTop:2}}>Diffusion : {(t.ad_times||[]).join(', ')||'aucune heure'}</div>}
                   {t.folder && <div style={{fontSize:10,color:'#7c3aed',marginTop:2,fontWeight:700}}>📁 Groupe : {t.folder}</div>}
+                  {t.created_at && <div style={{fontSize:9,color:'#94a3b8',marginTop:2}}>Ajoute le {new Date(t.created_at).toLocaleDateString('fr-FR')}</div>}
                 </div>
                 <button onClick={()=>handleEditRadioTrack(t)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleRadioTrack(t)} style={{background: t.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{t.active?'ON':'OFF'}</button>
@@ -1422,6 +1510,12 @@ export default function Admin() {
             <div style={{border:'2px solid #7c3aed', padding:12, borderRadius:12, background:'#f5f3ff', marginBottom:16}}>
               <div style={{fontSize:12,fontWeight:900,color:'#7c3aed',marginBottom:8}}>PROGRAMMATION PAR GROUPE (ex: 18h-20h jouer "Reportages")</div>
               <div style={{fontSize:10,color:'#64748b',marginBottom:10}}>Attribue un groupe a une video dans le formulaire ci-dessous, puis programme ce groupe ici. Pendant cette plage, seules les videos du groupe indique sont jouees. En dehors, les videos sans groupe jouent normalement. Attention : contrairement a la radio, un changement de groupe peut couper une video en cours au moment de la bascule.</div>
+              {(()=>{ const folderCounts={}; videoPlaylist.forEach(v=>{ if(v.folder){ if(!folderCounts[v.folder]) folderCounts[v.folder]={count:0, lastDate:null}; folderCounts[v.folder].count++; if(v.created_at && (!folderCounts[v.folder].lastDate || v.created_at>folderCounts[v.folder].lastDate)) folderCounts[v.folder].lastDate=v.created_at } }); const names=Object.keys(folderCounts); if(!names.length) return null; return (
+                <div style={{background:'white', border:'1px solid #ddd6fe', borderRadius:8, padding:10, marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:900,color:'#7c3aed',marginBottom:6}}>GROUPES EXISTANTS</div>
+                  {names.map(n=>(<div key={n} style={{fontSize:11,color:'#334155',padding:'3px 0'}}>📁 <b>{n}</b> — {folderCounts[n].count} video{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, derniere ajoutee le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</div>))}
+                </div>
+              ) })()}
               <label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>NOM DU GROUPE *</label>
               <input placeholder='Ex: Reportages' value={newTvBlockFolder} onChange={e=>setNewTvBlockFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #ddd6fe',fontSize:12}} />
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
@@ -1495,6 +1589,7 @@ export default function Admin() {
                   <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{v.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : v.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {v.title}</div>
                   {v.is_ad && <div style={{fontSize:10,color:'#92400e',marginTop:2}}>Diffusion : {(v.ad_times||[]).join(', ')||'aucune heure'}</div>}
                   {v.folder && <div style={{fontSize:10,color:'#7c3aed',marginTop:2,fontWeight:700}}>📁 Groupe : {v.folder}</div>}
+                  {v.created_at && <div style={{fontSize:9,color:'#94a3b8',marginTop:2}}>Ajoutee le {new Date(v.created_at).toLocaleDateString('fr-FR')}</div>}
                 </div>
                 <button onClick={()=>handleEditVideoTrack(v)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleVideoTrack(v)} style={{background: v.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{v.active?'ON':'OFF'}</button>
