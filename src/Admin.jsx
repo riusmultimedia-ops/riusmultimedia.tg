@@ -121,6 +121,7 @@ export default function Admin() {
   const [adTimeInput, setAdTimeInput] = useState('');
   const [editingRadioId, setEditingRadioId] = useState(null);
   const [newVideoTitle, setNewVideoTitle] = useState('');
+  const [newVideoFolder, setNewVideoFolder] = useState('');
   const [newVideoIsJingle, setNewVideoIsJingle] = useState(false);
   const [newVideoIsAd, setNewVideoIsAd] = useState(false);
   const [newVideoAdTimes, setNewVideoAdTimes] = useState([]);
@@ -143,6 +144,18 @@ export default function Admin() {
   const [tvWatermark, setTvWatermark] = useState(null);
   const [savingWatermark, setSavingWatermark] = useState(false);
   const [programmeGrid, setProgrammeGrid] = useState([]);
+  const [radioTimeBlocks, setRadioTimeBlocks] = useState([]);
+  const [tvTimeBlocks, setTvTimeBlocks] = useState([]);
+  const [newTvBlockFolder, setNewTvBlockFolder] = useState('');
+  const [newTvBlockStart, setNewTvBlockStart] = useState('');
+  const [newTvBlockEnd, setNewTvBlockEnd] = useState('');
+  const [newTvBlockDays, setNewTvBlockDays] = useState([]);
+  const [editingTvBlockId, setEditingTvBlockId] = useState(null);
+  const [newBlockFolder, setNewBlockFolder] = useState('');
+  const [newBlockStart, setNewBlockStart] = useState('');
+  const [newBlockEnd, setNewBlockEnd] = useState('');
+  const [newBlockDays, setNewBlockDays] = useState([]);
+  const [editingBlockId, setEditingBlockId] = useState(null);
   const [newProgTitle, setNewProgTitle] = useState('');
   const [newProgDesc, setNewProgDesc] = useState('');
   const [newProgDays, setNewProgDays] = useState([]);
@@ -207,7 +220,7 @@ export default function Admin() {
         doRefresh(saved.refresh_token, saved.email)
       }
     }catch{}
-    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions(); fetchComments();
+    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions(); fetchComments(); fetchRadioTimeBlocks(); fetchTvTimeBlocks();
   }, []);
 
   useEffect(() => {
@@ -287,6 +300,46 @@ export default function Admin() {
     fetch(`${supabaseUrl}/rest/v1/programme_grid?select=*&order=time.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setProgrammeGrid(data); }).catch(()=>{});
   };
+  const fetchRadioTimeBlocks = () => {
+    fetch(`${supabaseUrl}/rest/v1/radio_time_blocks?select=*&order=start_time.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setRadioTimeBlocks(data); }).catch(()=>{});
+  };
+  const toggleBlockDay = (d) => setNewBlockDays(prev=> prev.includes(d)? prev.filter(x=>x!==d) : [...prev, d]);
+  const resetBlockForm = () => { setNewBlockFolder(''); setNewBlockStart(''); setNewBlockEnd(''); setNewBlockDays([]); setEditingBlockId(null); };
+  const handleAddTimeBlock = async () => {
+    if(!newBlockFolder.trim()) return alert('Indique le nom du groupe/dossier a programmer');
+    if(!newBlockStart || !newBlockEnd) return alert('Choisis une heure de debut et de fin');
+    if(newBlockDays.length===0) return alert('Choisis au moins un jour');
+    const payload = { folder:newBlockFolder.trim(), start_time:newBlockStart, end_time:newBlockEnd, days:newBlockDays, active:true };
+    const url = editingBlockId? `${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${editingBlockId}` : `${supabaseUrl}/rest/v1/radio_time_blocks`;
+    const method = editingBlockId? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    if(res.ok){ resetBlockForm(); fetchRadioTimeBlocks(); alert(editingBlockId? 'Plage horaire modifiee!' : 'Plage horaire ajoutee!'); } else alert(await res.text());
+  };
+  const handleEditTimeBlock = (b) => { setEditingBlockId(b.id); setNewBlockFolder(b.folder||''); setNewBlockStart(b.start_time||''); setNewBlockEnd(b.end_time||''); setNewBlockDays(b.days||[]); };
+  const handleDeleteTimeBlock = async (id) => { if(!confirm('Supprimer cette plage horaire?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioTimeBlocks(); };
+  const handleToggleTimeBlock = async (b) => { await fetch(`${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${b.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!b.active }) }); fetchRadioTimeBlocks(); };
+
+  const fetchTvTimeBlocks = () => {
+    fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?select=*&order=start_time.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setTvTimeBlocks(data); }).catch(()=>{});
+  };
+  const toggleTvBlockDay = (d) => setNewTvBlockDays(prev=> prev.includes(d)? prev.filter(x=>x!==d) : [...prev, d]);
+  const resetTvBlockForm = () => { setNewTvBlockFolder(''); setNewTvBlockStart(''); setNewTvBlockEnd(''); setNewTvBlockDays([]); setEditingTvBlockId(null); };
+  const handleAddTvTimeBlock = async () => {
+    if(!newTvBlockFolder.trim()) return alert('Indique le nom du groupe a programmer');
+    if(!newTvBlockStart || !newTvBlockEnd) return alert('Choisis une heure de debut et de fin');
+    if(newTvBlockDays.length===0) return alert('Choisis au moins un jour');
+    const payload = { folder:newTvBlockFolder.trim(), start_time:newTvBlockStart, end_time:newTvBlockEnd, days:newTvBlockDays, active:true };
+    const url = editingTvBlockId? `${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${editingTvBlockId}` : `${supabaseUrl}/rest/v1/tv_time_blocks`;
+    const method = editingTvBlockId? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    if(res.ok){ resetTvBlockForm(); fetchTvTimeBlocks(); alert(editingTvBlockId? 'Plage horaire modifiee!' : 'Plage horaire ajoutee!'); } else alert(await res.text());
+  };
+  const handleEditTvTimeBlock = (b) => { setEditingTvBlockId(b.id); setNewTvBlockFolder(b.folder||''); setNewTvBlockStart(b.start_time||''); setNewTvBlockEnd(b.end_time||''); setNewTvBlockDays(b.days||[]); };
+  const handleDeleteTvTimeBlock = async (id) => { if(!confirm('Supprimer cette plage horaire?')) return; await fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchTvTimeBlocks(); };
+  const handleToggleTvTimeBlock = async (b) => { await fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${b.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!b.active }) }); fetchTvTimeBlocks(); };
+
   const toggleProgDay = (d) => setNewProgDays(prev=> prev.includes(d)? prev.filter(x=>x!==d) : [...prev, d]);
   const resetProgForm = () => { setNewProgTitle(''); setNewProgDesc(''); setNewProgDays([]); setNewProgTime(''); setNewProgType('radio'); setEditingProgId(null); };
   const handleAddProg = async () => {
@@ -454,6 +507,38 @@ export default function Admin() {
       return publicUrl;
     }catch(e){ alert('Erreur upload audio: '+e.message); return null; }
     finally{ setUploading(''); }
+  };
+
+  const [bulkImportProgress, setBulkImportProgress] = useState(null);
+  const [bulkImportFolder, setBulkImportFolder] = useState('');
+  const handleBulkImportRadio = async (fileList) => {
+    const files = Array.from(fileList||[]).filter(f=>f.type.startsWith('audio/'));
+    if(!files.length) return alert('Aucun fichier audio trouve dans la selection.');
+    const folderName = bulkImportFolder.trim() || null;
+    if(!confirm(`Importer ${files.length} fichier(s) audio dans la playlist radio${folderName? ` (groupe "${folderName}")`:''} ?`)) return;
+    setBulkImportProgress({current:0, total:files.length, ok:0});
+    let ok = 0;
+    for(let i=0;i<files.length;i++){
+      const file = files[i];
+      setBulkImportProgress({current:i+1, total:files.length, ok});
+      try{
+        const fileName = `${Date.now()}_${i}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+        const res = await fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
+          method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert':'true', 'Content-Type':file.type }, body:file
+        });
+        if(!res.ok) continue;
+        const publicUrl = `${supabaseUrl}/storage/v1/object/public/radio/${fileName}`;
+        const title = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g,' ').trim() || 'Sans titre';
+        const insertRes = await fetch(`${supabaseUrl}/rest/v1/radio_playlist`, {
+          method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+          body: JSON.stringify({ title, url:publicUrl, image:null, is_jingle:false, is_ad:false, ad_times:[], active:true, folder:folderName })
+        });
+        if(insertRes.ok){ ok++; setBulkImportProgress({current:i+1, total:files.length, ok}); }
+      }catch(e){ /* on continue avec le fichier suivant */ }
+    }
+    setBulkImportProgress(null);
+    fetchRadioPlaylist();
+    alert(`${ok} / ${files.length} piste(s) importee(s) avec succes.`);
   };
 
   const uploadRadioImage = async (file) => {
@@ -914,14 +999,14 @@ export default function Admin() {
     if(!newVideoTitle.trim()) return alert('Mets un titre pour la video');
     if(newVideoIsAd && newVideoAdTimes.length===0) return alert('Ajoute au moins une heure de diffusion pour cette pub');
     const thumb = getYoutubeThumb(newVideoUrl.trim());
-    const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, is_jingle:newVideoIsJingle, is_ad:newVideoIsAd, ad_times:newVideoIsAd? newVideoAdTimes : [], active:true };
+    const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, is_jingle:newVideoIsJingle, is_ad:newVideoIsAd, ad_times:newVideoIsAd? newVideoAdTimes : [], active:true, folder:newVideoFolder.trim()||null };
     const url = editingVideoId? `${supabaseUrl}/rest/v1/video_playlist?id=eq.${editingVideoId}` : `${supabaseUrl}/rest/v1/video_playlist`;
     const method = editingVideoId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setEditingVideoId(null); fetchVideoPlaylist(); alert(editingVideoId? 'Video modifiee!' : 'Video ajoutee a la playlist TV!'); } else alert(await res.text());
+    if(res.ok){ setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setNewVideoFolder(''); setEditingVideoId(null); fetchVideoPlaylist(); alert(editingVideoId? 'Video modifiee!' : 'Video ajoutee a la playlist TV!'); } else alert(await res.text());
   };
-  const handleEditVideoTrack = (v) => { setEditingVideoId(v.id); setNewVideoTitle(v.title||''); setNewVideoUrl(v.url||''); setNewVideoIsJingle(!!v.is_jingle); setNewVideoIsAd(!!v.is_ad); setNewVideoAdTimes(v.ad_times||[]); window.scrollTo(0,0); };
-  const handleCancelVideoEdit = () => { setEditingVideoId(null); setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); };
+  const handleEditVideoTrack = (v) => { setEditingVideoId(v.id); setNewVideoTitle(v.title||''); setNewVideoUrl(v.url||''); setNewVideoIsJingle(!!v.is_jingle); setNewVideoIsAd(!!v.is_ad); setNewVideoAdTimes(v.ad_times||[]); setNewVideoFolder(v.folder||''); window.scrollTo(0,0); };
+  const handleCancelVideoEdit = () => { setEditingVideoId(null); setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setNewVideoFolder(''); };
   const handleDeleteVideoTrack = async (id) => { if(!confirm('Supprimer cette video?')) return; await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchVideoPlaylist(); };
   const handleToggleVideoTrack = async (v) => { await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!v.active }) }); fetchVideoPlaylist(); };
 
@@ -1127,6 +1212,60 @@ export default function Admin() {
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #16a34a'}}>
             <h3 style={{marginTop:0, color:'#16a34a'}}>Radio - Playlist de secours</h3>
             <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Ces pistes jouent en boucle sur la page DIRECT &gt; RADIO quand tu n'es pas en direct sur YouTube. Coche "C'est un jingle" pour les sons courts qui doivent s'intercaler automatiquement entre deux pistes normales.</div>
+
+            <div style={{border:'2px solid #16a34a', padding:12, borderRadius:12, background:'#ecfdf5', marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:900,color:'#16a34a',marginBottom:8}}>IMPORT EN MASSE (plusieurs pistes d'un coup)</div>
+              <div style={{fontSize:10,color:'#64748b',marginBottom:10}}>Chaque fichier devient une piste normale, titree automatiquement d'apres son nom (modifiable ensuite). Les fichiers non-audio du dossier sont ignores.</div>
+              <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>NOM DU GROUPE (optionnel, ex: "Slow") - permet de le programmer sur une plage horaire plus bas</label>
+              <input placeholder="Laisse vide pour un import normal (sans groupe)" value={bulkImportFolder} onChange={e=>setBulkImportFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #86efac',fontSize:12}} />
+              {bulkImportProgress ? (
+                <div style={{fontSize:12,fontWeight:700,color:'#16a34a'}}>Import en cours... {bulkImportProgress.current} / {bulkImportProgress.total} ({bulkImportProgress.ok} reussis)</div>
+              ) : (
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  <label style={{background:'#16a34a',color:'white',padding:'10px 16px',borderRadius:8,fontWeight:800,fontSize:12,cursor:'pointer'}}>
+                    📁 Importer un dossier
+                    <input type="file" webkitdirectory="" directory="" multiple accept="audio/*" onChange={e=>handleBulkImportRadio(e.target.files)} style={{display:'none'}} />
+                  </label>
+                  <label style={{background:'white',color:'#16a34a',border:'1px solid #16a34a',padding:'10px 16px',borderRadius:8,fontWeight:800,fontSize:12,cursor:'pointer'}}>
+                    🎵 Importer plusieurs fichiers
+                    <input type="file" multiple accept="audio/*" onChange={e=>handleBulkImportRadio(e.target.files)} style={{display:'none'}} />
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div style={{border:'2px solid #7c3aed', padding:12, borderRadius:12, background:'#f5f3ff', marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:900,color:'#7c3aed',marginBottom:8}}>PROGRAMMATION PAR GROUPE (ex: 05h-07h jouer "Slow")</div>
+              <div style={{fontSize:10,color:'#64748b',marginBottom:10}}>Pendant cette plage, seules les pistes du groupe indique sont jouees. En dehors des plages programmees, les pistes sans groupe jouent normalement.</div>
+              <label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>NOM DU GROUPE *</label>
+              <input placeholder='Ex: Slow' value={newBlockFolder} onChange={e=>setNewBlockFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #ddd6fe',fontSize:12}} />
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                <div><label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>DEBUT *</label><input type="time" value={newBlockStart} onChange={e=>setNewBlockStart(e.target.value)} style={{width:'100%',padding:8,marginTop:4,borderRadius:8,border:'1px solid #ddd6fe'}} /></div>
+                <div><label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>FIN *</label><input type="time" value={newBlockEnd} onChange={e=>setNewBlockEnd(e.target.value)} style={{width:'100%',padding:8,marginTop:4,borderRadius:8,border:'1px solid #ddd6fe'}} /></div>
+              </div>
+              <label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>JOURS *</label>
+              <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6,marginBottom:12}}>
+                {[['lun','Lun'],['mar','Mar'],['mer','Mer'],['jeu','Jeu'],['ven','Ven'],['sam','Sam'],['dim','Dim'],['tous','Tous les jours']].map(([val,label])=>(
+                  <button key={val} type="button" onClick={()=>toggleBlockDay(val)} style={{padding:'6px 10px',borderRadius:20,border: newBlockDays.includes(val)? '2px solid #7c3aed':'1px solid #ddd6fe',background: newBlockDays.includes(val)? '#7c3aed':'white',color: newBlockDays.includes(val)? 'white':'#7c3aed',fontWeight:800,fontSize:11,cursor:'pointer'}}>{label}</button>
+                ))}
+              </div>
+              <button onClick={handleAddTimeBlock} style={{width:'100%',padding:10,background:'#7c3aed',color:'white',fontWeight:900,borderRadius:8,border:0,cursor:'pointer',fontSize:12}}>{editingBlockId? 'METTRE A JOUR' : 'AJOUTER CETTE PLAGE'}</button>
+              {editingBlockId && <button onClick={resetBlockForm} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#7c3aed',fontWeight:700,borderRadius:8,border:'1px solid #7c3aed',cursor:'pointer'}}>Annuler la modification</button>}
+              {radioTimeBlocks.length>0 && <div style={{marginTop:14}}>
+                {radioTimeBlocks.map(b=>(
+                  <div key={b.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap', opacity:b.active?1:0.6}}>
+                    <div style={{flex:1, minWidth:140}}>
+                      <div style={{fontSize:12,fontWeight:700}}>{b.start_time} - {b.end_time} : "{b.folder}"</div>
+                      <div style={{fontSize:10,color:'#64748b',marginTop:2}}>{(b.days||[]).join(', ')}</div>
+                    </div>
+                    <button onClick={()=>handleEditTimeBlock(b)} style={{background:'#ede9fe',color:'#7c3aed',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
+                    <button onClick={()=>handleToggleTimeBlock(b)} style={{background: b.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'6px 8px', fontSize:10}}>{b.active?'ON':'OFF'}</button>
+                    <button onClick={()=>handleDeleteTimeBlock(b.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+                  </div>
+                ))}
+              </div>}
+            </div>
+
             <div style={{border:'2px dashed #86efac', padding:12, borderRadius:12, background:'#f0fdf4', marginBottom:12}}>
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>TITRE DE LA PISTE *</label>
               <input placeholder="Ex: Emission Societe - 12 aout" value={newRadioTitle} onChange={e=>setNewRadioTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #bbf7d0',fontSize:12}} />
@@ -1173,6 +1312,7 @@ export default function Admin() {
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{t.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : t.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {t.title}</div>
                   {t.is_ad && <div style={{fontSize:10,color:'#92400e',marginTop:2}}>Diffusion : {(t.ad_times||[]).join(', ')||'aucune heure'}</div>}
+                  {t.folder && <div style={{fontSize:10,color:'#7c3aed',marginTop:2,fontWeight:700}}>📁 Groupe : {t.folder}</div>}
                 </div>
                 <button onClick={()=>handleEditRadioTrack(t)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleRadioTrack(t)} style={{background: t.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{t.active?'ON':'OFF'}</button>
@@ -1264,12 +1404,46 @@ export default function Admin() {
               </div>
             )}
 
+            <div style={{border:'2px solid #7c3aed', padding:12, borderRadius:12, background:'#f5f3ff', marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:900,color:'#7c3aed',marginBottom:8}}>PROGRAMMATION PAR GROUPE (ex: 18h-20h jouer "Reportages")</div>
+              <div style={{fontSize:10,color:'#64748b',marginBottom:10}}>Attribue un groupe a une video dans le formulaire ci-dessous, puis programme ce groupe ici. Pendant cette plage, seules les videos du groupe indique sont jouees. En dehors, les videos sans groupe jouent normalement. Attention : contrairement a la radio, un changement de groupe peut couper une video en cours au moment de la bascule.</div>
+              <label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>NOM DU GROUPE *</label>
+              <input placeholder='Ex: Reportages' value={newTvBlockFolder} onChange={e=>setNewTvBlockFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #ddd6fe',fontSize:12}} />
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                <div><label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>DEBUT *</label><input type="time" value={newTvBlockStart} onChange={e=>setNewTvBlockStart(e.target.value)} style={{width:'100%',padding:8,marginTop:4,borderRadius:8,border:'1px solid #ddd6fe'}} /></div>
+                <div><label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>FIN *</label><input type="time" value={newTvBlockEnd} onChange={e=>setNewTvBlockEnd(e.target.value)} style={{width:'100%',padding:8,marginTop:4,borderRadius:8,border:'1px solid #ddd6fe'}} /></div>
+              </div>
+              <label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>JOURS *</label>
+              <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6,marginBottom:12}}>
+                {[['lun','Lun'],['mar','Mar'],['mer','Mer'],['jeu','Jeu'],['ven','Ven'],['sam','Sam'],['dim','Dim'],['tous','Tous les jours']].map(([val,label])=>(
+                  <button key={val} type="button" onClick={()=>toggleTvBlockDay(val)} style={{padding:'6px 10px',borderRadius:20,border: newTvBlockDays.includes(val)? '2px solid #7c3aed':'1px solid #ddd6fe',background: newTvBlockDays.includes(val)? '#7c3aed':'white',color: newTvBlockDays.includes(val)? 'white':'#7c3aed',fontWeight:800,fontSize:11,cursor:'pointer'}}>{label}</button>
+                ))}
+              </div>
+              <button onClick={handleAddTvTimeBlock} style={{width:'100%',padding:10,background:'#7c3aed',color:'white',fontWeight:900,borderRadius:8,border:0,cursor:'pointer',fontSize:12}}>{editingTvBlockId? 'METTRE A JOUR' : 'AJOUTER CETTE PLAGE'}</button>
+              {editingTvBlockId && <button onClick={resetTvBlockForm} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#7c3aed',fontWeight:700,borderRadius:8,border:'1px solid #7c3aed',cursor:'pointer'}}>Annuler la modification</button>}
+              {tvTimeBlocks.length>0 && <div style={{marginTop:14}}>
+                {tvTimeBlocks.map(b=>(
+                  <div key={b.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap', opacity:b.active?1:0.6}}>
+                    <div style={{flex:1, minWidth:140}}>
+                      <div style={{fontSize:12,fontWeight:700}}>{b.start_time} - {b.end_time} : "{b.folder}"</div>
+                      <div style={{fontSize:10,color:'#64748b',marginTop:2}}>{(b.days||[]).join(', ')}</div>
+                    </div>
+                    <button onClick={()=>handleEditTvTimeBlock(b)} style={{background:'#ede9fe',color:'#7c3aed',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
+                    <button onClick={()=>handleToggleTvTimeBlock(b)} style={{background: b.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'6px 8px', fontSize:10}}>{b.active?'ON':'OFF'}</button>
+                    <button onClick={()=>handleDeleteTvTimeBlock(b.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+                  </div>
+                ))}
+              </div>}
+            </div>
+
             <div style={{border:'2px dashed #fca5a5', padding:12, borderRadius:12, background:'#fef2f2', marginBottom:12}}>
               <label style={{fontSize:10,fontWeight:800,color:'#dc2626'}}>TITRE DE LA VIDEO *</label>
               <input placeholder="Ex: Reportage Marche de Lome" value={newVideoTitle} onChange={e=>setNewVideoTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
               <label style={{fontSize:10,fontWeight:800,color:'#dc2626'}}>LIEN YOUTUBE *</label>
               <input placeholder="https://www.youtube.com/watch?v=..." value={newVideoUrl} onChange={e=>setNewVideoUrl(e.target.value)} style={{width:'100%',padding:10,marginTop:4,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
               {newVideoUrl && getYtId(newVideoUrl) && <img src={getYoutubeThumb(newVideoUrl)} style={{width:'100%',maxHeight:160,objectFit:'cover',borderRadius:8,marginTop:8}} alt="" />}
+              <label style={{fontSize:10,fontWeight:800,color:'#dc2626',marginTop:10,display:'block'}}>GROUPE (optionnel, pour la programmation par plage horaire ci-dessus)</label>
+              <input placeholder='Ex: Reportages' value={newVideoFolder} onChange={e=>setNewVideoFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
               <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,color:'#0f2040',marginTop:12,marginBottom:10,cursor:'pointer'}}>
                 <input type="checkbox" checked={newVideoIsJingle} onChange={e=>setNewVideoIsJingle(e.target.checked)} />
                 C'est un jingle video (s'intercale toutes les 3 a 5 videos)
@@ -1305,6 +1479,7 @@ export default function Admin() {
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{v.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : v.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {v.title}</div>
                   {v.is_ad && <div style={{fontSize:10,color:'#92400e',marginTop:2}}>Diffusion : {(v.ad_times||[]).join(', ')||'aucune heure'}</div>}
+                  {v.folder && <div style={{fontSize:10,color:'#7c3aed',marginTop:2,fontWeight:700}}>📁 Groupe : {v.folder}</div>}
                 </div>
                 <button onClick={()=>handleEditVideoTrack(v)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleVideoTrack(v)} style={{background: v.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{v.active?'ON':'OFF'}</button>
