@@ -156,6 +156,8 @@ export default function Admin() {
   const [newBlockFolder, setNewBlockFolder] = useState('');
   const [reassignFolderName, setReassignFolderName] = useState('');
   const [reassignSelectedIds, setReassignSelectedIds] = useState(new Set());
+  const [reassignTvFolderName, setReassignTvFolderName] = useState('');
+  const [reassignTvSelectedIds, setReassignTvSelectedIds] = useState(new Set());
   const [newBlockStart, setNewBlockStart] = useState('');
   const [newBlockEnd, setNewBlockEnd] = useState('');
   const [newBlockDays, setNewBlockDays] = useState([]);
@@ -371,6 +373,46 @@ export default function Admin() {
     fetchRadioPlaylist();
     fetchRadioTimeBlocks();
     alert(`Groupe "${folderName}" supprime avec ses ${tracks.length} fichier(s).`);
+  };
+
+  const toggleReassignTvSelect = (id) => setReassignTvSelectedIds(prev=>{ const next=new Set(prev); if(next.has(id)) next.delete(id); else next.add(id); return next; });
+  const handleReassignTvFolder = async () => {
+    if(!reassignTvFolderName.trim()) return alert('Indique le nom du groupe a assigner');
+    if(reassignTvSelectedIds.size===0) return alert('Coche au moins une video');
+    const targetFolder = reassignTvFolderName.trim();
+    const destPool = videoPlaylist.filter(v=>v.folder===targetFolder);
+    const selectedVideos = videoPlaylist.filter(v=>reassignTvSelectedIds.has(v.id));
+    const toAssign = [];
+    const conflicts = [];
+    selectedVideos.forEach(v=>{
+      const vid = getYtId(v.url||'');
+      const clash = destPool.some(d=>getYtId(d.url||'')===vid);
+      if(clash) conflicts.push(v); else toAssign.push(v);
+    });
+    if(toAssign.length===0){
+      return alert(`Impossible : toutes les videos cochees existent deja dans le groupe "${targetFolder}".`);
+    }
+    if(conflicts.length>0 && !confirm(`${conflicts.length} video(s) cochee(s) existe(nt) deja dans "${targetFolder}" et seront ignorees (doublon evite). Continuer avec les ${toAssign.length} autre(s) ?`)) return;
+    for(const v of toAssign){
+      await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ folder: targetFolder }) });
+    }
+    setReassignTvSelectedIds(new Set()); setReassignTvFolderName('');
+    fetchVideoPlaylist();
+    alert(`${toAssign.length} video(s) assignee(s) au groupe "${targetFolder}".${conflicts.length>0? ` ${conflicts.length} ignoree(s) (doublon evite).`:''}`);
+  };
+  const handleDeleteTvFolder = async (folderName) => {
+    const videos = videoPlaylist.filter(v=>v.folder===folderName);
+    if(!confirm(`Supprimer definitivement le groupe "${folderName}" ET ses ${videos.length} video(s) ? Cette action est irreversible (les liens YouTube eux-memes ne sont pas affectes, juste retires de ta playlist TV).`)) return;
+    for(const v of videos){
+      await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } });
+    }
+    const orphanBlocks = tvTimeBlocks.filter(b=>b.folder===folderName);
+    for(const b of orphanBlocks){
+      await fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${b.id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } });
+    }
+    fetchVideoPlaylist();
+    fetchTvTimeBlocks();
+    alert(`Groupe "${folderName}" supprime avec ses ${videos.length} video(s).`);
   };
 
   const fetchTvTimeBlocks = () => {
@@ -1513,7 +1555,24 @@ export default function Admin() {
               {(()=>{ const folderCounts={}; videoPlaylist.forEach(v=>{ if(v.folder){ if(!folderCounts[v.folder]) folderCounts[v.folder]={count:0, lastDate:null}; folderCounts[v.folder].count++; if(v.created_at && (!folderCounts[v.folder].lastDate || v.created_at>folderCounts[v.folder].lastDate)) folderCounts[v.folder].lastDate=v.created_at } }); const names=Object.keys(folderCounts); if(!names.length) return null; return (
                 <div style={{background:'white', border:'1px solid #ddd6fe', borderRadius:8, padding:10, marginBottom:12}}>
                   <div style={{fontSize:10,fontWeight:900,color:'#7c3aed',marginBottom:6}}>GROUPES EXISTANTS</div>
-                  {names.map(n=>(<div key={n} style={{fontSize:11,color:'#334155',padding:'3px 0'}}>📁 <b>{n}</b> — {folderCounts[n].count} video{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, derniere ajoutee le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</div>))}
+                  {names.map(n=>(<div key={n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:11,color:'#334155',padding:'3px 0'}}><span>📁 <b>{n}</b> — {folderCounts[n].count} video{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, derniere ajoutee le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</span><button type="button" onClick={()=>handleDeleteTvFolder(n)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,cursor:'pointer',flexShrink:0}}>🗑️ Supprimer ce groupe</button></div>))}
+                </div>
+              ) })()}
+              {(()=>{ const orphans = videoPlaylist.filter(v=>!v.folder && !v.is_jingle && !v.is_ad); if(!orphans.length) return null; return (
+                <div style={{background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8, padding:10, marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:900,color:'#b45309',marginBottom:6}}>REASSIGNER UN GROUPE ({orphans.length} video{orphans.length>1?'s':''} sans groupe)</div>
+                  <div style={{maxHeight:150, overflowY:'auto', marginBottom:8}}>
+                    {orphans.map(v=>(
+                      <label key={v.id} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,padding:'3px 0',cursor:'pointer'}}>
+                        <input type="checkbox" checked={reassignTvSelectedIds.has(v.id)} onChange={()=>toggleReassignTvSelect(v.id)} />
+                        {v.title}
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{display:'flex',gap:6}}>
+                    <input placeholder='Nom du groupe a assigner' value={reassignTvFolderName} onChange={e=>setReassignTvFolderName(e.target.value)} style={{flex:1,padding:8,borderRadius:8,border:'1px solid #fde68a',fontSize:12}} />
+                    <button type="button" onClick={handleReassignTvFolder} style={{background:'#b45309',color:'white',border:0,borderRadius:8,padding:'0 14px',fontWeight:800,fontSize:11,cursor:'pointer'}}>Assigner</button>
+                  </div>
                 </div>
               ) })()}
               <label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>NOM DU GROUPE *</label>
