@@ -46,7 +46,7 @@ export default function Admin() {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [blocks, setBlocks] = useState([{id:uid(), type:'text', content:''}]);
-  const [form, setForm] = useState({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft' });
+  const [form, setForm] = useState({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'' });
   const [myRole, setMyRole] = useState(null);
   const isDirector = myRole === 'director';
   const hasLandedRef = useRef(false);
@@ -54,6 +54,7 @@ export default function Admin() {
   const TAB_ACCESS = {
     articles: ['journaliste','director'],
     flash: ['journaliste','director'],
+    commentaires: ['journaliste','director'],
     radio: ['technicien','chef_programme','director'],
     videotv: ['technicien','chef_programme','director'],
     grille: ['technicien','chef_programme','director'],
@@ -88,12 +89,14 @@ export default function Admin() {
   const [showEncadres, setShowEncadres] = useState(false);
   const [showGrille, setShowGrille] = useState(false);
   const [showEmissions, setShowEmissions] = useState(false);
-  const resetTabs = () => { setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false); setShowGrille(false); setShowEmissions(false); };
-  const allTabsHidden = !showArticles && !showUsers && !showFlash && !showAnnonces && !showPubs && !showKiosque && !showRadio && !showVideoTV && !showEncadres && !showGrille && !showEmissions;
+  const [showCommentaires, setShowCommentaires] = useState(false);
+  const resetTabs = () => { setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false); setShowGrille(false); setShowEmissions(false); setShowCommentaires(false); };
+  const allTabsHidden = !showArticles && !showUsers && !showFlash && !showAnnonces && !showPubs && !showKiosque && !showRadio && !showVideoTV && !showEncadres && !showGrille && !showEmissions && !showCommentaires;
   const [users, setUsers] = useState([]);
   const accessTokenRef = useRef(null);
   const refreshTimerRef = useRef(null);
   const [articles, setArticles] = useState([]);
+  const [comments, setComments] = useState([]);
   const [flashes, setFlashes] = useState([]);
   const [annonces, setAnnonces] = useState([]);
   const [pubs, setPubs] = useState([]);
@@ -204,7 +207,7 @@ export default function Admin() {
         doRefresh(saved.refresh_token, saved.email)
       }
     }catch{}
-    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions();
+    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions(); fetchComments();
   }, []);
 
   useEffect(() => {
@@ -228,6 +231,15 @@ export default function Admin() {
   const fetchArticles = () => {
     fetch(`${supabaseUrl}/rest/v1/articles?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setArticles(data); });
+  };
+  const fetchComments = () => {
+    fetch(`${supabaseUrl}/rest/v1/comments?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setComments(data); }).catch(()=>{});
+  };
+  const handleDeleteComment = async (id) => {
+    if(!confirm('Supprimer ce commentaire ?')) return;
+    const res = await fetch(`${supabaseUrl}/rest/v1/comments?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } });
+    if(res.ok) fetchComments(); else alert(await res.text());
   };
   const fetchFlashes = () => {
     fetch(`${supabaseUrl}/rest/v1/flash?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
@@ -685,7 +697,7 @@ export default function Admin() {
     if(refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
     if(token){ try{ await fetch(`${supabaseUrl}/auth/v1/logout`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+token } }) }catch{} }
     setIsLogged(false); setCurrentUser(null); setUser(''); setPass(''); setMyRole(null); hasLandedRef.current = false;
-    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft' });
+    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'' });
     setBlocks([{id:uid(), type:'text', content:''}])
     setGallery([]);
     setYoutubeInput(''); setYoutubeCaption('');
@@ -787,7 +799,8 @@ export default function Admin() {
         translations: form.translations, 
         gallery: compiledGallery.length? compiledGallery : null,
         blocks: blocks,
-        status: form.status || 'draft'
+        status: form.status || 'draft',
+        author: form.author || null
       }
       if(!payload.image && compiledGallery.length){
         const firstYt = compiledGallery.find(g=> g.url && (g.url.includes('youtube') || g.url.includes('youtu.be')))
@@ -830,7 +843,7 @@ export default function Admin() {
   };
 
   const afterPublish = () => {
-    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft' }); 
+    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'' }); 
     setBlocks([{id:uid(), type:'text', content:''}])
     setGallery([]); setEditLang('fr'); fetchArticles(); setShowArticles(true);
   }
@@ -925,7 +938,7 @@ export default function Admin() {
   const handleToggleUne = async (u) => { await fetch(`${supabaseUrl}/rest/v1/unes?id=eq.${u.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!u.active }) }); fetchUnes(); };
 
   const handleEdit = (art) => { 
-    setForm({ id: art.id, title: art.title, category: art.category, image: art.image||'', translations: art.translations||{}, gallery: art.gallery||[], status: art.status||'draft' }); 
+    setForm({ id: art.id, title: art.title, category: art.category, image: art.image||'', translations: art.translations||{}, gallery: art.gallery||[], status: art.status||'draft', author: art.author||'' }); 
     if(art.blocks && Array.isArray(art.blocks) && art.blocks.length){
       setBlocks(art.blocks)
     } else {
@@ -987,6 +1000,7 @@ export default function Admin() {
         <div style={{display:'flex', gap:6, marginBottom:16, overflowX:'auto', flexWrap:'wrap'}}>
           {canAccess('articles') && <button onClick={()=>{const v=!showArticles; resetTabs(); setShowArticles(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>}
           {canAccess('flash') && <button onClick={()=>{const v=!showFlash; resetTabs(); setShowFlash(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>}
+          {canAccess('commentaires') && <button onClick={()=>{const v=!showCommentaires; resetTabs(); setShowCommentaires(v);}} style={{flex:'1 0 100px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showCommentaires? '#2e4fb0':'white', color: showCommentaires? 'white':'#2e4fb0', fontWeight:800}}>Commentaires ({comments.length})</button>}
           {canAccess('annonces') && <button onClick={()=>{const v=!showAnnonces; resetTabs(); setShowAnnonces(v);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>}
           {canAccess('pubs') && <button onClick={()=>{const v=!showPubs; resetTabs(); setShowPubs(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>}
           {canAccess('radio') && <button onClick={()=>{const v=!showRadio; resetTabs(); setShowRadio(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>}
@@ -1027,6 +1041,28 @@ export default function Admin() {
               <br/><br/>
               <b>Pour retirer un acces :</b> Supabase &gt; Authentication &gt; Users &gt; supprimer la personne.
             </div>
+          </div>
+        ) : showCommentaires? (
+          <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #2e4fb0'}}>
+            <h3 style={{marginTop:0, color:'#2e4fb0'}}>Moderation des commentaires</h3>
+            <div style={{fontSize:11, color:'#64748b', marginBottom:14}}>Tous les commentaires postes par les visiteurs sur tes articles. Supprime ceux qui posent probleme.</div>
+            {comments.map(c=>{
+              const art = articles.find(a=>a.id===c.article_id)
+              return (
+                <div key={c.id} style={{border:'1px solid #e5e7eb', padding:12, borderRadius:10, marginBottom:8}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:6}}>
+                    <div>
+                      <span style={{fontWeight:800,color:'#2e4fb0',fontSize:13}}>{c.name}</span>
+                      <span style={{fontSize:10,color:'#94a3b8',marginLeft:8}}>{c.created_at? new Date(c.created_at).toLocaleString('fr-FR'):''}</span>
+                    </div>
+                    <button onClick={()=>handleDeleteComment(c.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,flexShrink:0,cursor:'pointer'}}>Supprimer</button>
+                  </div>
+                  <div style={{fontSize:13,color:'#0f2040',lineHeight:1.5,marginBottom:6}}>{c.comment}</div>
+                  <div style={{fontSize:10,color:'#94a3b8',fontStyle:'italic'}}>Sur l'article : {art? art.title : `#${c.article_id} (article introuvable)`}</div>
+                </div>
+              )
+            })}
+            {comments.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucun commentaire pour l'instant.</div>}
           </div>
         ) : showFlash? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #ffcc00'}}>
@@ -1548,6 +1584,7 @@ export default function Admin() {
             </div>
             <div style={{display:'grid', gap:12}}>
               <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>TITRE * [{editLang.toUpperCase()}]</label><input placeholder="Titre..." value={editLang==='fr'? form.title : (form.translations[editLang]?.title||'')} onChange={e=>{ if(editLang==='fr') setForm({...form,title:e.target.value}); else setForm({...form, translations:{...form.translations, [editLang]:{...form.translations[editLang], title:e.target.value}}}) }} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontWeight:700,fontSize:14}} /></div>
+              {editLang==='fr' && <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>AUTEUR (optionnel, sinon "Rius Multimedia" par defaut)</label><input placeholder="Ex: Marius Attor" value={form.author||''} onChange={e=>setForm({...form, author:e.target.value})} style={{width:'100%',padding:'10px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontSize:13}} /></div>}
               {!isDirector && form.id && form.status==='published' && (
                 <div style={{background:'#fee2e2',border:'2px solid #ef4444',borderRadius:10,padding:12,fontSize:12,color:'#991b1b',fontWeight:700}}>
                   Cet article est deja publie. Seul le directeur peut le modifier ou le depublier.
@@ -1647,7 +1684,7 @@ export default function Admin() {
               </div>
 
               <div style={{display:'flex',gap:8}}>
-                {form.id && <button onClick={()=>{setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft' }); setBlocks([{id:uid(), type:'text', content:''}]); setGallery([]);}} style={{flex:1,padding:'14px',background:'#e0e7ff',borderRadius:12,border:0,fontWeight:800,cursor:'pointer', color:'#2e4fb0'}}>Annuler</button>}
+                {form.id && <button onClick={()=>{setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'' }); setBlocks([{id:uid(), type:'text', content:''}]); setGallery([]);}} style={{flex:1,padding:'14px',background:'#e0e7ff',borderRadius:12,border:0,fontWeight:800,cursor:'pointer', color:'#2e4fb0'}}>Annuler</button>}
                 <button onClick={handlePublish} disabled={!isDirector && form.id && form.status==='published'} style={{flex:2,padding:'14px',background: (!isDirector && form.id && form.status==='published')? '#94a3b8' : form.status==='published'? '#16a34a' : form.id? '#f59e0b' : '#2e4fb0',color:'white',fontWeight:900,borderRadius:12,border:0,cursor:(!isDirector && form.id && form.status==='published')?'not-allowed':'pointer',fontSize:14}}>{form.status==='published'? (form.id?'METTRE A JOUR (PUBLIE)':'PUBLIER') : form.status==='pending_review'? 'SOUMETTRE POUR VALIDATION' : (form.id?'ENREGISTRER LE BROUILLON':'ENREGISTRER EN BROUILLON')}</button>
               </div>
             </div>
