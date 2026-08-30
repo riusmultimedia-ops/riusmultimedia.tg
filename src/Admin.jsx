@@ -157,6 +157,10 @@ export default function Admin() {
   const [reassignFolderName, setReassignFolderName] = useState('');
   const [reassignSelectedIds, setReassignSelectedIds] = useState(new Set());
   const [reassignTvFolderName, setReassignTvFolderName] = useState('');
+  const [previewingRadioIds, setPreviewingRadioIds] = useState(new Set());
+  const [previewingTvIds, setPreviewingTvIds] = useState(new Set());
+  const toggleRadioPreview = (id) => setPreviewingRadioIds(prev=>{ const next=new Set(prev); if(next.has(id)) next.delete(id); else next.add(id); return next; });
+  const toggleTvPreview = (id) => setPreviewingTvIds(prev=>{ const next=new Set(prev); if(next.has(id)) next.delete(id); else next.add(id); return next; });
   const [reassignTvSelectedIds, setReassignTvSelectedIds] = useState(new Set());
   const [newBlockStart, setNewBlockStart] = useState('');
   const [newBlockEnd, setNewBlockEnd] = useState('');
@@ -1451,7 +1455,8 @@ export default function Admin() {
               {editingRadioId && <button onClick={handleCancelRadioEdit} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#16a34a',fontWeight:700,borderRadius:8,border:'1px solid #16a34a'}}>Annuler la modification</button>}
             </div>
             {radioPlaylist.map((t,i)=>(
-              <div key={t.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
+              <div key={t.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6}}>
+                <div style={{display:'flex', gap:10, alignItems:'center'}}>
                 <img src={t.image||'/logo.png'} style={{width:40,height:40,objectFit:'cover',borderRadius:6}} alt="" />
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{t.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : t.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {t.title}</div>
@@ -1459,9 +1464,12 @@ export default function Admin() {
                   {t.folder && <div style={{fontSize:10,color:'#7c3aed',marginTop:2,fontWeight:700}}>📁 Groupe : {t.folder}</div>}
                   {t.created_at && <div style={{fontSize:9,color:'#94a3b8',marginTop:2}}>Ajoute le {new Date(t.created_at).toLocaleDateString('fr-FR')}</div>}
                 </div>
+                <button onClick={()=>toggleRadioPreview(t.id)} style={{background: previewingRadioIds.has(t.id)?'#16a34a':'#dcfce7', color: previewingRadioIds.has(t.id)?'white':'#16a34a', border:0, borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:700, cursor:'pointer'}}>{previewingRadioIds.has(t.id)?'■ Stop':'▶ Ecouter'}</button>
                 <button onClick={()=>handleEditRadioTrack(t)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleRadioTrack(t)} style={{background: t.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{t.active?'ON':'OFF'}</button>
                 <button onClick={()=>handleDeleteRadioTrack(t.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+                </div>
+                {previewingRadioIds.has(t.id) && <audio controls autoPlay src={t.url} style={{width:'100%',marginTop:8}} onError={()=>alert(`⚠️ Ce fichier ne se charge pas ("${t.title}"). Le lien est peut-etre casse ou le fichier a ete supprime du stockage.`)} />}
               </div>
             ))}
             {radioPlaylist.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucune piste pour l'instant. Ajoute ta premiere piste ci-dessus.</div>}
@@ -1642,7 +1650,8 @@ export default function Admin() {
               {editingVideoId && <button onClick={handleCancelVideoEdit} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#dc2626',fontWeight:700,borderRadius:8,border:'1px solid #dc2626'}}>Annuler la modification</button>}
             </div>
             {videoPlaylist.map((v,i)=>(
-              <div key={v.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap'}}>
+              <div key={v.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6}}>
+                <div style={{display:'flex', gap:10, alignItems:'center', flexWrap:'wrap'}}>
                 <img src={v.image} style={{width:60,height:36,objectFit:'cover',borderRadius:6}} alt="" />
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{v.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : v.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {v.title}</div>
@@ -1650,9 +1659,19 @@ export default function Admin() {
                   {v.folder && <div style={{fontSize:10,color:'#7c3aed',marginTop:2,fontWeight:700}}>📁 Groupe : {v.folder}</div>}
                   {v.created_at && <div style={{fontSize:9,color:'#94a3b8',marginTop:2}}>Ajoutee le {new Date(v.created_at).toLocaleDateString('fr-FR')}</div>}
                 </div>
+                <button onClick={()=>toggleTvPreview(v.id)} style={{background: previewingTvIds.has(v.id)?'#dc2626':'#fee2e2', color: previewingTvIds.has(v.id)?'white':'#dc2626', border:0, borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:700, cursor:'pointer'}}>{previewingTvIds.has(v.id)?'■ Fermer':'👁 Previsualiser'}</button>
                 <button onClick={()=>handleEditVideoTrack(v)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleVideoTrack(v)} style={{background: v.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{v.active?'ON':'OFF'}</button>
                 <button onClick={()=>handleDeleteVideoTrack(v.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+                </div>
+                {previewingTvIds.has(v.id) && (
+                  <div style={{marginTop:8}}>
+                    <div style={{position:'relative',paddingBottom:'56.25%',height:0,background:'black',borderRadius:8,overflow:'hidden'}}>
+                      <iframe src={`https://www.youtube.com/embed/${getYtId(v.url)}?autoplay=1`} style={{position:'absolute',inset:0,width:'100%',height:'100%',border:0}} allowFullScreen allow="autoplay; encrypted-media" title={v.title}></iframe>
+                    </div>
+                    <div style={{fontSize:10,color:'#94a3b8',marginTop:4}}>Si la vidéo affiche "Video indisponible", "Integration desactivee" ou reste noire, elle ne fonctionnera pas non plus sur le site public — remplace le lien.</div>
+                  </div>
+                )}
               </div>
             ))}
             {videoPlaylist.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucune video pour l'instant. Ajoute ta premiere video ci-dessus.</div>}
