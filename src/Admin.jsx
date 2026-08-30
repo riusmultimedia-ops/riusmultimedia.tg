@@ -1617,7 +1617,14 @@ export default function Admin() {
               <input placeholder="Ex: Reportage Marche de Lome" value={newVideoTitle} onChange={e=>setNewVideoTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
               <label style={{fontSize:10,fontWeight:800,color:'#dc2626'}}>LIEN YOUTUBE *</label>
               <input placeholder="https://www.youtube.com/watch?v=..." value={newVideoUrl} onChange={e=>setNewVideoUrl(e.target.value)} style={{width:'100%',padding:10,marginTop:4,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
-              {newVideoUrl && getYtId(newVideoUrl) && <img src={getYoutubeThumb(newVideoUrl)} style={{width:'100%',maxHeight:160,objectFit:'cover',borderRadius:8,marginTop:8}} alt="" />}
+              {newVideoUrl && getYtId(newVideoUrl) && (
+                <div style={{marginTop:8}}>
+                  <div style={{position:'relative',paddingBottom:'56.25%',height:0,background:'black',borderRadius:8,overflow:'hidden'}}>
+                    <iframe src={`https://www.youtube.com/embed/${getYtId(newVideoUrl)}`} style={{position:'absolute',inset:0,width:'100%',height:'100%',border:0}} allowFullScreen allow="encrypted-media" title="Apercu video"></iframe>
+                  </div>
+                  <div style={{fontSize:9,color:'#94a3b8',marginTop:4}}>Si "Video indisponible" ou ecran noir, ca ne marchera pas non plus une fois publie — choisis une autre video.</div>
+                </div>
+              )}
               <label style={{fontSize:10,fontWeight:800,color:'#dc2626',marginTop:10,display:'block'}}>GROUPE (optionnel, pour la programmation par plage horaire ci-dessus)</label>
               <input placeholder='Ex: Reportages' value={newVideoFolder} onChange={e=>setNewVideoFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
               <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,color:'#0f2040',marginTop:12,marginBottom:10,cursor:'pointer'}}>
