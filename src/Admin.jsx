@@ -1884,6 +1884,16 @@ export default function Admin() {
                       {m.type==='video' && (
                         <div>
                           <input placeholder="URL YouTube ou MP4" value={m.url} onChange={e=>updateEncadreMedia(m.id,'url',e.target.value)} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #e9d5ff',fontSize:11}} />
+                          {m.url && getYtId(m.url) ? (
+                            <div style={{marginTop:8}}>
+                              <div style={{position:'relative',paddingBottom:'56.25%',height:0,background:'black',borderRadius:8,overflow:'hidden'}}>
+                                <iframe src={`https://www.youtube.com/embed/${getYtId(m.url)}`} style={{position:'absolute',inset:0,width:'100%',height:'100%',border:0}} allowFullScreen allow="encrypted-media" title="Apercu video"></iframe>
+                              </div>
+                              <div style={{fontSize:9,color:'#94a3b8',marginTop:4}}>Si "Video indisponible" ou ecran noir, ca ne marchera pas non plus une fois publie.</div>
+                            </div>
+                          ) : m.url && (
+                            <video controls src={m.url} style={{width:'100%', maxHeight:200, borderRadius:8, marginTop:8}} />
+                          )}
                         </div>
                       )}
                       {m.type!=='text' && <input placeholder="Legende (optionnel)" value={m.caption||''} onChange={e=>updateEncadreMedia(m.id,'caption',e.target.value)} style={{width:'100%',padding:6,borderRadius:6,border:'1px solid #e9d5ff',fontSize:11, marginTop:6}} />}
@@ -2033,6 +2043,16 @@ export default function Admin() {
                     {(block.type==='video' || block.type==='youtube') && (
                       <div>
                         <input placeholder="URL YouTube ou MP4" value={block.url} onChange={e=>updateBlock(block.id,'url',e.target.value)} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ddd',fontSize:11}} />
+                        {block.url && getYtId(block.url) ? (
+                          <div style={{marginTop:8}}>
+                            <div style={{position:'relative',paddingBottom:'56.25%',height:0,background:'black',borderRadius:8,overflow:'hidden'}}>
+                              <iframe src={`https://www.youtube.com/embed/${getYtId(block.url)}`} style={{position:'absolute',inset:0,width:'100%',height:'100%',border:0}} allowFullScreen allow="encrypted-media" title="Apercu video"></iframe>
+                            </div>
+                            <div style={{fontSize:9,color:'#94a3b8',marginTop:4}}>Si "Video indisponible" ou ecran noir, ca ne marchera pas non plus une fois publie.</div>
+                          </div>
+                        ) : block.url && (
+                          <video controls src={block.url} style={{width:'100%', maxHeight:200, borderRadius:8, marginTop:8}} onError={()=>{}} />
+                        )}
                       </div>
                     )}
                   </div>
