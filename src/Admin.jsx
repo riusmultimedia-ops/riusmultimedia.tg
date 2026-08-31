@@ -14,8 +14,9 @@ const PUB_SLOTS = [
   { value:'header', label:'Bandeau Header (toutes pages) - 728x90' },
   { value:'home-band', label:'Accueil - Bandeau apres le carrousel - 728x90' },
   { value:'home-infeed', label:'Accueil - Carte dans la grille d\'articles' },
-  { value:'sidebar', label:'Article - Encart sidebar - 300x250' },
+  { value:'sidebar', label:'Article - Encart sidebar #1 - 300x250' },
   { value:'article-incontent', label:'Article - Bandeau sous l\'image - 728x90' },
+  { value:'article-sidebar-2', label:'Article - Encart sidebar #2, demi-page - 300x600' },
 ];
 const slotLabel = (v) => (PUB_SLOTS.find(s=>s.value===v)?.label) || 'Bandeau Header (toutes pages) - 728x90';
 
