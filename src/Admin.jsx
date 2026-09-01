@@ -10,6 +10,13 @@ const SLOGAN_L2 = "Voir Verifier Informer";
 const LANGS = ['fr','en','es','de','ar','zh'];
 const LABELS = { fr:'FR', en:'EN', es:'ES', de:'DE', ar:'AR', zh:'ZH' };
 
+const slugifyTitle = (title) => String(title||'')
+  .toLowerCase()
+  .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .replace(/[^a-z0-9]+/g,'-')
+  .replace(/^-+|-+$/g,'')
+  .substring(0,80)
+
 const PUB_SLOTS = [
   { value:'header', label:'Bandeau Header (toutes pages) - 728x90' },
   { value:'home-band', label:'Accueil - Bandeau apres le carrousel - 728x90' },
@@ -47,7 +54,8 @@ export default function Admin() {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [blocks, setBlocks] = useState([{id:uid(), type:'text', content:''}]);
-  const [form, setForm] = useState({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[] });
+  const [form, setForm] = useState({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[], slug:'' });
+  const [slugTouched, setSlugTouched] = useState(false);
   const [myRole, setMyRole] = useState(null);
   const isDirector = myRole === 'director';
   const hasLandedRef = useRef(false);
@@ -900,7 +908,7 @@ export default function Admin() {
     if(refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
     if(token){ try{ await fetch(`${supabaseUrl}/auth/v1/logout`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+token } }) }catch{} }
     setIsLogged(false); setCurrentUser(null); setUser(''); setPass(''); setMyRole(null); hasLandedRef.current = false;
-    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[] });
+    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[], slug:'' }); setSlugTouched(false);
     setBlocks([{id:uid(), type:'text', content:''}])
     setGallery([]);
     setYoutubeInput(''); setYoutubeCaption('');
@@ -992,6 +1000,16 @@ export default function Admin() {
         ...gallery
       ].filter(g=>g.url)
 
+      // Genere un slug unique (evite les collisions avec un autre article existant)
+      let finalSlug = (form.slug || slugifyTitle(form.title) || '').trim();
+      if(finalSlug){
+        let candidate = finalSlug, n = 2;
+        while(articles.some(a => a.id!==form.id && a.slug===candidate)){
+          candidate = `${finalSlug}-${n}`; n++;
+        }
+        finalSlug = candidate;
+      }
+
       let payload = { 
         title: form.title, 
         category: form.category, 
@@ -1005,7 +1023,8 @@ export default function Admin() {
         status: form.status || 'draft',
         author: form.author || null,
         chapeau: form.chapeau || null,
-        tags: (form.tags && form.tags.length) ? form.tags : null
+        tags: (form.tags && form.tags.length) ? form.tags : null,
+        slug: finalSlug || null
       }
       if(!payload.image && compiledGallery.length){
         const firstYt = compiledGallery.find(g=> g.url && (g.url.includes('youtube') || g.url.includes('youtu.be')))
@@ -1048,7 +1067,7 @@ export default function Admin() {
   };
 
   const afterPublish = () => {
-    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[] }); 
+    setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[], slug:'' }); setSlugTouched(false); 
     setBlocks([{id:uid(), type:'text', content:''}])
     setGallery([]); setEditLang('fr'); fetchArticles(); setShowArticles(true);
   }
@@ -1156,7 +1175,8 @@ export default function Admin() {
   const handleToggleUne = async (u) => { await fetch(`${supabaseUrl}/rest/v1/unes?id=eq.${u.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!u.active }) }); fetchUnes(); };
 
   const handleEdit = (art) => { 
-    setForm({ id: art.id, title: art.title, category: art.category, image: art.image||'', translations: art.translations||{}, gallery: art.gallery||[], status: art.status||'draft', author: art.author||'', chapeau: art.chapeau||'', tags: art.tags||[] }); 
+    setForm({ id: art.id, title: art.title, category: art.category, image: art.image||'', translations: art.translations||{}, gallery: art.gallery||[], status: art.status||'draft', author: art.author||'', chapeau: art.chapeau||'', tags: art.tags||[], slug: art.slug||'' }); 
+    setSlugTouched(true);
     if(art.blocks && Array.isArray(art.blocks) && art.blocks.length){
       setBlocks(art.blocks)
     } else {
@@ -1980,7 +2000,8 @@ export default function Admin() {
               <button onClick={handleAutoTranslate} disabled={translating} style={{marginLeft:8, background: translating?'#94a3b8':'#ffcc00', color:'#0f2040', border:0, borderRadius:20, padding:'6px 14px', fontWeight:900, fontSize:11, cursor:'pointer'}}>{translating?'Traduction...':'Traduire auto'}</button>
             </div>
             <div style={{display:'grid', gap:12}}>
-              <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>TITRE * [{editLang.toUpperCase()}]</label><input placeholder="Titre..." value={editLang==='fr'? form.title : (form.translations[editLang]?.title||'')} onChange={e=>{ if(editLang==='fr') setForm({...form,title:e.target.value}); else setForm({...form, translations:{...form.translations, [editLang]:{...form.translations[editLang], title:e.target.value}}}) }} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontWeight:700,fontSize:14}} /></div>
+              <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>TITRE * [{editLang.toUpperCase()}]</label><input placeholder="Titre..." value={editLang==='fr'? form.title : (form.translations[editLang]?.title||'')} onChange={e=>{ if(editLang==='fr') setForm(prev=>({...prev,title:e.target.value, slug: (!slugTouched && !prev.id)? slugifyTitle(e.target.value) : prev.slug})); else setForm({...form, translations:{...form.translations, [editLang]:{...form.translations[editLang], title:e.target.value}}}) }} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontWeight:700,fontSize:14}} /></div>
+              {editLang==='fr' && <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>SLUG / URL (genere automatiquement, modifiable)</label><div style={{display:'flex',gap:6,marginTop:4}}><input placeholder="ex-titre-de-larticle" value={form.slug||''} onChange={e=>{ setSlugTouched(true); setForm({...form, slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,'-')}) }} style={{flex:1,padding:'10px',borderRadius:10,border:'1px solid #c7d2fe',fontSize:12,fontFamily:'monospace'}} /><button type="button" onClick={()=>{ setSlugTouched(true); setForm({...form, slug:slugifyTitle(form.title)}) }} style={{background:'#eef2ff',color:'#2e4fb0',border:'1px solid #c7d2fe',borderRadius:10,padding:'0 12px',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>Regenerer</button></div><div style={{fontSize:10,color:'#94a3b8',marginTop:3}}>Lien final : .../?a={form.slug||'(vide)'}</div></div>}
               {editLang==='fr' && <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>AUTEUR (optionnel, sinon "Rius Multimedia" par defaut)</label><input placeholder="Ex: Marius Attor" value={form.author||''} onChange={e=>setForm({...form, author:e.target.value})} style={{width:'100%',padding:'10px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontSize:13}} /></div>}
               {editLang==='fr' && <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>CHAPEAU (resume d'intro, 1-3 phrases - affiche sous le titre et utilise pour le partage/Google)</label><textarea placeholder="Ex: Une victoire historique pour Golfe 4, qui remporte le tournoi intercommunal pour la premiere fois de son histoire." value={form.chapeau||''} onChange={e=>setForm({...form, chapeau:e.target.value})} rows={3} style={{width:'100%',padding:'10px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontSize:13,fontFamily:'inherit',resize:'vertical'}} /><div style={{fontSize:10,color:'#94a3b8',marginTop:3}}>{(form.chapeau||'').length} caracteres (id\u00e9al: 100-160)</div></div>}
               {editLang==='fr' && <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>MOTS-CLES PRINCIPAUX (separes par une virgule)</label><input placeholder="Ex: football, tournoi intercommunal, Golfe 4, Lome" value={(form.tags||[]).join(', ')} onChange={e=>setForm({...form, tags:e.target.value.split(',').map(t=>t.trim()).filter(Boolean)})} style={{width:'100%',padding:'10px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontSize:13}} /></div>}
@@ -2093,7 +2114,7 @@ export default function Admin() {
               </div>
 
               <div style={{display:'flex',gap:8}}>
-                {form.id && <button onClick={()=>{setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[] }); setBlocks([{id:uid(), type:'text', content:''}]); setGallery([]);}} style={{flex:1,padding:'14px',background:'#e0e7ff',borderRadius:12,border:0,fontWeight:800,cursor:'pointer', color:'#2e4fb0'}}>Annuler</button>}
+                {form.id && <button onClick={()=>{setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[], slug:'' }); setSlugTouched(false); setBlocks([{id:uid(), type:'text', content:''}]); setGallery([]);}} style={{flex:1,padding:'14px',background:'#e0e7ff',borderRadius:12,border:0,fontWeight:800,cursor:'pointer', color:'#2e4fb0'}}>Annuler</button>}
                 <button onClick={handlePublish} disabled={!isDirector && form.id && form.status==='published'} style={{flex:2,padding:'14px',background: (!isDirector && form.id && form.status==='published')? '#94a3b8' : form.status==='published'? '#16a34a' : form.id? '#f59e0b' : '#2e4fb0',color:'white',fontWeight:900,borderRadius:12,border:0,cursor:(!isDirector && form.id && form.status==='published')?'not-allowed':'pointer',fontSize:14}}>{form.status==='published'? (form.id?'METTRE A JOUR (PUBLIE)':'PUBLIER') : form.status==='pending_review'? 'SOUMETTRE POUR VALIDATION' : (form.id?'ENREGISTRER LE BROUILLON':'ENREGISTRER EN BROUILLON')}</button>
               </div>
             </div>

@@ -50,13 +50,13 @@ async function handleSitemap(url) {
   try {
     if (SUPABASE_URL && SUPABASE_KEY) {
       const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/articles?select=id,created_at&status=eq.published&order=created_at.desc&limit=1000`,
+        `${SUPABASE_URL}/rest/v1/articles?select=id,slug,created_at&status=eq.published&order=created_at.desc&limit=1000`,
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
       );
       const data = await res.json();
       if (Array.isArray(data)) {
         articleEntries = data.map((a) => ({
-          loc: `${url.origin}/?a=${a.id}`,
+          loc: `${url.origin}/?a=${a.slug || a.id}`,
           lastmod: a.created_at ? new Date(a.created_at).toISOString().split('T')[0] : null,
         }));
       }
@@ -87,8 +87,12 @@ async function handleSocialPreview(url) {
     const SUPABASE_KEY = process.env.VITE_SUPABASE_KEY;
     if (!SUPABASE_URL || !SUPABASE_KEY) return;
 
+    const isNumericId = /^\d+$/.test(articleId);
+    const filter = isNumericId
+      ? `or=(slug.eq.${encodeURIComponent(articleId)},id.eq.${articleId})`
+      : `slug=eq.${encodeURIComponent(articleId)}`;
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(articleId)}&select=title,image,content,chapeau&status=eq.published`,
+      `${SUPABASE_URL}/rest/v1/articles?${filter}&select=title,image,content,chapeau&status=eq.published`,
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
     );
     const data = await res.json();
