@@ -88,7 +88,7 @@ async function handleSocialPreview(url) {
     if (!SUPABASE_URL || !SUPABASE_KEY) return;
 
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(articleId)}&select=title,image,content&status=eq.published`,
+      `${SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(articleId)}&select=title,image,content,chapeau&status=eq.published`,
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
     );
     const data = await res.json();
@@ -97,7 +97,7 @@ async function handleSocialPreview(url) {
 
     const title = escapeHtml(article.title || 'Rius Multimédia');
     const image = article.image || `${url.origin}/logo.png`;
-    const rawExcerpt = stripHtml(article.content).substring(0, 160);
+    const rawExcerpt = (article.chapeau && article.chapeau.trim()) ? article.chapeau.trim() : stripHtml(article.content).substring(0, 160);
     const description = escapeHtml(rawExcerpt || 'Rius Multimédia — Voir, Vérifier, Informer.');
     const pageUrl = url.href;
 
