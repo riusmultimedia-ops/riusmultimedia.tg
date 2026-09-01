@@ -1053,25 +1053,35 @@ export default function Admin() {
     setGallery([]); setEditLang('fr'); fetchArticles(); setShowArticles(true);
   }
 
+  const [editingFlashId, setEditingFlashId] = useState(null);
   const handleAddFlash = async () => {
     if(!newFlash.trim()) return;
-    const res = await fetch(`${supabaseUrl}/rest/v1/flash`, {
-      method:'POST', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-      body: JSON.stringify({ text: newFlash.trim(), active: true })
+    const url = editingFlashId? `${supabaseUrl}/rest/v1/flash?id=eq.${editingFlashId}` : `${supabaseUrl}/rest/v1/flash`;
+    const method = editingFlashId? 'PATCH' : 'POST';
+    const res = await fetch(url, {
+      method, headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+      body: JSON.stringify(editingFlashId? { text: newFlash.trim() } : { text: newFlash.trim(), active: true })
     });
-    if(res.ok){ setNewFlash(''); fetchFlashes(); } else alert(await res.text());
+    if(res.ok){ setNewFlash(''); setEditingFlashId(null); fetchFlashes(); } else alert(await res.text());
   };
+  const handleEditFlash = (f) => { setEditingFlashId(f.id); setNewFlash(f.text); };
+  const handleCancelFlashEdit = () => { setEditingFlashId(null); setNewFlash(''); };
   const handleDeleteFlash = async (id) => { if(!confirm('Supprimer ce flash?')) return; await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchFlashes(); };
   const handleToggleFlash = async (f) => { await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${f.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!f.active }) }); fetchFlashes(); };
 
+  const [editingAnnonceId, setEditingAnnonceId] = useState(null);
   const handleAddAnnonce = async () => {
     if(!newAnnonce.trim()) return;
-    const res = await fetch(`${supabaseUrl}/rest/v1/annonces_blanches`, {
-      method:'POST', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-      body: JSON.stringify({ text: newAnnonce.trim(), active: true })
+    const url = editingAnnonceId? `${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${editingAnnonceId}` : `${supabaseUrl}/rest/v1/annonces_blanches`;
+    const method = editingAnnonceId? 'PATCH' : 'POST';
+    const res = await fetch(url, {
+      method, headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+      body: JSON.stringify(editingAnnonceId? { text: newAnnonce.trim() } : { text: newAnnonce.trim(), active: true })
     });
-    if(res.ok){ setNewAnnonce(''); fetchAnnonces(); } else alert(await res.text());
+    if(res.ok){ setNewAnnonce(''); setEditingAnnonceId(null); fetchAnnonces(); } else alert(await res.text());
   };
+  const handleEditAnnonce = (a) => { setEditingAnnonceId(a.id); setNewAnnonce(a.text); };
+  const handleCancelAnnonceEdit = () => { setEditingAnnonceId(null); setNewAnnonce(''); };
   const handleDeleteAnnonce = async (id) => { if(!confirm('Supprimer cette annonce?')) return; await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchAnnonces(); };
   const handleToggleAnnonce = async (a) => { await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${a.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!a.active }) }); fetchAnnonces(); };
 
@@ -1277,11 +1287,13 @@ export default function Admin() {
             <h3 style={{marginTop:0, color:'#0f2040'}}>Bande noire - Infos Flash</h3>
             <div style={{display:'flex', gap:6, marginBottom:14}}>
               <input placeholder="Ex: Togo : Ouverture du marche..." value={newFlash} onChange={e=>setNewFlash(e.target.value)} style={{flex:1,padding:11,borderRadius:10,border:'1px solid #c7d2fe'}} />
-              <button onClick={handleAddFlash} style={{background:'#0f2040',color:'white',borderRadius:10,border:0,padding:'0 16px',fontWeight:800,cursor:'pointer'}}>Ajouter</button>
+              <button onClick={handleAddFlash} style={{background:'#0f2040',color:'white',borderRadius:10,border:0,padding:'0 16px',fontWeight:800,cursor:'pointer'}}>{editingFlashId? 'Modifier':'Ajouter'}</button>
+              {editingFlashId && <button onClick={handleCancelFlashEdit} style={{background:'#f1f5f9',color:'#0f2040',borderRadius:10,border:0,padding:'0 14px',fontWeight:700,cursor:'pointer'}}>Annuler</button>}
             </div>
             {flashes.map(f=>(
               <div key={f.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
                 <div style={{flex:1, fontSize:13}}>{f.text}</div>
+                <button onClick={()=>handleEditFlash(f)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleFlash(f)} style={{background: f.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{f.active?'ON':'OFF'}</button>
                 <button onClick={()=>handleDeleteFlash(f.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
               </div>
@@ -1292,11 +1304,13 @@ export default function Admin() {
             <h3 style={{marginTop:0, color:'#0f2040'}}>Bande blanche - Annonces defilantes</h3>
             <div style={{display:'flex', gap:6, marginBottom:14}}>
               <input placeholder="Ex: EN DIRECT 20h : Debat Politique" value={newAnnonce} onChange={e=>setNewAnnonce(e.target.value)} style={{flex:1,padding:11,borderRadius:10,border:'1px solid #c7d2fe'}} />
-              <button onClick={handleAddAnnonce} style={{background:'#0f2040',color:'#ffcc00',borderRadius:10,border:0,padding:'0 16px',fontWeight:800,cursor:'pointer'}}>Ajouter</button>
+              <button onClick={handleAddAnnonce} style={{background:'#0f2040',color:'#ffcc00',borderRadius:10,border:0,padding:'0 16px',fontWeight:800,cursor:'pointer'}}>{editingAnnonceId? 'Modifier':'Ajouter'}</button>
+              {editingAnnonceId && <button onClick={handleCancelAnnonceEdit} style={{background:'#f1f5f9',color:'#0f2040',borderRadius:10,border:0,padding:'0 14px',fontWeight:700,cursor:'pointer'}}>Annuler</button>}
             </div>
             {annonces.map(a=>(
               <div key={a.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
                 <div style={{flex:1, fontSize:13}}>{a.text}</div>
+                <button onClick={()=>handleEditAnnonce(a)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 <button onClick={()=>handleToggleAnnonce(a)} style={{background: a.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{a.active?'ON':'OFF'}</button>
                 <button onClick={()=>handleDeleteAnnonce(a.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
               </div>
