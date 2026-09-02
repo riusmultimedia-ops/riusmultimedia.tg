@@ -468,6 +468,14 @@ export default function App(){
     fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?select=*&active=eq.true`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setTvTimeBlocks(d) }).catch(()=>{})
     fetch(`${supabaseUrl}/rest/v1/emissions?select=*&active=eq.true&order=date_diffusion.desc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setEmissions(d) }).catch(()=>{})
   },[])
+  useEffect(()=>{
+    const id = setInterval(()=>{
+      fetch(`${supabaseUrl}/rest/v1/radio_time_blocks?select=*&active=eq.true`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setRadioTimeBlocks(d) }).catch(()=>{})
+      fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?select=*&active=eq.true`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setTvTimeBlocks(d) }).catch(()=>{})
+      fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setRadioPlaylist(prev=>{ const order=new Map(prev.map((t,i)=>[t.id,i])); return [...d].sort((a,b)=>(order.has(a.id)?order.get(a.id):999) - (order.has(b.id)?order.get(b.id):999)) }) }).catch(()=>{})
+    }, 60000)
+    return ()=>clearInterval(id)
+  },[])
   const headerPubs = pubs.filter(p=>(p.slot||'header')==='header')
   useEffect(()=>{ if(headerPubs.length<=1) return; const id=setInterval(()=>setCurrentPub(p=>(p+1)%headerPubs.length),5000); return()=>clearInterval(id) },[headerPubs.length])
   useEffect(()=>{ const id=setInterval(()=>setInfeedRotation(p=>p+1),7000); return()=>clearInterval(id) },[])
@@ -502,17 +510,28 @@ export default function App(){
   const pausedOffsetRef = useRef(0)
   const playTokenRef = useRef(0)
   const currentUrlRef = useRef(null)
-  const getActiveFolderFor = (blocks) => {
-    const now = new Date()
+  const getActiveBlockFor = (blocks, atDate) => {
+    const now = atDate || new Date()
     const nowKey = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
-    const dayKey = todayDayKey()
-    const block = (blocks||[]).find(b => {
+    const dayKey = ['dim','lun','mar','mer','jeu','ven','sam'][now.getDay()]
+    const matches = (blocks||[]).filter(b => {
       if(!((b.days||[]).includes('tous') || (b.days||[]).includes(dayKey))) return false
       if(b.start_time <= b.end_time) return nowKey >= b.start_time && nowKey < b.end_time
       return nowKey >= b.start_time || nowKey < b.end_time // plage qui traverse minuit
     })
-    return block? block.folder : null
+    if(!matches.length) return null
+    if(matches.length===1) return matches[0]
+    // Plusieurs plages actives en meme temps (chevauchement) : la plus courte (la plus specifique) l'emporte
+    const durationMin = (b) => {
+      const [sh,sm] = b.start_time.split(':').map(Number)
+      const [eh,em] = b.end_time.split(':').map(Number)
+      let mins = (eh*60+em) - (sh*60+sm)
+      if(mins <= 0) mins += 24*60
+      return mins
+    }
+    return [...matches].sort((a,b)=>durationMin(a)-durationMin(b))[0]
   }
+  const getActiveFolderFor = (blocks) => { const block = getActiveBlockFor(blocks); return block? block.folder : null }
   const radioMainTracks = (()=>{
     const pool = radioPlaylist.filter(t=>!t.is_jingle && !t.is_ad)
     const activeFolder = getActiveFolderFor(radioTimeBlocks)
@@ -522,7 +541,21 @@ export default function App(){
     }
     return pool.filter(t=>!t.folder)
   })()
+  const radioMainTracksRef = useRef(radioMainTracks)
+  radioMainTracksRef.current = radioMainTracks
+  const radioPlaylistRef = useRef(radioPlaylist)
+  radioPlaylistRef.current = radioPlaylist
+  const radioIsPlayingRef = useRef(false)
+  radioIsPlayingRef.current = radioIsPlaying
+  const radioTimeBlocksRef = useRef(radioTimeBlocks)
+  radioTimeBlocksRef.current = radioTimeBlocks
+  const scheduleTransitionFiredRef = useRef(null)
   const radioJingles = radioPlaylist.filter(t=>t.is_jingle)
+  const radioJinglesRef = useRef(radioJingles)
+  radioJinglesRef.current = radioJingles
+  useEffect(()=>{
+    radioJingles.forEach(j=>{ decodeTrack(j.url).catch(()=>{}) })
+  },[radioJingles.map(j=>j.id).join(',')])
   const radioAds = radioPlaylist.filter(t=>t.is_ad && t.active)
   const radioPhaseRef = useRef('track')
   const playedAdSlotsRef = useRef(new Set())
@@ -603,19 +636,79 @@ export default function App(){
   }
 
   const playJingleThenNext = () => {
-    if(radioJingles.length>0){
+    const jingles = radioJinglesRef.current
+    if(jingles.length>0){
       radioPhaseRef.current='jingle'
-      const jingle = radioJingles[Math.floor(Math.random()*radioJingles.length)]
+      const jingle = jingles[Math.floor(Math.random()*jingles.length)]
       playSource(jingle.url, 0, ()=>{ radioPhaseRef.current='track'; nextRadioTrack() })
     } else {
       nextRadioTrack()
     }
   }
+  const forceEarlyTransition = () => {
+    const el = radioAudioElRef.current
+    if(!el) return
+    playTokenRef.current++ // invalide les callbacks (onended/ontimeupdate) de la piste en cours
+    el.onended = null
+    el.ontimeupdate = null
+    const startVol = el.volume
+    const fadeStart = Date.now()
+    const fadeDuration = 2500
+    const fadeStep = () => {
+      const elapsed = Date.now() - fadeStart
+      const t = Math.min(1, elapsed / fadeDuration)
+      el.volume = startVol * (1 - t)
+      if(t < 1){ requestAnimationFrame(fadeStep) }
+      else {
+        try{ el.pause() }catch{}
+        el.volume = startVol
+        pausedOffsetRef.current = 0
+        playJingleThenNext()
+      }
+    }
+    requestAnimationFrame(fadeStep)
+  }
+  useEffect(()=>{
+    const id = setInterval(()=>{
+      if(!radioIsPlayingRef.current) return
+      const now = new Date()
+      const currentBlock = getActiveBlockFor(radioTimeBlocksRef.current, now)
+      const currentKey = currentBlock? String(currentBlock.id) : 'none'
 
-  const startPlayback=async(idx, fromOffset=0)=>{ if(!radioMainTracks.length) return; const url=radioMainTracks[idx]?.url; if(!url) return; setRadioStarted(true); radioPhaseRef.current='track'; await playSource(url, fromOffset, playJingleThenNext); const nextIdx=(idx+1)%radioMainTracks.length; const nextUrl=radioMainTracks[nextIdx]?.url; if(nextUrl) decodeTrack(nextUrl).catch(()=>{}) }
+      // Si le changement anticipe la derniere fois s'est bien produit entre-temps, on relache le verrou
+      if(scheduleTransitionFiredRef.current && scheduleTransitionFiredRef.current.to===currentKey){
+        scheduleTransitionFiredRef.current = null
+      }
+      if(scheduleTransitionFiredRef.current) return // une transition est deja en cours de traitement
+
+      const future = new Date(now.getTime()+10000)
+      const futureBlock = getActiveBlockFor(radioTimeBlocksRef.current, future)
+      const futureKey = futureBlock? String(futureBlock.id) : 'none'
+      if(currentKey===futureKey) return // rien ne va changer dans les 10 prochaines secondes
+
+      // Precharge a l'avance la piste probable du nouveau groupe, pour eviter tout vide au moment de la bascule
+      const pool = radioPlaylistRef.current.filter(t=>!t.is_jingle && !t.is_ad)
+      let futurePool = pool.filter(t=>!t.folder)
+      if(futureBlock){
+        const inFolder = pool.filter(t=>t.folder===futureBlock.folder)
+        if(inFolder.length) futurePool = inFolder
+      }
+      if(futurePool.length){
+        const predictedIdx = (radioTrackIndexRef.current+1) % futurePool.length
+        const predictedUrl = futurePool[predictedIdx]?.url
+        if(predictedUrl) decodeTrack(predictedUrl).catch(()=>{})
+      }
+
+      scheduleTransitionFiredRef.current = { from: currentKey, to: futureKey }
+      forceEarlyTransition()
+    }, 1000)
+    return ()=>clearInterval(id)
+  },[])
+
+  const startPlayback=async(idx, fromOffset=0)=>{ const tracks=radioMainTracksRef.current; if(!tracks.length) return; const url=tracks[idx]?.url; if(!url) return; setRadioStarted(true); radioPhaseRef.current='track'; await playSource(url, fromOffset, playJingleThenNext); const nextIdx=(idx+1)%tracks.length; const nextUrl=tracks[nextIdx]?.url; if(nextUrl) decodeTrack(nextUrl).catch(()=>{}) }
   const pausePlayback=()=>{ const el=radioAudioElRef.current; if(!el) return; const info=bufferCacheRef.current[currentUrlRef.current]; const leadIn=info?.leadIn||0; pausedOffsetRef.current=Math.max(0, el.currentTime-leadIn); try{ el.pause() }catch{}; setRadioIsPlaying(false) }
   const toggleRadioPlay=()=>{ if(radioIsPlaying) pausePlayback(); else startPlayback(radioTrackIndexRef.current, pausedOffsetRef.current||0) }
-  const nextRadioTrack=()=>{ if(!radioMainTracks.length) return; const ni=(radioTrackIndexRef.current+1)%radioMainTracks.length; radioTrackIndexRef.current=ni; pausedOffsetRef.current=0; setRadioTrackIndex(ni); startPlayback(ni,0) }
+  const nextRadioTrack=()=>{ const tracks=radioMainTracksRef.current; if(!tracks.length) return; const ni=(radioTrackIndexRef.current+1)%tracks.length; radioTrackIndexRef.current=ni; pausedOffsetRef.current=0; setRadioTrackIndex(ni); startPlayback(ni,0) }
   useEffect(()=>{ if(actif!=='DIRECT-RADIO') return; if(youtubeLive===null) return; if(youtubeLive) return; if(radioIsPlaying) return; if(!radioMainTracks.length) return; startPlayback(radioTrackIndexRef.current, pausedOffsetRef.current||0) },[actif, youtubeLive, radioPlaylist])
   useEffect(()=>{ if(actif==='DIRECT-TV') pausePlayback() },[actif])
 
@@ -677,7 +770,6 @@ export default function App(){
   },[])
 
   const maybeTriggerAd = () => {
-    if(actif!=='DIRECT-RADIO') return
     if(radioPhaseRef.current==='ad' || radioPhaseRef.current==='jingle') return
     if(!radioIsPlaying) return
     if(!radioAds.length) return
@@ -698,7 +790,7 @@ export default function App(){
     radioPhaseRef.current='ad'
     playSource(dueAd.url, 0, ()=>{ radioPhaseRef.current='track'; startPlayback(radioTrackIndexRef.current, resumeOffset) })
   }
-  useEffect(()=>{ if(actif!=='DIRECT-RADIO') return; const id=setInterval(maybeTriggerAd, 20000); maybeTriggerAd(); return()=>clearInterval(id) },[actif, radioPlaylist, radioIsPlaying])
+  useEffect(()=>{ const id=setInterval(maybeTriggerAd, 20000); maybeTriggerAd(); return()=>clearInterval(id) },[radioPlaylist, radioIsPlaying])
 
   const translateText=async(text,target)=>{ if(!text||target==='fr') return text; try{ const q=encodeURIComponent(text.slice(0,450)); const res=await fetch(`https://api.mymemory.translated.net/get?q=${q}&langpair=fr|${target}`); const data=await res.json(); return data?.responseData?.translatedText||text }catch{return text} }
   const translateChunked=async(text,target)=>{ if(!text||target==='fr') return text; const words=text.split(' '); const chunks=[]; let current=''; for(const w of words){ if((current+' '+w).trim().length>420){ if(current.trim()) chunks.push(current.trim()); current=w } else { current=(current+' '+w).trim() } } if(current.trim()) chunks.push(current.trim()); const out=[]; for(const c of chunks){ out.push(await translateText(c,target)) } return out.join(' ') }
@@ -951,7 +1043,7 @@ export default function App(){
                 {radioShareOpen&&<div style={{position:'absolute',top:38,right:0,background:'#0f2040',border:'1px solid rgba(255,255,255,0.15)',borderRadius:10,overflow:'hidden',minWidth:180,zIndex:100,boxShadow:'0 8px 24px rgba(0,0,0,0.5)'}}><a href={`https://wa.me/?text=${encodeURIComponent("🎧 J'écoute Radio Rius Multimédia ! "+(typeof window!=='undefined'?window.location.origin:''))}`} target="_blank" rel="noreferrer" onClick={()=>setRadioShareOpen(false)} style={{display:'block',padding:'10px 14px',color:'white',textDecoration:'none',fontSize:13,borderBottom:'1px solid rgba(255,255,255,0.08)'}}>💬 WhatsApp</a><a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window!=='undefined'?window.location.origin:'')}`} target="_blank" rel="noreferrer" onClick={()=>setRadioShareOpen(false)} style={{display:'block',padding:'10px 14px',color:'white',textDecoration:'none',fontSize:13,borderBottom:'1px solid rgba(255,255,255,0.08)'}}>📘 Facebook</a><button onClick={()=>{ try{ navigator.clipboard.writeText(window.location.origin); alert('Lien copié !') }catch{} setRadioShareOpen(false) }} style={{display:'block',width:'100%',textAlign:'left',padding:'10px 14px',background:'transparent',color:'white',border:0,fontSize:13,cursor:'pointer'}}>🔗 Copier le lien</button></div>}
               </div>
             </div>
-            <p style={{opacity:0.8,fontSize:12,marginTop:0,marginBottom:20}}>{youtubeLive===null? 'Vérification du direct...' : youtubeLive? 'En direct maintenant.' : "Pas de direct pour l'instant — écoute nos émissions en continu."}</p>
+            <p style={{opacity:0.8,fontSize:12,marginTop:0,marginBottom:20}}>{youtubeLive===null? 'Vérification du direct...' : youtubeLive? 'En direct maintenant.' : "Pas de direct pour l'instant — écoutez nos émissions en continu."}</p>
             {youtubeLive===null? (
               <div style={{background:'#132a56',borderRadius:16,padding:40,textAlign:'center',opacity:0.7}}>Vérification en cours...</div>
             ) : youtubeLive? (
@@ -962,7 +1054,7 @@ export default function App(){
               <div style={{background:'linear-gradient(135deg,#1a3d7a,#0f2040)',borderRadius:16,padding:28,border:'2px solid #a8ff00',textAlign:'center'}}>
                 <img src={radioMainTracks[radioTrackIndex]?.image||'/logo.png'} style={{width:100,height:100,borderRadius:'50%',border:'3px solid rgba(255,255,255,0.9)',marginBottom:16,objectFit:'cover'}} alt="" />
                 <div style={{fontWeight:900,fontSize:16,marginBottom:4}}>{radioMainTracks[radioTrackIndex]?.title||'Rius Multimédia Radio'}</div>
-                <div style={{fontSize:11,opacity:0.7,marginBottom:18}}>{radioMainTracks.length? 'En direct' :'Playlist vide — ajoute des pistes dans Supabase'}</div>
+                <div style={{fontSize:11,opacity:0.7,marginBottom:18}}>{radioMainTracks.length? 'En cours' :'Playlist vide — ajoute des pistes dans Supabase'}</div>
                 {radioMainTracks.length>0&&<>
                   <div style={{display:'flex',gap:16,alignItems:'center',justifyContent:'center'}}>
                     <button onClick={toggleRadioPlay} style={{background:'#a8ff00',border:0,color:'black',width:64,height:64,borderRadius:'50%',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>{radioIsPlaying?'⏸':'▶'}</button>
