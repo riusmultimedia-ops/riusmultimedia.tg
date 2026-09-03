@@ -159,6 +159,7 @@ export default function Admin() {
   const [radioTimeBlocks, setRadioTimeBlocks] = useState([]);
   const [tvTimeBlocks, setTvTimeBlocks] = useState([]);
   const [newTvBlockFolder, setNewTvBlockFolder] = useState('');
+  const [newTvBlockExternalUrl, setNewTvBlockExternalUrl] = useState('');
   const [newTvBlockStart, setNewTvBlockStart] = useState('');
   const [newTvBlockEnd, setNewTvBlockEnd] = useState('');
   const [newTvBlockDays, setNewTvBlockDays] = useState([]);
@@ -416,9 +417,9 @@ export default function Admin() {
   };
   const handleDeleteTvFolder = async (folderName) => {
     const videos = videoPlaylist.filter(v=>v.folder===folderName);
-    if(!confirm(`Supprimer definitivement le groupe "${folderName}" ET ses ${videos.length} video(s) ? Cette action est irreversible (les liens YouTube eux-memes ne sont pas affectes, juste retires de ta playlist TV).`)) return;
+    if(!confirm(`Retirer le groupe "${folderName}" ? Les ${videos.length} video(s) restent dans ta playlist TV (elles rejoignent simplement les videos sans groupe) - tu pourras les supprimer une par une toi-meme si besoin.`)) return;
     for(const v of videos){
-      await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } });
+      await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ folder:null }) });
     }
     const orphanBlocks = tvTimeBlocks.filter(b=>b.folder===folderName);
     for(const b of orphanBlocks){
@@ -426,7 +427,7 @@ export default function Admin() {
     }
     fetchVideoPlaylist();
     fetchTvTimeBlocks();
-    alert(`Groupe "${folderName}" supprime avec ses ${videos.length} video(s).`);
+    alert(`Groupe "${folderName}" retire. ${videos.length} video(s) conservee(s) sans groupe.`);
   };
 
   const fetchTvTimeBlocks = () => {
@@ -434,20 +435,20 @@ export default function Admin() {
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setTvTimeBlocks(data); }).catch(()=>{});
   };
   const toggleTvBlockDay = (d) => setNewTvBlockDays(prev=> prev.includes(d)? prev.filter(x=>x!==d) : [...prev, d]);
-  const resetTvBlockForm = () => { setNewTvBlockFolder(''); setNewTvBlockStart(''); setNewTvBlockEnd(''); setNewTvBlockDays([]); setEditingTvBlockId(null); };
+  const resetTvBlockForm = () => { setNewTvBlockFolder(''); setNewTvBlockStart(''); setNewTvBlockEnd(''); setNewTvBlockDays([]); setEditingTvBlockId(null); setNewTvBlockExternalUrl(''); };
   const handleAddTvTimeBlock = async () => {
     if(!newTvBlockFolder.trim()) return alert('Indique le nom du groupe a programmer');
     if(!newTvBlockStart || !newTvBlockEnd) return alert('Choisis une heure de debut et de fin');
     if(newTvBlockDays.length===0) return alert('Choisis au moins un jour');
     const dupBlock = tvTimeBlocks.find(b=> b.id!==editingTvBlockId && b.folder.trim().toLowerCase()===newTvBlockFolder.trim().toLowerCase());
     if(dupBlock) return alert(`Le groupe "${newTvBlockFolder.trim()}" est deja programme (${dupBlock.start_time} - ${dupBlock.end_time}). Modifie cette plage existante au lieu d'en creer une nouvelle, ou choisis un autre nom de groupe.`);
-    const payload = { folder:newTvBlockFolder.trim(), start_time:newTvBlockStart, end_time:newTvBlockEnd, days:newTvBlockDays, active:true };
+    const payload = { folder:newTvBlockFolder.trim(), start_time:newTvBlockStart, end_time:newTvBlockEnd, days:newTvBlockDays, active:true, external_url:newTvBlockExternalUrl.trim()||null };
     const url = editingTvBlockId? `${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${editingTvBlockId}` : `${supabaseUrl}/rest/v1/tv_time_blocks`;
     const method = editingTvBlockId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
     if(res.ok){ resetTvBlockForm(); fetchTvTimeBlocks(); alert(editingTvBlockId? 'Plage horaire modifiee!' : 'Plage horaire ajoutee!'); } else alert(await res.text());
   };
-  const handleEditTvTimeBlock = (b) => { setEditingTvBlockId(b.id); setNewTvBlockFolder(b.folder||''); setNewTvBlockStart(b.start_time||''); setNewTvBlockEnd(b.end_time||''); setNewTvBlockDays(b.days||[]); };
+  const handleEditTvTimeBlock = (b) => { setEditingTvBlockId(b.id); setNewTvBlockFolder(b.folder||''); setNewTvBlockStart(b.start_time||''); setNewTvBlockEnd(b.end_time||''); setNewTvBlockDays(b.days||[]); setNewTvBlockExternalUrl(b.external_url||''); };
   const handleDeleteTvTimeBlock = async (id) => { if(!confirm('Supprimer cette plage horaire?')) return; await fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchTvTimeBlocks(); };
   const handleToggleTvTimeBlock = async (b) => { await fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${b.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!b.active }) }); fetchTvTimeBlocks(); };
 
@@ -1601,7 +1602,7 @@ export default function Admin() {
               {(()=>{ const folderCounts={}; videoPlaylist.forEach(v=>{ if(v.folder){ if(!folderCounts[v.folder]) folderCounts[v.folder]={count:0, lastDate:null}; folderCounts[v.folder].count++; if(v.created_at && (!folderCounts[v.folder].lastDate || v.created_at>folderCounts[v.folder].lastDate)) folderCounts[v.folder].lastDate=v.created_at } }); const names=Object.keys(folderCounts); if(!names.length) return null; return (
                 <div style={{background:'white', border:'1px solid #ddd6fe', borderRadius:8, padding:10, marginBottom:12}}>
                   <div style={{fontSize:10,fontWeight:900,color:'#7c3aed',marginBottom:6}}>GROUPES EXISTANTS</div>
-                  {names.map(n=>(<div key={n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:11,color:'#334155',padding:'3px 0'}}><span>📁 <b>{n}</b> — {folderCounts[n].count} video{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, derniere ajoutee le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</span><button type="button" onClick={()=>handleDeleteTvFolder(n)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,cursor:'pointer',flexShrink:0}}>🗑️ Supprimer ce groupe</button></div>))}
+                  {names.map(n=>(<div key={n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:11,color:'#334155',padding:'3px 0'}}><span>📁 <b>{n}</b> — {folderCounts[n].count} video{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, derniere ajoutee le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</span><button type="button" onClick={()=>handleDeleteTvFolder(n)} style={{background:'#fef3c7',color:'#92400e',border:0,borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,cursor:'pointer',flexShrink:0}}>📤 Retirer ce groupe</button></div>))}
                 </div>
               ) })()}
               {(()=>{ const orphans = videoPlaylist.filter(v=>!v.folder && !v.is_jingle && !v.is_ad); if(!orphans.length) return null; return (
@@ -1623,6 +1624,9 @@ export default function Admin() {
               ) })()}
               <label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>NOM DU GROUPE *</label>
               <input placeholder='Ex: Reportages' value={newTvBlockFolder} onChange={e=>setNewTvBlockFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #ddd6fe',fontSize:12}} />
+              <label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>LIEN CHAINE PARTENAIRE (optionnel)</label>
+              <input placeholder='https://www.youtube.com/watch?v=... (lien YouTube ou lien embarquable)' value={newTvBlockExternalUrl} onChange={e=>setNewTvBlockExternalUrl(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:6,borderRadius:8,border:'1px solid #ddd6fe',fontSize:12}} />
+              <div style={{fontSize:10,color:'#64748b',marginBottom:10}}>Si rempli, ce lien remplace entierement tes videos pendant cette plage (utile pour relayer le direct d'une chaine partenaire). Laisse vide pour utiliser normalement les videos du groupe.</div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
                 <div><label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>DEBUT *</label><input type="time" value={newTvBlockStart} onChange={e=>setNewTvBlockStart(e.target.value)} style={{width:'100%',padding:8,marginTop:4,borderRadius:8,border:'1px solid #ddd6fe'}} /></div>
                 <div><label style={{fontSize:10,fontWeight:800,color:'#7c3aed'}}>FIN *</label><input type="time" value={newTvBlockEnd} onChange={e=>setNewTvBlockEnd(e.target.value)} style={{width:'100%',padding:8,marginTop:4,borderRadius:8,border:'1px solid #ddd6fe'}} /></div>
@@ -1639,7 +1643,7 @@ export default function Admin() {
                 {tvTimeBlocks.map(b=>(
                   <div key={b.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap', opacity:b.active?1:0.6}}>
                     <div style={{flex:1, minWidth:140}}>
-                      <div style={{fontSize:12,fontWeight:700}}>{b.start_time} - {b.end_time} : "{b.folder}"</div>
+                      <div style={{fontSize:12,fontWeight:700}}>{b.start_time} - {b.end_time} : "{b.folder}"{b.external_url && <span style={{marginLeft:6,background:'#fee2e2',color:'#dc2626',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:8}}>🔗 CHAINE PARTENAIRE</span>}</div>
                       <div style={{fontSize:10,color:'#64748b',marginTop:2}}>{(b.days||[]).join(', ')}</div>
                     </div>
                     <button onClick={()=>handleEditTvTimeBlock(b)} style={{background:'#ede9fe',color:'#7c3aed',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
