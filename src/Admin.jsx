@@ -64,6 +64,7 @@ export default function Admin() {
     articles: ['journaliste','director'],
     flash: ['journaliste','director'],
     commentaires: ['journaliste','director'],
+    envois: ['journaliste','director'],
     radio: ['technicien','chef_programme','director'],
     videotv: ['technicien','chef_programme','director'],
     grille: ['technicien','chef_programme','director'],
@@ -99,13 +100,15 @@ export default function Admin() {
   const [showGrille, setShowGrille] = useState(false);
   const [showEmissions, setShowEmissions] = useState(false);
   const [showCommentaires, setShowCommentaires] = useState(false);
-  const resetTabs = () => { setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false); setShowGrille(false); setShowEmissions(false); setShowCommentaires(false); };
+  const [showEnvois, setShowEnvois] = useState(false);
+  const resetTabs = () => { setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false); setShowGrille(false); setShowEmissions(false); setShowCommentaires(false); setShowEnvois(false); };
   const allTabsHidden = !showArticles && !showUsers && !showFlash && !showAnnonces && !showPubs && !showKiosque && !showRadio && !showVideoTV && !showEncadres && !showGrille && !showEmissions && !showCommentaires;
   const [users, setUsers] = useState([]);
   const accessTokenRef = useRef(null);
   const refreshTimerRef = useRef(null);
   const [articles, setArticles] = useState([]);
   const [comments, setComments] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
   const [flashes, setFlashes] = useState([]);
   const [annonces, setAnnonces] = useState([]);
   const [pubs, setPubs] = useState([]);
@@ -241,7 +244,7 @@ export default function Admin() {
         doRefresh(saved.refresh_token, saved.email)
       }
     }catch{}
-    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions(); fetchComments(); fetchRadioTimeBlocks(); fetchTvTimeBlocks();
+    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions(); fetchComments(); fetchRadioTimeBlocks(); fetchTvTimeBlocks(); fetchSubmissions();
   }, []);
 
   useEffect(() => {
@@ -269,6 +272,30 @@ export default function Admin() {
   const fetchComments = () => {
     fetch(`${supabaseUrl}/rest/v1/comments?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setComments(data); }).catch(()=>{});
+  };
+  const fetchSubmissions = () => {
+    fetch(`${supabaseUrl}/rest/v1/submissions?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setSubmissions(data); }).catch(()=>{});
+  };
+  const handleOpenSubmission = async (s) => {
+    try{
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/sign/submissions/${s.file_path}`, {
+        method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' },
+        body: JSON.stringify({ expiresIn: 300 })
+      });
+      const data = await res.json();
+      if(data.signedURL) window.open(`${supabaseUrl}/storage/v1${data.signedURL}`, '_blank');
+      else alert('Impossible de generer le lien: '+JSON.stringify(data));
+    }catch(e){ alert('Erreur: '+e.message); }
+  };
+  const handleMarkSubmissionTreated = async (s) => {
+    await fetch(`${supabaseUrl}/rest/v1/submissions?id=eq.${s.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ status: s.status==='traite'?'nouveau':'traite' }) });
+    fetchSubmissions();
+  };
+  const handleDeleteSubmission = async (id) => {
+    if(!confirm('Supprimer cet envoi ?')) return;
+    await fetch(`${supabaseUrl}/rest/v1/submissions?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } });
+    fetchSubmissions();
   };
   const handleDeleteComment = async (id) => {
     if(!confirm('Supprimer ce commentaire ?')) return;
@@ -1241,6 +1268,7 @@ export default function Admin() {
           {canAccess('articles') && <button onClick={()=>{const v=!showArticles; resetTabs(); setShowArticles(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showArticles? '#2e4fb0':'white', color: showArticles? 'white':'#2e4fb0', fontWeight:800}}>Articles ({articles.length})</button>}
           {canAccess('flash') && <button onClick={()=>{const v=!showFlash; resetTabs(); setShowFlash(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showFlash? '#2e4fb0':'white', color: showFlash? 'white':'#2e4fb0', fontWeight:800}}>Flash ({flashes.length})</button>}
           {canAccess('commentaires') && <button onClick={()=>{const v=!showCommentaires; resetTabs(); setShowCommentaires(v);}} style={{flex:'1 0 100px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showCommentaires? '#2e4fb0':'white', color: showCommentaires? 'white':'#2e4fb0', fontWeight:800}}>Commentaires ({comments.length})</button>}
+          {canAccess('envois') && <button onClick={()=>{const v=!showEnvois; resetTabs(); setShowEnvois(v);}} style={{flex:'1 0 100px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #86efac', background: showEnvois? '#16a34a':'white', color: showEnvois? 'white':'#16a34a', fontWeight:800}}>📤 Envois reçus ({submissions.filter(s=>s.status!=='traite').length})</button>}
           {canAccess('annonces') && <button onClick={()=>{const v=!showAnnonces; resetTabs(); setShowAnnonces(v);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fde68a', background: showAnnonces? '#ffcc00':'white', color: '#0f2040', fontWeight:900}}>Annonces ({annonces.length})</button>}
           {canAccess('pubs') && <button onClick={()=>{const v=!showPubs; resetTabs(); setShowPubs(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showPubs? '#2e4fb0':'white', color: showPubs? 'white':'#2e4fb0', fontWeight:800}}>Pubs ({pubs.length})</button>}
           {canAccess('radio') && <button onClick={()=>{const v=!showRadio; resetTabs(); setShowRadio(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #bbf7d0', background: showRadio? '#16a34a':'white', color: showRadio? 'white':'#16a34a', fontWeight:800}}>Radio ({radioPlaylist.length})</button>}
@@ -1281,6 +1309,29 @@ export default function Admin() {
               <br/><br/>
               <b>Pour retirer un acces :</b> Supabase &gt; Authentication &gt; Users &gt; supprimer la personne.
             </div>
+          </div>
+        ) : showEnvois? (
+          <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #16a34a'}}>
+            <h3 style={{marginTop:0, color:'#16a34a'}}>📤 Envois reçus des internautes</h3>
+            <div style={{fontSize:11, color:'#64748b', marginBottom:14}}>Documents, images, vidéos et audios envoyés via l'espace compte du site. Clique "Ouvrir" pour voir/télécharger le fichier (lien valable 5 minutes).</div>
+            {submissions.map(s=>(
+              <div key={s.id} style={{border:'1px solid #e5e7eb', padding:12, borderRadius:10, marginBottom:8, opacity:s.status==='traite'?0.6:1}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:6,flexWrap:'wrap'}}>
+                  <div>
+                    <span style={{background:'#e0e7ff',color:'#2e4fb0',fontSize:9,fontWeight:900,padding:'2px 8px',borderRadius:10,marginRight:8}}>{({document:'📄 DOCUMENT',image:'🖼️ IMAGE',video:'🎬 VIDÉO',audio:'🎵 AUDIO'})[s.file_type]||s.file_type}</span>
+                    <span style={{fontWeight:800,color:'#0f2040',fontSize:13}}>{s.file_name}</span>
+                    <div style={{fontSize:10,color:'#94a3b8',marginTop:4}}>{s.user_email} · {s.created_at? new Date(s.created_at).toLocaleString('fr-FR'):''}{s.status==='traite' && ' · ✓ Traité'}</div>
+                  </div>
+                  <div style={{display:'flex',gap:6,flexShrink:0}}>
+                    <button onClick={()=>handleOpenSubmission(s)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Ouvrir</button>
+                    <button onClick={()=>handleMarkSubmissionTreated(s)} style={{background: s.status==='traite'?'#fef3c7':'#dcfce7', color: s.status==='traite'?'#92400e':'#16a34a', border:0,borderRadius:6,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>{s.status==='traite'?'Remettre en attente':'Marquer traité'}</button>
+                    <button onClick={()=>handleDeleteSubmission(s.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Suppr</button>
+                  </div>
+                </div>
+                {s.message && <div style={{fontSize:12,color:'#334155',lineHeight:1.5,background:'#f8fafc',padding:'8px 10px',borderRadius:8,marginTop:4}}>{s.message}</div>}
+              </div>
+            ))}
+            {submissions.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucun envoi pour l'instant.</div>}
           </div>
         ) : showCommentaires? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #2e4fb0'}}>
