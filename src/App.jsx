@@ -49,6 +49,26 @@ let tvReplayMemory = { videoId: null, time: 0 }
 
 const DAY_LABELS = { lun:'Lundi', mar:'Mardi', mer:'Mercredi', jeu:'Jeudi', ven:'Vendredi', sam:'Samedi', dim:'Dimanche' }
 const todayDayKey = () => ['dim','lun','mar','mer','jeu','ven','sam'][new Date().getDay()]
+const getActiveBlockFor = (blocks, atDate) => {
+  const now = atDate || new Date()
+  const nowKey = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
+  const dayKey = ['dim','lun','mar','mer','jeu','ven','sam'][now.getDay()]
+  const matches = (blocks||[]).filter(b => {
+    if(!((b.days||[]).includes('tous') || (b.days||[]).includes(dayKey))) return false
+    if(b.start_time <= b.end_time) return nowKey >= b.start_time && nowKey < b.end_time
+    return nowKey >= b.start_time || nowKey < b.end_time // plage qui traverse minuit
+  })
+  if(!matches.length) return null
+  if(matches.length===1) return matches[0]
+  const durationMin = (b) => {
+    const [sh,sm] = b.start_time.split(':').map(Number)
+    const [eh,em] = b.end_time.split(':').map(Number)
+    let mins = (eh*60+em) - (sh*60+sm)
+    if(mins <= 0) mins += 24*60
+    return mins
+  }
+  return [...matches].sort((a,b)=>durationMin(a)-durationMin(b))[0]
+}
 
 function ProgrammeGridWidget({items, type}){
   const filtered = (items||[]).filter(p=>p.type===type)
@@ -153,46 +173,77 @@ function TvWatermark({settings}){
   )
 }
 
-function TvReplayPlayer({clips, jingles, ads}){
+function TvReplayPlayer({allClips, jingles, ads, tvTimeBlocks}){
   const containerRef = useRef(null)
   const playerRef = useRef(null)
   const intervalRef = useRef(null)
   const adCheckIntervalRef = useRef(null)
+  const scheduleCheckIntervalRef = useRef(null)
   const clipIndexRef = useRef(0)
   const clipsSinceJingleRef = useRef(0)
   const jingleThresholdRef = useRef(3 + Math.floor(Math.random()*3))
   const phaseRef = useRef('clip')
   const pausedForAdRef = useRef(null)
   const playedAdSlotsRef = useRef(new Set())
+  const [isLoading, setIsLoading] = useState(true)
+  const allClipsRef = useRef(allClips)
+  allClipsRef.current = allClips
+  const tvTimeBlocksRef = useRef(tvTimeBlocks)
+  tvTimeBlocksRef.current = tvTimeBlocks
+  const scheduleTransitionFiredRef = useRef(null)
+  const pendingFutureBlockRef = useRef(undefined)
+  const poolPositionsRef = useRef({})
+  const currentPoolKeyRef = useRef('GENERAL')
+  const currentPoolRef = useRef([])
+
+  const computeActivePoolForBlock = (block) => {
+    const all = allClipsRef.current
+    let pool = all.filter(c=>!c.folder)
+    if(block){
+      const inFolder = all.filter(c=>c.folder===block.folder)
+      if(inFolder.length) pool = inFolder
+    }
+    return pool.map(c=>c.id)
+  }
+  const computeActivePool = () => computeActivePoolForBlock(getActiveBlockFor(tvTimeBlocksRef.current))
 
   useEffect(()=>{
-    if(!clips.length) return
+    if(!allClips.length) return
     let destroyed = false
+    currentPoolRef.current = computeActivePool()
+    { const initBlock = getActiveBlockFor(tvTimeBlocksRef.current); currentPoolKeyRef.current = initBlock? initBlock.folder : 'GENERAL' }
 
     const findStartIndex = () => {
-      if(tvReplayMemory.videoId){ const idx = clips.indexOf(tvReplayMemory.videoId); if(idx>=0) return idx }
+      const pool = currentPoolRef.current
+      if(tvReplayMemory.videoId){ const idx = pool.indexOf(tvReplayMemory.videoId); if(idx>=0) return idx }
       return 0
     }
 
     const playClip = (idx, startSeconds=0) => {
-      if(!playerRef.current || !clips.length) return
+      const pool = currentPoolRef.current
+      if(!playerRef.current || !pool.length) return
       phaseRef.current='clip'
-      clipIndexRef.current = ((idx % clips.length) + clips.length) % clips.length
-      const id = clips[clipIndexRef.current]
+      clipIndexRef.current = ((idx % pool.length) + pool.length) % pool.length
+      const id = pool[clipIndexRef.current]
       if(!id) return
+      setIsLoading(true)
       try{ playerRef.current.loadVideoById({videoId:id, startSeconds}) }catch{}
     }
 
-    const playJingle = () => {
-      if(!jingles.length || !playerRef.current){ playClip(clipIndexRef.current+1, 0); return }
+    const playJingle = (afterCb) => {
+      if(!jingles.length || !playerRef.current){ if(afterCb) afterCb(); else playClip(clipIndexRef.current+1, 0); return }
       phaseRef.current='jingle'
+      jingleAfterCbRef.current = afterCb || null
       const j = jingles[Math.floor(Math.random()*jingles.length)]
+      setIsLoading(true)
       try{ playerRef.current.loadVideoById({videoId:j}) }catch{}
     }
 
     const advanceAfterClip = () => {
       clipsSinceJingleRef.current += 1
-      const nextIdx = ((clipIndexRef.current+1) % clips.length + clips.length) % clips.length
+      const pool = currentPoolRef.current
+      if(!pool.length) return
+      const nextIdx = ((clipIndexRef.current+1) % pool.length + pool.length) % pool.length
       clipIndexRef.current = nextIdx
       if(jingles.length && clipsSinceJingleRef.current >= jingleThresholdRef.current){
         clipsSinceJingleRef.current = 0
@@ -202,6 +253,8 @@ function TvReplayPlayer({clips, jingles, ads}){
         playClip(nextIdx, 0)
       }
     }
+
+    const jingleAfterCbRef = { current: null }
 
     const maybeTriggerAd = () => {
       if(destroyed || phaseRef.current==='ad' || !ads.length) return
@@ -218,16 +271,55 @@ function TvReplayPlayer({clips, jingles, ads}){
       try{ resumeTime = playerRef.current.getCurrentTime()||0 }catch{}
       pausedForAdRef.current = { time: resumeTime }
       phaseRef.current='ad'
+      setIsLoading(true)
       try{ playerRef.current.loadVideoById({videoId: due.ytId}) }catch{}
     }
 
+    const forceEarlyTvTransition = () => {
+      if(!playerRef.current || phaseRef.current!=='clip') return
+      const el = playerRef.current
+      let startVol = 100
+      try{ startVol = el.getVolume() }catch{}
+      const fadeStart = Date.now()
+      const fadeDuration = 2000
+      const fadeStep = () => {
+        if(destroyed) return
+        const elapsed = Date.now()-fadeStart
+        const t = Math.min(1, elapsed/fadeDuration)
+        try{ el.setVolume(Math.round(startVol*(1-t))) }catch{}
+        if(t<1){ requestAnimationFrame(fadeStep) }
+        else {
+          try{ el.setVolume(startVol) }catch{}
+          // Sauvegarde ou en etait le groupe qu'on quitte, pour pouvoir y revenir plus tard au bon endroit
+          poolPositionsRef.current[currentPoolKeyRef.current] = clipIndexRef.current
+
+          const newKey = pendingFutureBlockRef.current? pendingFutureBlockRef.current.folder : 'GENERAL'
+          currentPoolRef.current = computeActivePoolForBlock(pendingFutureBlockRef.current)
+          currentPoolKeyRef.current = newKey
+          const savedIdx = poolPositionsRef.current[newKey]
+          const resumeIdx = (savedIdx!==undefined && currentPoolRef.current.length)
+            ? Math.min(savedIdx, currentPoolRef.current.length-1)
+            : 0
+          clipIndexRef.current = resumeIdx
+          clipsSinceJingleRef.current = 0
+          playJingle(()=>{
+            playClip(resumeIdx, 0)
+          })
+        }
+      }
+      requestAnimationFrame(fadeStep)
+    }
+
     const onPlayerStateChange = (e) => {
-      if(!(window.YT && e.data===window.YT.PlayerState.ENDED)) return
+      if(!window.YT) return
+      if(e.data===window.YT.PlayerState.PLAYING){ setIsLoading(false) }
+      if(e.data!==window.YT.PlayerState.ENDED) return
       if(phaseRef.current==='ad'){
         const resume = pausedForAdRef.current; pausedForAdRef.current=null
         playClip(clipIndexRef.current, resume? resume.time : 0)
       } else if(phaseRef.current==='jingle'){
-        playClip(clipIndexRef.current, 0)
+        const cb = jingleAfterCbRef.current; jingleAfterCbRef.current=null
+        if(cb) cb(); else playClip(clipIndexRef.current, 0)
       } else {
         advanceAfterClip()
       }
@@ -239,11 +331,11 @@ function TvReplayPlayer({clips, jingles, ads}){
       clipIndexRef.current = startIdx
       playerRef.current = new window.YT.Player(containerRef.current, {
         width:'100%', height:'100%',
-        videoId: clips[startIdx],
-        playerVars: { autoplay:1, fs:0 },
+        videoId: currentPoolRef.current[startIdx],
+        playerVars: { autoplay:1, fs:0, controls:0, disablekb:1, modestbranding:1 },
         events: {
           onReady: (e)=>{
-            if(tvReplayMemory.videoId===clips[startIdx] && tvReplayMemory.time>2){
+            if(tvReplayMemory.videoId===currentPoolRef.current[startIdx] && tvReplayMemory.time>2){
               try{ e.target.seekTo(tvReplayMemory.time, true) }catch{}
             }
             intervalRef.current = setInterval(()=>{
@@ -255,6 +347,23 @@ function TvReplayPlayer({clips, jingles, ads}){
               }catch{}
             }, 2000)
             adCheckIntervalRef.current = setInterval(maybeTriggerAd, 20000)
+            scheduleCheckIntervalRef.current = setInterval(()=>{
+              if(destroyed || phaseRef.current!=='clip') return
+              const now = new Date()
+              const currentBlock = getActiveBlockFor(tvTimeBlocksRef.current, now)
+              const currentKey = currentBlock? String(currentBlock.id) : 'none'
+              if(scheduleTransitionFiredRef.current && scheduleTransitionFiredRef.current.to===currentKey){
+                scheduleTransitionFiredRef.current = null
+              }
+              if(scheduleTransitionFiredRef.current) return
+              const future = new Date(now.getTime()+10000)
+              const futureBlock = getActiveBlockFor(tvTimeBlocksRef.current, future)
+              const futureKey = futureBlock? String(futureBlock.id) : 'none'
+              if(currentKey===futureKey) return
+              pendingFutureBlockRef.current = futureBlock
+              scheduleTransitionFiredRef.current = { from: currentKey, to: futureKey }
+              forceEarlyTvTransition()
+            }, 1000)
           },
           onStateChange: onPlayerStateChange
         }
@@ -278,6 +387,7 @@ function TvReplayPlayer({clips, jingles, ads}){
       destroyed = true
       if(intervalRef.current) clearInterval(intervalRef.current)
       if(adCheckIntervalRef.current) clearInterval(adCheckIntervalRef.current)
+      if(scheduleCheckIntervalRef.current) clearInterval(scheduleCheckIntervalRef.current)
       if(playerRef.current){
         try{
           if(phaseRef.current==='clip'){
@@ -290,10 +400,23 @@ function TvReplayPlayer({clips, jingles, ads}){
         playerRef.current = null
       }
     }
-  }, [clips.join(','), jingles.join(','), JSON.stringify(ads.map(a=>a.id+':'+(a.ad_times||[]).join(',')))])
+  }, [allClips.map(c=>c.id+':'+(c.folder||'')).join(','), jingles.join(','), JSON.stringify(ads.map(a=>a.id+':'+(a.ad_times||[]).join(',')))])
 
-  return <div ref={containerRef} style={{width:'100%',height:'100%'}} />
+  return (
+    <div style={{position:'relative', width:'100%', height:'100%'}}>
+      <div ref={containerRef} style={{width:'100%',height:'100%'}} />
+      <div style={{position:'absolute', inset:0, zIndex:3, background:'transparent'}} />
+      {isLoading && (
+        <div style={{position:'absolute', inset:0, background:'#0d1b4a', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, pointerEvents:'none'}}>
+          <img src="/logo.png" style={{width:56,height:56,borderRadius:'50%',opacity:0.9}} alt="" />
+          <div style={{color:'rgba(255,255,255,0.7)',fontSize:12,fontWeight:700,letterSpacing:'0.05em'}}>CHARGEMENT...</div>
+        </div>
+      )}
+    </div>
+  )
 }
+
+
 
 function AdBanner({pubs, format='leaderboard'}){
   const [idx,setIdx]=useState(0)
@@ -510,27 +633,6 @@ export default function App(){
   const pausedOffsetRef = useRef(0)
   const playTokenRef = useRef(0)
   const currentUrlRef = useRef(null)
-  const getActiveBlockFor = (blocks, atDate) => {
-    const now = atDate || new Date()
-    const nowKey = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
-    const dayKey = ['dim','lun','mar','mer','jeu','ven','sam'][now.getDay()]
-    const matches = (blocks||[]).filter(b => {
-      if(!((b.days||[]).includes('tous') || (b.days||[]).includes(dayKey))) return false
-      if(b.start_time <= b.end_time) return nowKey >= b.start_time && nowKey < b.end_time
-      return nowKey >= b.start_time || nowKey < b.end_time // plage qui traverse minuit
-    })
-    if(!matches.length) return null
-    if(matches.length===1) return matches[0]
-    // Plusieurs plages actives en meme temps (chevauchement) : la plus courte (la plus specifique) l'emporte
-    const durationMin = (b) => {
-      const [sh,sm] = b.start_time.split(':').map(Number)
-      const [eh,em] = b.end_time.split(':').map(Number)
-      let mins = (eh*60+em) - (sh*60+sm)
-      if(mins <= 0) mins += 24*60
-      return mins
-    }
-    return [...matches].sort((a,b)=>durationMin(a)-durationMin(b))[0]
-  }
   const getActiveFolderFor = (blocks) => { const block = getActiveBlockFor(blocks); return block? block.folder : null }
   const radioMainTracks = (()=>{
     const pool = radioPlaylist.filter(t=>!t.is_jingle && !t.is_ad)
@@ -1032,7 +1134,7 @@ export default function App(){
         </div>
       
       ): actif==='DIRECT-TV'?(
-        <div style={{background:'#2e4fb0',color:'white',minHeight:'100vh',padding:20}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:14}}><h2 style={{color:'#ff3b3b',margin:0,display:'flex',alignItems:'center',gap:8}}><span className="dot-blink"></span> {T.liveTitle}</h2>{youtubeLive&&youtubeLive.videoId? <span style={{background:'#ff3b3b',color:'white',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:900}}>● EN DIRECT</span> : videoPlaylist.length>0 && <span style={{background:'rgba(255,255,255,0.15)',color:'white',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:800}}>Rediffusions</span>}<div style={{display:'flex',gap:8,position:'relative'}}><button onClick={handleShareTv} style={{background:'rgba(255,255,255,0.15)',color:'white',border:0,padding:'8px 14px',borderRadius:20,fontWeight:900,fontSize:11,cursor:'pointer'}}>📤 Partager</button>{tvShareOpen&&<div style={{position:'absolute',top:38,right:0,background:'#0f2040',border:'1px solid rgba(255,255,255,0.15)',borderRadius:10,overflow:'hidden',minWidth:180,zIndex:100,boxShadow:'0 8px 24px rgba(0,0,0,0.5)'}}><a href={`https://wa.me/?text=${encodeURIComponent('📺 Je regarde Rius Multimédia EN DIRECT ! '+(typeof window!=='undefined'?window.location.origin:''))}`} target="_blank" rel="noreferrer" onClick={()=>setTvShareOpen(false)} style={{display:'block',padding:'10px 14px',color:'white',textDecoration:'none',fontSize:13,borderBottom:'1px solid rgba(255,255,255,0.08)'}}>💬 WhatsApp</a><a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window!=='undefined'?window.location.origin:'')}`} target="_blank" rel="noreferrer" onClick={()=>setTvShareOpen(false)} style={{display:'block',padding:'10px 14px',color:'white',textDecoration:'none',fontSize:13,borderBottom:'1px solid rgba(255,255,255,0.08)'}}>📘 Facebook</a><button onClick={()=>{ try{ navigator.clipboard.writeText(window.location.origin); alert('Lien copié !') }catch{} setTvShareOpen(false) }} style={{display:'block',width:'100%',textAlign:'left',padding:'10px 14px',background:'transparent',color:'white',border:0,fontSize:13,cursor:'pointer'}}>🔗 Copier le lien</button></div>}</div><a href={YOUTUBE_CHANNEL_URL} target="_blank" rel="noreferrer" style={{background:'#ff0000',color:'white',padding:'8px 14px',borderRadius:20,fontWeight:900,fontSize:11,textDecoration:'none'}}>▶ Voir sur YouTube</a><a href={`${YOUTUBE_CHANNEL_URL}?sub_confirmation=1`} target="_blank" rel="noreferrer" style={{background:'white',color:'black',padding:'8px 14px',borderRadius:20,fontWeight:900,fontSize:11,textDecoration:'none'}}>{T.abonner}</a></div><p style={{opacity:0.8,fontSize:12,marginTop:0}}>{T.liveDesc} - {YOUTUBE_CHANNEL_URL}</p><div className="direct-grid" style={{display:'flex',gap:14,marginTop:16}}><div ref={tvContainerRef} className="tv-fullscreen-container" onMouseMove={handleTvMouseMove} onTouchStart={handleTvMouseMove} style={{flex:2,background:'black',borderRadius:12,overflow:'hidden',border:'1px solid rgba(255,255,255,0.12)',minHeight:400,position:'relative'}}><TvWatermark settings={tvWatermark} /><TvClockWeather settings={tvWatermark} heureTU={heureTU} meteo={meteo} /><TvTickers flashList={flashList} annoncesList={annoncesList} showInfo={!tvWatermark || tvWatermark.ticker_info_enabled!==false} showAnnonces={!tvWatermark || tvWatermark.ticker_annonces_enabled!==false} /><button onClick={handleTvFullscreen} title={isTvFullscreen? "Quitter le plein ecran":"Plein ecran"} style={{position:'absolute',bottom: ((!tvWatermark || tvWatermark.ticker_info_enabled!==false) || (!tvWatermark || tvWatermark.ticker_annonces_enabled!==false))?48:12,right:12,zIndex:6,background:'rgba(15,32,64,0.7)',color:'white',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,fontWeight:800,cursor:'pointer',opacity: (isTouchDevice||tvControlsHover)?1:0,pointerEvents: (isTouchDevice||tvControlsHover)?'auto':'none',transition:'opacity 0.2s, bottom 0.2s'}}>{isTvFullscreen? '✕ Quitter le plein écran' : '⛶ Plein écran'}</button>{youtubeLive&&youtubeLive.videoId? <iframe width="100%" height="520" src={`https://www.youtube.com/embed/${youtubeLive.videoId}?autoplay=1&fs=0`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe> : videoPlaylist.length>0? (()=>{ const allClips=videoPlaylist.filter(v=>!v.is_jingle&&!v.is_ad); const activeTvFolder=getActiveFolderFor(tvTimeBlocks); let poolClips=allClips; if(activeTvFolder){ const inFolder=allClips.filter(v=>v.folder===activeTvFolder); if(inFolder.length) poolClips=inFolder } else { poolClips=allClips.filter(v=>!v.folder) } const clips=poolClips.map(v=>getYoutubeIdRaw(v.url)).filter(Boolean); const jingles=videoPlaylist.filter(v=>v.is_jingle).map(v=>getYoutubeIdRaw(v.url)).filter(Boolean); const ads=videoPlaylist.filter(v=>v.is_ad).map(v=>({id:v.id, ytId:getYoutubeIdRaw(v.url), ad_times:v.ad_times||[]})).filter(a=>a.ytId); return clips.length? <div className="tv-video-frame" style={{width:'100%',height:520}}><TvReplayPlayer clips={clips} jingles={jingles} ads={ads} /></div> : null })() : <iframe width="100%" height="520" src={`https://www.youtube.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&fs=0`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe>}</div><div style={{flex:1,background:'#111',borderRadius:12,border:'1px solid rgba(255,255,255,0.15)',overflow:'hidden',minHeight:400,display:'flex',flexDirection:'column'}}><div style={{padding:'10px 12px',background:'#1a1a1a',fontWeight:900,fontSize:11,borderBottom:'1px solid rgba(255,255,255,0.1)'}}>💬 {T.chat}</div><div style={{padding:20,fontSize:11,opacity:0.6,flex:1}}>Le chat YouTube s'affiche ici quand tu es en live.<br/><br/>Tes abonnés peuvent discuter en direct depuis YouTube.</div><div style={{padding:10,background:'#0f0f0f'}}><a href={`${YOUTUBE_CHANNEL_URL}/live`} target="_blank" rel="noreferrer" style={{background:'#ff0000',color:'white',padding:'8px 12px',borderRadius:8,fontSize:11,fontWeight:800,textDecoration:'none',display:'block',textAlign:'center'}}>Ouvrir le chat sur YouTube</a></div></div></div><div style={{marginTop:16,background:'rgba(255,255,255,0.06)',borderRadius:10,padding:14}}><h4 style={{margin:'0 0 8px 0',fontSize:12,color:'#ffcc00'}}>Dernières vidéos de la chaîne</h4><iframe width="100%" height="300" src={`https://www.youtube.com/embed?listType=user&list=${YOUTUBE_HANDLE}`} style={{border:0,borderRadius:8}} allowFullScreen loading="lazy" title="Playlist"></iframe></div><ProgrammeGridWidget items={programmeGrid} type="tv" /><button onClick={()=>{ setEmissionsFilter('tv'); goTo('EMISSIONS') }} style={{width:'100%',marginTop:16,padding:12,background:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:10,fontWeight:800,fontSize:12,cursor:'pointer'}}>🎬 Voir les émissions passées</button></div>
+        <div style={{background:'#2e4fb0',color:'white',minHeight:'100vh',padding:20}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:14}}><h2 style={{color:'#ff3b3b',margin:0,display:'flex',alignItems:'center',gap:8}}><span className="dot-blink"></span> {T.liveTitle}</h2>{youtubeLive&&youtubeLive.videoId? <span style={{background:'#ff3b3b',color:'white',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:900}}>● EN DIRECT</span> : videoPlaylist.length>0 && <span style={{background:'rgba(255,255,255,0.15)',color:'white',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:800}}>Rediffusions</span>}<div style={{display:'flex',gap:8,position:'relative'}}><button onClick={handleShareTv} style={{background:'rgba(255,255,255,0.15)',color:'white',border:0,padding:'8px 14px',borderRadius:20,fontWeight:900,fontSize:11,cursor:'pointer'}}>📤 Partager</button>{tvShareOpen&&<div style={{position:'absolute',top:38,right:0,background:'#0f2040',border:'1px solid rgba(255,255,255,0.15)',borderRadius:10,overflow:'hidden',minWidth:180,zIndex:100,boxShadow:'0 8px 24px rgba(0,0,0,0.5)'}}><a href={`https://wa.me/?text=${encodeURIComponent('📺 Je regarde Rius Multimédia EN DIRECT ! '+(typeof window!=='undefined'?window.location.origin:''))}`} target="_blank" rel="noreferrer" onClick={()=>setTvShareOpen(false)} style={{display:'block',padding:'10px 14px',color:'white',textDecoration:'none',fontSize:13,borderBottom:'1px solid rgba(255,255,255,0.08)'}}>💬 WhatsApp</a><a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window!=='undefined'?window.location.origin:'')}`} target="_blank" rel="noreferrer" onClick={()=>setTvShareOpen(false)} style={{display:'block',padding:'10px 14px',color:'white',textDecoration:'none',fontSize:13,borderBottom:'1px solid rgba(255,255,255,0.08)'}}>📘 Facebook</a><button onClick={()=>{ try{ navigator.clipboard.writeText(window.location.origin); alert('Lien copié !') }catch{} setTvShareOpen(false) }} style={{display:'block',width:'100%',textAlign:'left',padding:'10px 14px',background:'transparent',color:'white',border:0,fontSize:13,cursor:'pointer'}}>🔗 Copier le lien</button></div>}</div><a href={YOUTUBE_CHANNEL_URL} target="_blank" rel="noreferrer" style={{background:'#ff0000',color:'white',padding:'8px 14px',borderRadius:20,fontWeight:900,fontSize:11,textDecoration:'none'}}>▶ Voir sur YouTube</a><a href={`${YOUTUBE_CHANNEL_URL}?sub_confirmation=1`} target="_blank" rel="noreferrer" style={{background:'white',color:'black',padding:'8px 14px',borderRadius:20,fontWeight:900,fontSize:11,textDecoration:'none'}}>{T.abonner}</a></div><p style={{opacity:0.8,fontSize:12,marginTop:0}}>{T.liveDesc} - {YOUTUBE_CHANNEL_URL}</p><div className="direct-grid" style={{display:'flex',gap:14,marginTop:16}}><div ref={tvContainerRef} className="tv-fullscreen-container" onMouseMove={handleTvMouseMove} onTouchStart={handleTvMouseMove} style={{flex:2,background:'black',borderRadius:12,overflow:'hidden',border:'1px solid rgba(255,255,255,0.12)',minHeight:400,position:'relative'}}><TvWatermark settings={tvWatermark} /><TvClockWeather settings={tvWatermark} heureTU={heureTU} meteo={meteo} /><TvTickers flashList={flashList} annoncesList={annoncesList} showInfo={!tvWatermark || tvWatermark.ticker_info_enabled!==false} showAnnonces={!tvWatermark || tvWatermark.ticker_annonces_enabled!==false} /><button onClick={handleTvFullscreen} title={isTvFullscreen? "Quitter le plein ecran":"Plein ecran"} style={{position:'absolute',bottom: ((!tvWatermark || tvWatermark.ticker_info_enabled!==false) || (!tvWatermark || tvWatermark.ticker_annonces_enabled!==false))?48:12,right:12,zIndex:6,background:'rgba(15,32,64,0.7)',color:'white',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,fontWeight:800,cursor:'pointer',opacity: (isTouchDevice||tvControlsHover)?1:0,pointerEvents: (isTouchDevice||tvControlsHover)?'auto':'none',transition:'opacity 0.2s, bottom 0.2s'}}>{isTvFullscreen? '✕ Quitter le plein écran' : '⛶ Plein écran'}</button>{youtubeLive&&youtubeLive.videoId? <iframe width="100%" height="520" src={`https://www.youtube.com/embed/${youtubeLive.videoId}?autoplay=1&fs=0`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe> : videoPlaylist.length>0? (()=>{ const allClips=videoPlaylist.filter(v=>!v.is_jingle&&!v.is_ad).map(v=>({id:getYoutubeIdRaw(v.url), folder:v.folder||null})).filter(c=>c.id); const jingles=videoPlaylist.filter(v=>v.is_jingle).map(v=>getYoutubeIdRaw(v.url)).filter(Boolean); const ads=videoPlaylist.filter(v=>v.is_ad).map(v=>({id:v.id, ytId:getYoutubeIdRaw(v.url), ad_times:v.ad_times||[]})).filter(a=>a.ytId); return allClips.length? <div className="tv-video-frame" style={{width:'100%',height:520}}><TvReplayPlayer allClips={allClips} jingles={jingles} ads={ads} tvTimeBlocks={tvTimeBlocks} /></div> : null })() : <iframe width="100%" height="520" src={`https://www.youtube.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&fs=0`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe>}</div><div style={{flex:1,background:'#111',borderRadius:12,border:'1px solid rgba(255,255,255,0.15)',overflow:'hidden',minHeight:400,display:'flex',flexDirection:'column'}}><div style={{padding:'10px 12px',background:'#1a1a1a',fontWeight:900,fontSize:11,borderBottom:'1px solid rgba(255,255,255,0.1)'}}>💬 {T.chat}</div><div style={{padding:20,fontSize:11,opacity:0.6,flex:1}}>Le chat YouTube s'affiche ici quand tu es en live.<br/><br/>Tes abonnés peuvent discuter en direct depuis YouTube.</div><div style={{padding:10,background:'#0f0f0f'}}><a href={`${YOUTUBE_CHANNEL_URL}/live`} target="_blank" rel="noreferrer" style={{background:'#ff0000',color:'white',padding:'8px 12px',borderRadius:8,fontSize:11,fontWeight:800,textDecoration:'none',display:'block',textAlign:'center'}}>Ouvrir le chat sur YouTube</a></div></div></div><div style={{marginTop:16,background:'rgba(255,255,255,0.06)',borderRadius:10,padding:14}}><h4 style={{margin:'0 0 8px 0',fontSize:12,color:'#ffcc00'}}>Dernières vidéos de la chaîne</h4><iframe width="100%" height="300" src={`https://www.youtube.com/embed?listType=user&list=${YOUTUBE_HANDLE}`} style={{border:0,borderRadius:8}} allowFullScreen loading="lazy" title="Playlist"></iframe></div><ProgrammeGridWidget items={programmeGrid} type="tv" /><button onClick={()=>{ setEmissionsFilter('tv'); goTo('EMISSIONS') }} style={{width:'100%',marginTop:16,padding:12,background:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:10,fontWeight:800,fontSize:12,cursor:'pointer'}}>🎬 Voir les émissions passées</button></div>
       ): actif==='DIRECT-RADIO'?(
         <div style={{background:'#2e4fb0',color:'white',minHeight:'100vh',padding:20,display:'flex',flexDirection:'column',alignItems:'center'}}>
           <div style={{width:'100%',maxWidth:560}}>
