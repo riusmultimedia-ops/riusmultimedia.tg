@@ -145,6 +145,7 @@ export default function Admin() {
   const [newUneJournal, setNewUneJournal] = useState('');
   const [newUneTitle, setNewUneTitle] = useState('');
   const [newUneDate, setNewUneDate] = useState(new Date().toISOString().split('T')[0]);
+  useEffect(()=>{ if(showKiosque) setNewUneDate(new Date().toISOString().split('T')[0]) }, [showKiosque]);
   const [newUnePrice, setNewUnePrice] = useState('');
   const [newUnePdfPath, setNewUnePdfPath] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -1169,7 +1170,7 @@ export default function Admin() {
       headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
       body: JSON.stringify({ journal:newUneJournal.trim(), title:newUneTitle.trim()||newUneJournal.trim()||'Kiosque', image:newUneImage, date:newUneDate, price:newUnePrice?parseInt(newUnePrice,10):null, pdf_path:newUnePdfPath||null, active:true })
     });
-    if(res.ok){ setNewUneImage(''); setNewUneJournal(''); setNewUneTitle(''); setNewUnePrice(''); setNewUnePdfPath(''); fetchUnes(); alert('Une ajoutee au Kiosque!'); } else { alert(await res.text()); }
+    if(res.ok){ setNewUneImage(''); setNewUneJournal(''); setNewUneTitle(''); setNewUnePrice(''); setNewUnePdfPath(''); setNewUneDate(new Date().toISOString().split('T')[0]); fetchUnes(); alert('Une ajoutee au Kiosque!'); } else { alert(await res.text()); }
   };
   const handleDeleteUne = async (id) => { if(!confirm('Supprimer cette Une?')) return; await fetch(`${supabaseUrl}/rest/v1/unes?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchUnes(); };
   const handleToggleUne = async (u) => { await fetch(`${supabaseUrl}/rest/v1/unes?id=eq.${u.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!u.active }) }); fetchUnes(); };
