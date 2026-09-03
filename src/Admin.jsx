@@ -236,15 +236,18 @@ export default function Admin() {
   const [lastActivity, setLastActivity] = useState(Date.now());
   
   useEffect(() => {
-    try{
-      const saved = JSON.parse(localStorage.getItem('rius_admin_session')||'null')
-      if(saved?.refresh_token){
-        setCurrentUser({ user: saved.email, role:'admin' })
-        setIsLogged(true)
-        doRefresh(saved.refresh_token, saved.email)
-      }
-    }catch{}
-    fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions(); fetchComments(); fetchRadioTimeBlocks(); fetchTvTimeBlocks(); fetchSubmissions();
+    const init = async () => {
+      try{
+        const saved = JSON.parse(localStorage.getItem('rius_admin_session')||'null')
+        if(saved?.refresh_token){
+          setCurrentUser({ user: saved.email, role:'admin' })
+          setIsLogged(true)
+          await doRefresh(saved.refresh_token, saved.email)
+        }
+      }catch{}
+      fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions(); fetchComments(); fetchRadioTimeBlocks(); fetchTvTimeBlocks(); fetchSubmissions();
+    }
+    init()
   }, []);
 
   useEffect(() => {
@@ -277,6 +280,11 @@ export default function Admin() {
     fetch(`${supabaseUrl}/rest/v1/submissions?select=*&order=created_at.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setSubmissions(data); }).catch(()=>{});
   };
+  useEffect(()=>{
+    if(!showEnvois) return
+    const id = setInterval(fetchSubmissions, 20000)
+    return ()=>clearInterval(id)
+  },[showEnvois]);
   const handleOpenSubmission = async (s) => {
     try{
       const res = await fetch(`${supabaseUrl}/storage/v1/object/sign/submissions/${s.file_path}`, {
