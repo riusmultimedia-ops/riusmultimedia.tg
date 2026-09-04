@@ -58,12 +58,13 @@ export default function Admin() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [myRole, setMyRole] = useState(null);
   const isDirector = myRole === 'director';
+  const canPublish = myRole === 'director' || myRole === 'redacteur_chef';
   const hasLandedRef = useRef(false);
 
   const TAB_ACCESS = {
-    articles: ['journaliste','director'],
-    flash: ['journaliste','director'],
-    commentaires: ['journaliste','director'],
+    articles: ['journaliste','redacteur_chef','director'],
+    flash: ['journaliste','redacteur_chef','director'],
+    commentaires: ['journaliste','redacteur_chef','director'],
     envois: ['journaliste','director'],
     radio: ['technicien','chef_programme','director'],
     videotv: ['technicien','chef_programme','director'],
@@ -934,6 +935,7 @@ export default function Admin() {
       setCurrentUser({ user: session.email, role: 'admin' })
       setIsLogged(true)
       fetchMyRole(session.uid)
+      fetchSubmissions()
       setPass('')
       resetTabs();
     }catch(e){ alert('Erreur de connexion: '+e.message) }
@@ -1305,6 +1307,7 @@ export default function Admin() {
               <label style={{fontSize:10,fontWeight:800,color:'#2e4fb0'}}>ROLE</label>
               <select value={newUserRole} onChange={e=>setNewUserRole(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:12,borderRadius:8,border:'1px solid #c7d2fe',fontWeight:700}}>
                 <option value="journaliste">Journaliste (Articles, Flash)</option>
+                <option value="redacteur_chef">Redacteur en chef (Articles, Flash, Commentaires + peut publier)</option>
                 <option value="technicien">Technicien (Radio, Videos TV)</option>
                 <option value="chef_programme">Chef de programme (Annonces, Pubs, Kiosque, Espace Business, Radio, Videos TV)</option>
                 <option value="director">Directeur (acces total)</option>
@@ -1327,6 +1330,7 @@ export default function Admin() {
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:6,flexWrap:'wrap'}}>
                   <div>
                     <span style={{background:'#e0e7ff',color:'#2e4fb0',fontSize:9,fontWeight:900,padding:'2px 8px',borderRadius:10,marginRight:8}}>{({document:'📄 DOCUMENT',image:'🖼️ IMAGE',video:'🎬 VIDÉO',audio:'🎵 AUDIO'})[s.file_type]||s.file_type}</span>
+                    <span style={{background: s.recipient==='tous'?'#dcfce7':'#fee2e2', color: s.recipient==='tous'?'#16a34a':'#dc2626', fontSize:9,fontWeight:900,padding:'2px 8px',borderRadius:10,marginRight:8}}>{({tous:"👥 TOUTE L'EQUIPE",director:'🔒 DIRECTION',redacteur_chef:'RÉDACTION',chef_programme:'CHEF PROGRAMME',technicien:'TECHNIQUE',journaliste:'JOURNALISTES'})[s.recipient]||s.recipient}</span>
                     <span style={{fontWeight:800,color:'#0f2040',fontSize:13}}>{s.file_name}</span>
                     <div style={{fontSize:10,color:'#94a3b8',marginTop:4}}>{s.user_email} · {s.created_at? new Date(s.created_at).toLocaleString('fr-FR'):''}{s.status==='traite' && ' · ✓ Traité'}</div>
                   </div>
@@ -2069,7 +2073,7 @@ export default function Admin() {
               {editLang==='fr' && <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>AUTEUR (optionnel, sinon "Rius Multimedia" par defaut)</label><input placeholder="Ex: Marius Attor" value={form.author||''} onChange={e=>setForm({...form, author:e.target.value})} style={{width:'100%',padding:'10px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontSize:13}} /></div>}
               {editLang==='fr' && <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>CHAPEAU (resume d'intro, 1-3 phrases - affiche sous le titre et utilise pour le partage/Google)</label><textarea placeholder="Ex: Une victoire historique pour Golfe 4, qui remporte le tournoi intercommunal pour la premiere fois de son histoire." value={form.chapeau||''} onChange={e=>setForm({...form, chapeau:e.target.value})} rows={3} style={{width:'100%',padding:'10px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontSize:13,fontFamily:'inherit',resize:'vertical'}} /><div style={{fontSize:10,color:'#94a3b8',marginTop:3}}>{(form.chapeau||'').length} caracteres (id\u00e9al: 100-160)</div></div>}
               {editLang==='fr' && <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>MOTS-CLES PRINCIPAUX (separes par une virgule)</label><input placeholder="Ex: football, tournoi intercommunal, Golfe 4, Lome" value={(form.tags||[]).join(', ')} onChange={e=>setForm({...form, tags:e.target.value.split(',').map(t=>t.trim()).filter(Boolean)})} style={{width:'100%',padding:'10px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe',fontSize:13}} /></div>}
-              {!isDirector && form.id && form.status==='published' && (
+              {!canPublish && form.id && form.status==='published' && (
                 <div style={{background:'#fee2e2',border:'2px solid #ef4444',borderRadius:10,padding:12,fontSize:12,color:'#991b1b',fontWeight:700}}>
                   Cet article est deja publie. Seul le directeur peut le modifier ou le depublier.
                 </div>
@@ -2082,9 +2086,9 @@ export default function Admin() {
                 <select value={form.status||'draft'} onChange={e=>setForm({...form,status:e.target.value})} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #fcd34d',fontWeight:700}}>
                   <option value="draft">Brouillon (visible par l'equipe uniquement)</option>
                   <option value="pending_review">En attente de publication</option>
-                  {isDirector && <option value="published">Publie (visible sur le site)</option>}
+                  {canPublish && <option value="published">Publie (visible sur le site)</option>}
                 </select>
-                {!isDirector && <div style={{fontSize:10,color:'#b45309',marginTop:6}}>Seul le directeur peut publier un article sur le site. Choisis "En attente de publication" quand c'est pret pour lui.</div>}
+                {!canPublish && <div style={{fontSize:10,color:'#b45309',marginTop:6}}>Seul le directeur ou le redacteur en chef peuvent publier un article sur le site. Choisis "En attente de publication" quand c'est pret.</div>}
               </div>
               
               <div style={{border:'2px dashed #93c5fd', padding:12, borderRadius:12, background:'#f0f7ff'}}>
@@ -2179,7 +2183,7 @@ export default function Admin() {
 
               <div style={{display:'flex',gap:8}}>
                 {form.id && <button onClick={()=>{setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[], slug:'' }); setSlugTouched(false); setBlocks([{id:uid(), type:'text', content:''}]); setGallery([]);}} style={{flex:1,padding:'14px',background:'#e0e7ff',borderRadius:12,border:0,fontWeight:800,cursor:'pointer', color:'#2e4fb0'}}>Annuler</button>}
-                <button onClick={handlePublish} disabled={!isDirector && form.id && form.status==='published'} style={{flex:2,padding:'14px',background: (!isDirector && form.id && form.status==='published')? '#94a3b8' : form.status==='published'? '#16a34a' : form.id? '#f59e0b' : '#2e4fb0',color:'white',fontWeight:900,borderRadius:12,border:0,cursor:(!isDirector && form.id && form.status==='published')?'not-allowed':'pointer',fontSize:14}}>{form.status==='published'? (form.id?'METTRE A JOUR (PUBLIE)':'PUBLIER') : form.status==='pending_review'? 'SOUMETTRE POUR VALIDATION' : (form.id?'ENREGISTRER LE BROUILLON':'ENREGISTRER EN BROUILLON')}</button>
+                <button onClick={handlePublish} disabled={!canPublish && form.id && form.status==='published'} style={{flex:2,padding:'14px',background: (!canPublish && form.id && form.status==='published')? '#94a3b8' : form.status==='published'? '#16a34a' : form.id? '#f59e0b' : '#2e4fb0',color:'white',fontWeight:900,borderRadius:12,border:0,cursor:(!canPublish && form.id && form.status==='published')?'not-allowed':'pointer',fontSize:14}}>{form.status==='published'? (form.id?'METTRE A JOUR (PUBLIE)':'PUBLIER') : form.status==='pending_review'? 'SOUMETTRE POUR VALIDATION' : (form.id?'ENREGISTRER LE BROUILLON':'ENREGISTRER EN BROUILLON')}</button>
               </div>
             </div>
           </div>

@@ -621,7 +621,7 @@ export default function App(){
   const [articles,setArticles]=useState([]); const [flashes,setFlashes]=useState([]); const [annonces,setAnnonces]=useState([]); const [pubs,setPubs]=useState([]); const [unes,setUnes]=useState([]); const [selectedUne,setSelectedUne]=useState(null); const [encadres,setEncadres]=useState([]); const [purchasedUnes,setPurchasedUnes]=useState(()=>{ if(typeof window==='undefined') return new Set(); try{ return new Set(JSON.parse(localStorage.getItem('rius_purchased_unes')||'[]')) }catch{ return new Set() } }); const [buyingUneId,setBuyingUneId]=useState(null); const [currentPub,setCurrentPub]=useState(0); const [infeedRotation,setInfeedRotation]=useState(0); const [headerHidden,setHeaderHidden]=useState(false); const [actif,setActif]=useState(()=>{ if(typeof window==='undefined') return 'ACCUEIL'; try{ const p=new URLSearchParams(window.location.search).get('page'); return (p && PAGE_SLUGS[p])? PAGE_SLUGS[p] : 'ACCUEIL' }catch{ return 'ACCUEIL' } }); const [pendingArticleLoad]=useState(()=>{ if(typeof window==='undefined') return false; try{ return !!new URLSearchParams(window.location.search).get('a') }catch{ return false } }); const [articleNotFound,setArticleNotFound]=useState(false); const [meteo,setMeteo]=useState({temp:'32°C',icon:'☀'}); const [dateJour,setDateJour]=useState(''); const [heureTU,setHeureTU]=useState(''); const [deferredPrompt,setDeferredPrompt]=useState(null); const [selected,setSelected]=useState(null); const [newsletterEmail,setNewsletterEmail]=useState(''); const [contactForm,setContactForm]=useState({name:'',email:'',subject:'',message:''}); const [contactStatus,setContactStatus]=useState(''); const [translatedCache,setTranslatedCache]=useState({}); const [searchTerm,setSearchTerm]=useState(''); const [searchHistory,setSearchHistory]=useState(()=>{ if(typeof window==='undefined') return []; try{return JSON.parse(localStorage.getItem('rius_search_hist')||'[]')}catch{return []} }); const [currentAudio,setCurrentAudio]=useState(null); const audioRef=useRef(null); const [directMenuOpen,setDirectMenuOpen]=useState(false); const [directMenuPos,setDirectMenuPos]=useState({top:0,left:0}); const directBtnRef=useRef(null); const [youtubeLive,setYoutubeLive]=useState(null); const [radioPlaylist,setRadioPlaylist]=useState([]); const [videoPlaylist,setVideoPlaylist]=useState([]); const [tvWatermark,setTvWatermark]=useState(null); const [programmeGrid,setProgrammeGrid]=useState([]); const [radioTimeBlocks,setRadioTimeBlocks]=useState([]); const [tvTimeBlocks,setTvTimeBlocks]=useState([]); const [emissions,setEmissions]=useState([]); const [emissionsFilter,setEmissionsFilter]=useState('all'); const [selectedEmission,setSelectedEmission]=useState(null); const [radioTrackIndex,setRadioTrackIndex]=useState(0); const radioTrackIndexRef=useRef(0); const [radioIsPlaying,setRadioIsPlaying]=useState(false); const [shareMenuOpen,setShareMenuOpen]=useState(false); const urlOpenedRef=useRef(false); const tvContainerRef=useRef(null);
   const [userSession,setUserSession]=useState(null); const userAccessTokenRef=useRef(null); const [authChecked,setAuthChecked]=useState(false);
   const [authMode,setAuthMode]=useState('login'); const [authEmail,setAuthEmail]=useState(''); const [authPassword,setAuthPassword]=useState(''); const [authError,setAuthError]=useState(''); const [authLoading,setAuthLoading]=useState(false);
-  const [submitFiles,setSubmitFiles]=useState([]); const [submitMessage,setSubmitMessage]=useState(''); const [submitting,setSubmitting]=useState(false); const [mySubmissions,setMySubmissions]=useState([]);
+  const [submitFiles,setSubmitFiles]=useState([]); const [submitMessage,setSubmitMessage]=useState(''); const [submitting,setSubmitting]=useState(false); const [mySubmissions,setMySubmissions]=useState([]); const [submitRecipient,setSubmitRecipient]=useState('tous');
   const T=UI[lang]||UI.fr
 
   useEffect(()=>{ const h=(e)=>{ e.preventDefault(); setDeferredPrompt(e) }; window.addEventListener('beforeinstallprompt',h); return()=>window.removeEventListener('beforeinstallprompt',h) },[])
@@ -1216,7 +1216,7 @@ export default function App(){
           const insertRes = await fetch(`${supabaseUrl}/rest/v1/submissions`,{
             method:'POST',
             headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${userAccessTokenRef.current}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-            body: JSON.stringify({ user_id:userSession.user.id, user_email:userSession.user.email, file_path:path, file_type:detectFileType(file), file_name:file.name, message:submitMessage.trim()||null })
+            body: JSON.stringify({ user_id:userSession.user.id, user_email:userSession.user.email, file_path:path, file_type:detectFileType(file), file_name:file.name, message:submitMessage.trim()||null, recipient:submitRecipient })
           })
           if(!insertRes.ok) throw new Error(await insertRes.text())
           okCount++
@@ -1224,7 +1224,7 @@ export default function App(){
       }
       if(okCount===submitFiles.length) alert(`${okCount} fichier(s) envoye(s) avec succes, merci !`)
       else alert(`${okCount} sur ${submitFiles.length} fichier(s) envoye(s). Certains ont echoue, reessaie pour ceux-la.`)
-      setSubmitFiles([]); setSubmitMessage('')
+      setSubmitFiles([]); setSubmitMessage(''); setSubmitRecipient('tous')
       fetchMySubmissions()
     }catch(e){ alert("Erreur lors de l'envoi: "+e.message) }
     finally{ setSubmitting(false) }
@@ -1423,6 +1423,16 @@ export default function App(){
                       })}
                     </div>
                   )}
+                  <label style={{fontSize:10,fontWeight:900}}>DESTINATAIRE</label>
+                  <select value={submitRecipient} onChange={e=>setSubmitRecipient(e.target.value)} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid #ddd',marginTop:4,marginBottom:6,fontSize:13}}>
+                    <option value="tous">Toute l'équipe</option>
+                    <option value="director">Direction Générale (confidentiel)</option>
+                    <option value="redacteur_chef">Rédaction (Rédacteur en chef)</option>
+                    <option value="chef_programme">Chef de programme</option>
+                    <option value="technicien">Service technique</option>
+                    <option value="journaliste">Journalistes</option>
+                  </select>
+                  <div style={{fontSize:10,opacity:0.5,marginBottom:14}}>Seul le destinataire choisi (ou toute l'équipe si tu laisses ce choix) pourra voir ce fichier.</div>
                   <label style={{fontSize:10,fontWeight:900}}>MESSAGE (optionnel)</label>
                   <textarea value={submitMessage} onChange={e=>setSubmitMessage(e.target.value)} placeholder="Un contexte, une précision..." style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid #ddd',marginTop:4,marginBottom:16,fontSize:13,resize:'vertical',minHeight:70}}></textarea>
                   <button onClick={handleFileSubmit} disabled={submitting||!submitFiles.length} style={{width:'100%',padding:13,background:(submitting||!submitFiles.length)?'#94a3b8':'#0f2040',color:'white',border:0,borderRadius:10,fontWeight:900,fontSize:13,cursor:(submitting||!submitFiles.length)?'default':'pointer'}}>{submitting? 'Envoi en cours...' : `📤 ENVOYER${submitFiles.length>1? ` (${submitFiles.length} fichiers)`:''}`}</button>

@@ -37,7 +37,7 @@ export default async function handler(req, res) {
 
     // 3) Valider la demande
     const { email, password, role } = req.body || {};
-    const allowedRoles = ['journaliste', 'technicien', 'chef_programme', 'director'];
+    const allowedRoles = ['journaliste', 'redacteur_chef', 'technicien', 'chef_programme', 'director'];
     if (!email || !password || !role) {
       return res.status(400).json({ error: 'Email, mot de passe et role sont obligatoires' });
     }
