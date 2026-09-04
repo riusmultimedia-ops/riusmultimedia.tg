@@ -65,7 +65,7 @@ export default function Admin() {
     articles: ['journaliste','redacteur_chef','director'],
     flash: ['journaliste','redacteur_chef','director'],
     commentaires: ['journaliste','redacteur_chef','director'],
-    envois: ['journaliste','director'],
+    envois: ['journaliste','redacteur_chef','technicien','chef_programme','director'],
     radio: ['technicien','chef_programme','director'],
     videotv: ['technicien','chef_programme','director'],
     grille: ['technicien','chef_programme','director'],
