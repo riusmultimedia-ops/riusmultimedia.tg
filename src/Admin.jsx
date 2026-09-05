@@ -66,23 +66,35 @@ export default function Admin() {
     flash: ['journaliste','redacteur_chef','director'],
     commentaires: ['journaliste','redacteur_chef','director'],
     envois: ['journaliste','redacteur_chef','technicien','chef_programme','director'],
-    radio: ['technicien','chef_programme','director'],
-    videotv: ['technicien','chef_programme','director'],
+    radio: ['technicien','chef_programme','redacteur_chef','animateur','director'],
+    videotv: ['technicien','chef_programme','redacteur_chef','animateur','director'],
     grille: ['technicien','chef_programme','director'],
-    emissions: ['technicien','chef_programme','director'],
-    annonces: ['chef_programme','director'],
+    emissions: ['technicien','chef_programme','redacteur_chef','journaliste','animateur','director'],
+    annonces: ['chef_programme','journaliste','animateur','director'],
     pubs: ['chef_programme','director'],
-    kiosque: ['chef_programme','director'],
+    kiosque: ['redacteur_chef','director'],
     encadres: ['chef_programme','director'],
     users: ['director'],
   };
   const canAccess = (tab) => !!myRole && (TAB_ACCESS[tab]||[]).includes(myRole);
 
+  // Roles autorises a PUBLIER directement (visible sur le site) pour chaque onglet.
+  // Les roles qui ont acces a l'onglet mais ne sont pas dans cette liste peuvent seulement
+  // SOUMETTRE (le contenu est cree en attente, quelqu'un avec droit de publier doit l'activer).
+  const PUBLISHER_ROLES = {
+    flash: ['redacteur_chef','director'],
+    annonces: ['chef_programme','director'],
+    emissions: ['technicien','chef_programme','redacteur_chef','director'],
+    radio: ['technicien','chef_programme','redacteur_chef','director'],
+    videotv: ['technicien','chef_programme','redacteur_chef','director'],
+  };
+  const canPublishTab = (tab) => !!myRole && (PUBLISHER_ROLES[tab]||[]).includes(myRole);
+
   const landOnDefaultTab = (role) => {
     resetTabs();
-    if(role==='technicien') setShowRadio(true);
+    if(role==='technicien' || role==='animateur') setShowRadio(true);
     else if(role==='chef_programme') setShowAnnonces(true);
-    // journaliste et director atterrissent sur l'editeur d'article par defaut
+    // journaliste, redacteur_chef et director atterrissent sur l'editeur d'article par defaut
   };
   const [gallery, setGallery] = useState([]);
   const [youtubeInput, setYoutubeInput] = useState('');
@@ -296,6 +308,26 @@ export default function Admin() {
       if(data.signedURL) window.open(`${supabaseUrl}/storage/v1${data.signedURL}`, '_blank');
       else alert('Impossible de generer le lien: '+JSON.stringify(data));
     }catch(e){ alert('Erreur: '+e.message); }
+  };
+  const handleDownloadSubmission = async (s) => {
+    try{
+      const res = await fetch(`${supabaseUrl}/storage/v1/object/sign/submissions/${s.file_path}`, {
+        method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' },
+        body: JSON.stringify({ expiresIn: 300 })
+      });
+      const data = await res.json();
+      if(!data.signedURL){ alert('Impossible de generer le lien: '+JSON.stringify(data)); return; }
+      const fileRes = await fetch(`${supabaseUrl}/storage/v1${data.signedURL}`);
+      const blob = await fileRes.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = s.file_name || 'fichier';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    }catch(e){ alert('Erreur de telechargement: '+e.message); }
   };
   const handleMarkSubmissionTreated = async (s) => {
     await fetch(`${supabaseUrl}/rest/v1/submissions?id=eq.${s.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ status: s.status==='traite'?'nouveau':'traite' }) });
@@ -540,15 +572,16 @@ export default function Admin() {
   const handleAddEmission = async () => {
     if(!newEmTitle.trim()) return alert('Mets un titre');
     if(!newEmMediaUrl.trim()) return alert(newEmMediaType==='audio'? 'Ajoute un fichier audio' : 'Colle un lien YouTube');
-    const payload = { title:newEmTitle.trim(), description:newEmDesc.trim()||null, category:newEmCategory, media_type:newEmMediaType, media_url:newEmMediaUrl.trim(), image:newEmImage||null, date_diffusion:newEmDate, active:true };
+    const payload = { title:newEmTitle.trim(), description:newEmDesc.trim()||null, category:newEmCategory, media_type:newEmMediaType, media_url:newEmMediaUrl.trim(), image:newEmImage||null, date_diffusion:newEmDate, active: editingEmId? undefined : canPublishTab('emissions') };
+    if(editingEmId) delete payload.active;
     const url = editingEmId? `${supabaseUrl}/rest/v1/emissions?id=eq.${editingEmId}` : `${supabaseUrl}/rest/v1/emissions`;
     const method = editingEmId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ resetEmForm(); fetchEmissions(); alert(editingEmId? 'Emission modifiee!' : 'Emission ajoutee!'); } else alert(await res.text());
+    if(res.ok){ resetEmForm(); fetchEmissions(); alert(editingEmId? 'Emission modifiee!' : (canPublishTab('emissions')? 'Emission ajoutee!' : 'Emission soumise ! Elle sera publiee apres validation par un responsable.')); } else alert(await res.text());
   };
   const handleEditEmission = (e) => { setEditingEmId(e.id); setNewEmTitle(e.title||''); setNewEmDesc(e.description||''); setNewEmCategory(e.category||'radio'); setNewEmMediaType(e.media_type||'audio'); setNewEmMediaUrl(e.media_url||''); setNewEmImage(e.image||''); setNewEmDate(e.date_diffusion||new Date().toISOString().split('T')[0]); window.scrollTo(0,0); };
   const handleDeleteEmission = async (id) => { if(!confirm('Supprimer cette emission?')) return; await fetch(`${supabaseUrl}/rest/v1/emissions?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchEmissions(); };
-  const handleToggleEmission = async (e) => { await fetch(`${supabaseUrl}/rest/v1/emissions?id=eq.${e.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!e.active }) }); fetchEmissions(); };
+  const handleToggleEmission = async (e) => { if(!canPublishTab('emissions')) return alert("Tu n'as pas les droits pour publier une emission."); await fetch(`${supabaseUrl}/rest/v1/emissions?id=eq.${e.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!e.active }) }); fetchEmissions(); };
 
   const addBlock = (type, afterId=null) => {
     const newBlock = { id:uid(), type, content:'', url:'', caption:'', title:'', position:'center' }
@@ -1118,14 +1151,14 @@ export default function Admin() {
     const method = editingFlashId? 'PATCH' : 'POST';
     const res = await fetch(url, {
       method, headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-      body: JSON.stringify(editingFlashId? { text: newFlash.trim() } : { text: newFlash.trim(), active: true })
+      body: JSON.stringify(editingFlashId? { text: newFlash.trim() } : { text: newFlash.trim(), active: canPublishTab('flash') })
     });
-    if(res.ok){ setNewFlash(''); setEditingFlashId(null); fetchFlashes(); } else alert(await res.text());
+    if(res.ok){ setNewFlash(''); setEditingFlashId(null); fetchFlashes(); if(!editingFlashId && !canPublishTab('flash')) alert('Flash soumis ! Il sera publie apres validation par la redaction.'); } else alert(await res.text());
   };
   const handleEditFlash = (f) => { setEditingFlashId(f.id); setNewFlash(f.text); };
   const handleCancelFlashEdit = () => { setEditingFlashId(null); setNewFlash(''); };
   const handleDeleteFlash = async (id) => { if(!confirm('Supprimer ce flash?')) return; await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchFlashes(); };
-  const handleToggleFlash = async (f) => { await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${f.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!f.active }) }); fetchFlashes(); };
+  const handleToggleFlash = async (f) => { if(!canPublishTab('flash')) return alert("Tu n'as pas les droits pour publier un flash."); await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${f.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!f.active }) }); fetchFlashes(); };
 
   const [editingAnnonceId, setEditingAnnonceId] = useState(null);
   const handleAddAnnonce = async () => {
@@ -1134,14 +1167,14 @@ export default function Admin() {
     const method = editingAnnonceId? 'PATCH' : 'POST';
     const res = await fetch(url, {
       method, headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-      body: JSON.stringify(editingAnnonceId? { text: newAnnonce.trim() } : { text: newAnnonce.trim(), active: true })
+      body: JSON.stringify(editingAnnonceId? { text: newAnnonce.trim() } : { text: newAnnonce.trim(), active: canPublishTab('annonces') })
     });
-    if(res.ok){ setNewAnnonce(''); setEditingAnnonceId(null); fetchAnnonces(); } else alert(await res.text());
+    if(res.ok){ setNewAnnonce(''); setEditingAnnonceId(null); fetchAnnonces(); if(!editingAnnonceId && !canPublishTab('annonces')) alert('Annonce soumise ! Elle sera publiee apres validation par un responsable.'); } else alert(await res.text());
   };
   const handleEditAnnonce = (a) => { setEditingAnnonceId(a.id); setNewAnnonce(a.text); };
   const handleCancelAnnonceEdit = () => { setEditingAnnonceId(null); setNewAnnonce(''); };
   const handleDeleteAnnonce = async (id) => { if(!confirm('Supprimer cette annonce?')) return; await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchAnnonces(); };
-  const handleToggleAnnonce = async (a) => { await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${a.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!a.active }) }); fetchAnnonces(); };
+  const handleToggleAnnonce = async (a) => { if(!canPublishTab('annonces')) return alert("Tu n'as pas les droits pour publier une annonce."); await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${a.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!a.active }) }); fetchAnnonces(); };
 
   const handleAddPub = async () => { if(!newPubImage) return alert('Mets une image'); const res=await fetch(`${supabaseUrl}/rest/v1/pubs`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ image:newPubImage, link:newPubLink||null, slot:newPubSlot, active:true }) }); if(res.ok){ setNewPubImage(''); setNewPubLink(''); setNewPubSlot('header'); fetchPubs(); alert('Pub ajoutee!'); } else alert(await res.text()); };
   const handleDeletePub = async (id) => { if(!confirm('Supprimer cette pub?')) return; await fetch(`${supabaseUrl}/rest/v1/pubs?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchPubs(); };
@@ -1160,16 +1193,17 @@ export default function Admin() {
     if(!newRadioAudio) return alert('Ajoute un fichier audio');
     if(!newRadioTitle.trim()) return alert('Mets un titre pour la piste');
     if(newRadioIsAd && newRadioAdTimes.length===0) return alert('Ajoute au moins une heure de diffusion pour cette pub');
-    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, is_ad:newRadioIsAd, ad_times:newRadioIsAd? newRadioAdTimes : [], active:true, folder:newRadioFolder.trim()||null, original_filename:newRadioAudioFilename||null };
+    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, is_ad:newRadioIsAd, ad_times:newRadioIsAd? newRadioAdTimes : [], active: editingRadioId? undefined : canPublishTab('radio'), folder:newRadioFolder.trim()||null, original_filename:newRadioAudioFilename||null };
+    if(editingRadioId) delete payload.active;
     const url = editingRadioId? `${supabaseUrl}/rest/v1/radio_playlist?id=eq.${editingRadioId}` : `${supabaseUrl}/rest/v1/radio_playlist`;
     const method = editingRadioId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : 'Piste ajoutee a la radio!'); } else alert(await res.text());
+    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : (canPublishTab('radio')? 'Piste ajoutee a la radio!' : 'Piste soumise ! Elle sera diffusee apres validation par un responsable.')); } else alert(await res.text());
   };
   const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioAudioFilename(t.original_filename||''); setNewRadioFolder(t.folder||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); window.scrollTo(0,0); };
   const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); };
   const handleDeleteRadioTrack = async (id) => { if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioPlaylist(); };
-  const handleToggleRadioTrack = async (t) => { await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
+  const handleToggleRadioTrack = async (t) => { if(!canPublishTab('radio')) return alert("Tu n'as pas les droits pour diffuser une piste."); await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
   const getYtId = (url) => getYoutubeId(url);
   const addVideoAdTime = () => {
@@ -1190,16 +1224,17 @@ export default function Admin() {
     const dup = videoPlaylist.find(v => v.id!==editingVideoId && getYtId(v.url||'')===id && (v.folder||null)===targetFolder);
     if(dup) return alert(`Cette video est deja dans ${targetFolder? `le groupe "${targetFolder}"`:'la playlist generale (sans groupe)'}. Change de groupe si tu veux quand meme l'ajouter.`);
     const thumb = getYoutubeThumb(newVideoUrl.trim());
-    const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, is_jingle:newVideoIsJingle, is_ad:newVideoIsAd, ad_times:newVideoIsAd? newVideoAdTimes : [], active:true, folder:newVideoFolder.trim()||null };
+    const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, is_jingle:newVideoIsJingle, is_ad:newVideoIsAd, ad_times:newVideoIsAd? newVideoAdTimes : [], active: editingVideoId? undefined : canPublishTab('videotv'), folder:newVideoFolder.trim()||null };
+    if(editingVideoId) delete payload.active;
     const url = editingVideoId? `${supabaseUrl}/rest/v1/video_playlist?id=eq.${editingVideoId}` : `${supabaseUrl}/rest/v1/video_playlist`;
     const method = editingVideoId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setNewVideoFolder(''); setEditingVideoId(null); fetchVideoPlaylist(); alert(editingVideoId? 'Video modifiee!' : 'Video ajoutee a la playlist TV!'); } else alert(await res.text());
+    if(res.ok){ setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setNewVideoFolder(''); setEditingVideoId(null); fetchVideoPlaylist(); alert(editingVideoId? 'Video modifiee!' : (canPublishTab('videotv')? 'Video ajoutee a la playlist TV!' : 'Video soumise ! Elle sera diffusee apres validation par un responsable.')); } else alert(await res.text());
   };
   const handleEditVideoTrack = (v) => { setEditingVideoId(v.id); setNewVideoTitle(v.title||''); setNewVideoUrl(v.url||''); setNewVideoIsJingle(!!v.is_jingle); setNewVideoIsAd(!!v.is_ad); setNewVideoAdTimes(v.ad_times||[]); setNewVideoFolder(v.folder||''); window.scrollTo(0,0); };
   const handleCancelVideoEdit = () => { setEditingVideoId(null); setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setNewVideoFolder(''); };
   const handleDeleteVideoTrack = async (id) => { if(!confirm('Supprimer cette video?')) return; await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchVideoPlaylist(); };
-  const handleToggleVideoTrack = async (v) => { await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!v.active }) }); fetchVideoPlaylist(); };
+  const handleToggleVideoTrack = async (v) => { if(!canPublishTab('videotv')) return alert("Tu n'as pas les droits pour diffuser une video."); await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!v.active }) }); fetchVideoPlaylist(); };
 
   const handleAddUne = async () => {
     if(!newUneImage) return alert('Image obligatoire');
@@ -1306,10 +1341,11 @@ export default function Admin() {
 
               <label style={{fontSize:10,fontWeight:800,color:'#2e4fb0'}}>ROLE</label>
               <select value={newUserRole} onChange={e=>setNewUserRole(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:12,borderRadius:8,border:'1px solid #c7d2fe',fontWeight:700}}>
-                <option value="journaliste">Journaliste (Articles, Flash)</option>
-                <option value="redacteur_chef">Redacteur en chef (Articles, Flash, Commentaires + peut publier)</option>
-                <option value="technicien">Technicien (Radio, Videos TV)</option>
-                <option value="chef_programme">Chef de programme (Annonces, Pubs, Kiosque, Espace Business, Radio, Videos TV)</option>
+                <option value="journaliste">Journaliste (Articles, Flash, Annonces, Emissions - soumission seulement pour Flash/Annonces/Emissions)</option>
+                <option value="redacteur_chef">Redacteur en chef (Articles, Flash, Commentaires, Kiosque, Radio, Videos TV, Emissions + peut publier)</option>
+                <option value="technicien">Technicien (Radio, Videos TV, Grille, Emissions)</option>
+                <option value="chef_programme">Chef de programme (Annonces, Pubs, Espace Business, Radio, Videos TV, Grille, Emissions)</option>
+                <option value="animateur">Animateur / Presentateur (Radio, Videos TV, Annonces, Emissions - soumission seulement)</option>
                 <option value="director">Directeur (acces total)</option>
               </select>
 
@@ -1324,7 +1360,7 @@ export default function Admin() {
         ) : showEnvois? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #16a34a'}}>
             <h3 style={{marginTop:0, color:'#16a34a'}}>📤 Envois reçus des internautes</h3>
-            <div style={{fontSize:11, color:'#64748b', marginBottom:14}}>Documents, images, vidéos et audios envoyés via l'espace compte du site. Clique "Ouvrir" pour voir/télécharger le fichier (lien valable 5 minutes).</div>
+            <div style={{fontSize:11, color:'#64748b', marginBottom:14}}>Documents, images, vidéos et audios envoyés via l'espace compte du site. Clique "Ouvrir" pour voir le fichier dans un nouvel onglet, ou "⬇️ Télécharger" pour l'enregistrer directement sur ton appareil.</div>
             {submissions.map(s=>(
               <div key={s.id} style={{border:'1px solid #e5e7eb', padding:12, borderRadius:10, marginBottom:8, opacity:s.status==='traite'?0.6:1}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:6,flexWrap:'wrap'}}>
@@ -1336,6 +1372,7 @@ export default function Admin() {
                   </div>
                   <div style={{display:'flex',gap:6,flexShrink:0}}>
                     <button onClick={()=>handleOpenSubmission(s)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Ouvrir</button>
+                    <button onClick={()=>handleDownloadSubmission(s)} style={{background:'#dcfce7',color:'#16a34a',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>⬇️ Télécharger</button>
                     <button onClick={()=>handleMarkSubmissionTreated(s)} style={{background: s.status==='traite'?'#fef3c7':'#dcfce7', color: s.status==='traite'?'#92400e':'#16a34a', border:0,borderRadius:6,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>{s.status==='traite'?'Remettre en attente':'Marquer traité'}</button>
                     <button onClick={()=>handleDeleteSubmission(s.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Suppr</button>
                   </div>
@@ -1379,7 +1416,7 @@ export default function Admin() {
               <div key={f.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
                 <div style={{flex:1, fontSize:13}}>{f.text}</div>
                 <button onClick={()=>handleEditFlash(f)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
-                <button onClick={()=>handleToggleFlash(f)} style={{background: f.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{f.active?'ON':'OFF'}</button>
+                {canPublishTab('flash')? <button onClick={()=>handleToggleFlash(f)} style={{background: f.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{f.active?'ON':'OFF'}</button> : <span style={{background: f.active?'#dcfce7':'#fef3c7', color: f.active?'#16a34a':'#b45309', borderRadius:6, padding:'4px 8px', fontSize:10, fontWeight:800}}>{f.active?'Publie':'En attente'}</span>}
                 <button onClick={()=>handleDeleteFlash(f.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
               </div>
             ))}
@@ -1396,7 +1433,7 @@ export default function Admin() {
               <div key={a.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
                 <div style={{flex:1, fontSize:13}}>{a.text}</div>
                 <button onClick={()=>handleEditAnnonce(a)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
-                <button onClick={()=>handleToggleAnnonce(a)} style={{background: a.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{a.active?'ON':'OFF'}</button>
+                {canPublishTab('annonces')? <button onClick={()=>handleToggleAnnonce(a)} style={{background: a.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{a.active?'ON':'OFF'}</button> : <span style={{background: a.active?'#dcfce7':'#fef3c7', color: a.active?'#16a34a':'#b45309', borderRadius:6, padding:'4px 8px', fontSize:10, fontWeight:800}}>{a.active?'Publie':'En attente'}</span>}
                 <button onClick={()=>handleDeleteAnnonce(a.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
               </div>
             ))}
@@ -1568,7 +1605,7 @@ export default function Admin() {
                 </div>
                 <button onClick={()=>toggleRadioPreview(t.id)} style={{background: previewingRadioIds.has(t.id)?'#16a34a':'#dcfce7', color: previewingRadioIds.has(t.id)?'white':'#16a34a', border:0, borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:700, cursor:'pointer'}}>{previewingRadioIds.has(t.id)?'■ Stop':'▶ Ecouter'}</button>
                 <button onClick={()=>handleEditRadioTrack(t)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
-                <button onClick={()=>handleToggleRadioTrack(t)} style={{background: t.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{t.active?'ON':'OFF'}</button>
+                {canPublishTab('radio')? <button onClick={()=>handleToggleRadioTrack(t)} style={{background: t.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{t.active?'ON':'OFF'}</button> : <span style={{background: t.active?'#dcfce7':'#fef3c7', color: t.active?'#16a34a':'#b45309', borderRadius:6, padding:'4px 8px', fontSize:10, fontWeight:800}}>{t.active?'Publie':'En attente'}</span>}
                 <button onClick={()=>handleDeleteRadioTrack(t.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
                 </div>
                 {previewingRadioIds.has(t.id) && <audio controls autoPlay src={t.url} style={{width:'100%',marginTop:8}} onError={()=>alert(`⚠️ Ce fichier ne se charge pas ("${t.title}"). Le lien est peut-etre casse ou le fichier a ete supprime du stockage.`)} />}
@@ -1773,7 +1810,7 @@ export default function Admin() {
                 </div>
                 <button onClick={()=>toggleTvPreview(v.id)} style={{background: previewingTvIds.has(v.id)?'#dc2626':'#fee2e2', color: previewingTvIds.has(v.id)?'white':'#dc2626', border:0, borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:700, cursor:'pointer'}}>{previewingTvIds.has(v.id)?'■ Fermer':'👁 Previsualiser'}</button>
                 <button onClick={()=>handleEditVideoTrack(v)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
-                <button onClick={()=>handleToggleVideoTrack(v)} style={{background: v.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{v.active?'ON':'OFF'}</button>
+                {canPublishTab('videotv')? <button onClick={()=>handleToggleVideoTrack(v)} style={{background: v.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{v.active?'ON':'OFF'}</button> : <span style={{background: v.active?'#dcfce7':'#fef3c7', color: v.active?'#16a34a':'#b45309', borderRadius:6, padding:'4px 8px', fontSize:10, fontWeight:800}}>{v.active?'Publie':'En attente'}</span>}
                 <button onClick={()=>handleDeleteVideoTrack(v.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
                 </div>
                 {previewingTvIds.has(v.id) && (
@@ -1880,7 +1917,7 @@ export default function Admin() {
                     <div style={{fontSize:10,color:'#64748b',marginTop:4}}>{e.date_diffusion? new Date(e.date_diffusion).toLocaleDateString('fr-FR'):''}</div>
                     <div style={{display:'flex',gap:6,marginTop:8}}>
                       <button onClick={()=>handleEditEmission(e)} style={{flex:1,background:'#dbeafe', color:'#1d4ed8', border:0, borderRadius:6, padding:'6px', fontSize:10, fontWeight:800}}>Modifier</button>
-                      <button onClick={()=>handleToggleEmission(e)} style={{flex:1,background: e.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'6px', fontSize:10, fontWeight:800}}>{e.active?'ON':'OFF'}</button>
+                      {canPublishTab('emissions')? <button onClick={()=>handleToggleEmission(e)} style={{flex:1,background: e.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'6px', fontSize:10, fontWeight:800}}>{e.active?'ON':'OFF'}</button> : <span style={{flex:1,textAlign:'center',background: e.active?'#dcfce7':'#fef3c7', color: e.active?'#16a34a':'#b45309', borderRadius:6, padding:'6px', fontSize:10, fontWeight:800}}>{e.active?'Publie':'En attente'}</span>}
                       <button onClick={()=>handleDeleteEmission(e.id)} style={{flex:1,background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px',fontSize:10}}>Suppr</button>
                     </div>
                   </div>
