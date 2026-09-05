@@ -64,11 +64,11 @@ export default function Admin() {
   const TAB_ACCESS = {
     articles: ['journaliste','redacteur_chef','director'],
     flash: ['journaliste','redacteur_chef','director'],
-    commentaires: ['journaliste','redacteur_chef','director'],
+    commentaires: ['redacteur_chef','director'],
     envois: ['journaliste','redacteur_chef','technicien','chef_programme','director'],
     radio: ['technicien','chef_programme','redacteur_chef','animateur','director'],
     videotv: ['technicien','chef_programme','redacteur_chef','animateur','director'],
-    grille: ['technicien','chef_programme','director'],
+    grille: ['chef_programme','director'],
     emissions: ['technicien','chef_programme','redacteur_chef','journaliste','animateur','director'],
     annonces: ['chef_programme','journaliste','animateur','director'],
     pubs: ['chef_programme','director'],
@@ -89,6 +89,17 @@ export default function Admin() {
     videotv: ['technicien','chef_programme','redacteur_chef','director'],
   };
   const canPublishTab = (tab) => !!myRole && (PUBLISHER_ROLES[tab]||[]).includes(myRole);
+
+  // Roles autorises a SUPPRIMER des programmations pour certains onglets ou la restriction
+  // de publication (PUBLISHER_ROLES) n'est pas suffisante. Si un onglet n'a pas d'entree ici,
+  // tous les publieurs de cet onglet gardent le droit de supprimer (comportement d'avant).
+  const DELETER_ROLES = {
+    radio: ['technicien','chef_programme','director'],
+    videotv: ['technicien','chef_programme','director'],
+    flash: ['redacteur_chef','director'],
+    annonces: ['chef_programme','director'],
+  };
+  const canDeleteTab = (tab) => !!myRole && (DELETER_ROLES[tab] ? DELETER_ROLES[tab].includes(myRole) : canPublishTab(tab));
 
   const landOnDefaultTab = (role) => {
     resetTabs();
@@ -435,18 +446,11 @@ export default function Admin() {
     alert(`${toAssign.length} piste(s) assignee(s) au groupe "${targetFolder}".${conflicts.length>0? ` ${conflicts.length} ignoree(s) (doublon evite).`:''}`);
   };
   const handleDeleteFolder = async (folderName) => {
+    if(!canDeleteTab('radio')) return alert("Tu n'as pas les droits pour supprimer un groupe.");
     const tracks = radioPlaylist.filter(t=>t.folder===folderName);
-    if(!confirm(`Supprimer definitivement le groupe "${folderName}" ET ses ${tracks.length} fichier(s) ? Cette action est irreversible.`)) return;
+    if(!confirm(`Retirer le groupe "${folderName}" ? Les ${tracks.length} piste(s) restent dans ta playlist radio (elles rejoignent simplement les pistes sans groupe) - tu pourras les supprimer une par une toi-meme si besoin.`)) return;
     for(const t of tracks){
-      try{
-        const marker = '/storage/v1/object/public/radio/';
-        const idx = (t.url||'').indexOf(marker);
-        if(idx>=0){
-          const path = t.url.substring(idx+marker.length);
-          await fetch(`${supabaseUrl}/storage/v1/object/radio/${path}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } });
-        }
-      }catch(e){ /* on continue meme si le fichier de stockage est deja absent */ }
-      await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } });
+      await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ folder:null }) });
     }
     // Nettoie aussi une eventuelle plage horaire encore associee a ce groupe
     const orphanBlocks = radioTimeBlocks.filter(b=>b.folder===folderName);
@@ -455,7 +459,7 @@ export default function Admin() {
     }
     fetchRadioPlaylist();
     fetchRadioTimeBlocks();
-    alert(`Groupe "${folderName}" supprime avec ses ${tracks.length} fichier(s).`);
+    alert(`Groupe "${folderName}" retire. ${tracks.length} piste(s) conservee(s) sans groupe.`);
   };
 
   const toggleReassignTvSelect = (id) => setReassignTvSelectedIds(prev=>{ const next=new Set(prev); if(next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -484,6 +488,7 @@ export default function Admin() {
     alert(`${toAssign.length} video(s) assignee(s) au groupe "${targetFolder}".${conflicts.length>0? ` ${conflicts.length} ignoree(s) (doublon evite).`:''}`);
   };
   const handleDeleteTvFolder = async (folderName) => {
+    if(!canDeleteTab('videotv')) return alert("Tu n'as pas les droits pour supprimer un groupe.");
     const videos = videoPlaylist.filter(v=>v.folder===folderName);
     if(!confirm(`Retirer le groupe "${folderName}" ? Les ${videos.length} video(s) restent dans ta playlist TV (elles rejoignent simplement les videos sans groupe) - tu pourras les supprimer une par une toi-meme si besoin.`)) return;
     for(const v of videos){
@@ -1157,7 +1162,7 @@ export default function Admin() {
   };
   const handleEditFlash = (f) => { setEditingFlashId(f.id); setNewFlash(f.text); };
   const handleCancelFlashEdit = () => { setEditingFlashId(null); setNewFlash(''); };
-  const handleDeleteFlash = async (id) => { if(!confirm('Supprimer ce flash?')) return; await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchFlashes(); };
+  const handleDeleteFlash = async (id) => { if(!canDeleteTab('flash')) return alert("Tu n'as pas les droits pour supprimer un flash."); if(!confirm('Supprimer ce flash?')) return; await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchFlashes(); };
   const handleToggleFlash = async (f) => { if(!canPublishTab('flash')) return alert("Tu n'as pas les droits pour publier un flash."); await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${f.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!f.active }) }); fetchFlashes(); };
 
   const [editingAnnonceId, setEditingAnnonceId] = useState(null);
@@ -1173,7 +1178,7 @@ export default function Admin() {
   };
   const handleEditAnnonce = (a) => { setEditingAnnonceId(a.id); setNewAnnonce(a.text); };
   const handleCancelAnnonceEdit = () => { setEditingAnnonceId(null); setNewAnnonce(''); };
-  const handleDeleteAnnonce = async (id) => { if(!confirm('Supprimer cette annonce?')) return; await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchAnnonces(); };
+  const handleDeleteAnnonce = async (id) => { if(!canDeleteTab('annonces')) return alert("Tu n'as pas les droits pour supprimer cette annonce."); if(!confirm('Supprimer cette annonce?')) return; await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchAnnonces(); };
   const handleToggleAnnonce = async (a) => { if(!canPublishTab('annonces')) return alert("Tu n'as pas les droits pour publier une annonce."); await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${a.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!a.active }) }); fetchAnnonces(); };
 
   const handleAddPub = async () => { if(!newPubImage) return alert('Mets une image'); const res=await fetch(`${supabaseUrl}/rest/v1/pubs`, { method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify({ image:newPubImage, link:newPubLink||null, slot:newPubSlot, active:true }) }); if(res.ok){ setNewPubImage(''); setNewPubLink(''); setNewPubSlot('header'); fetchPubs(); alert('Pub ajoutee!'); } else alert(await res.text()); };
@@ -1202,7 +1207,7 @@ export default function Admin() {
   };
   const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioAudioFilename(t.original_filename||''); setNewRadioFolder(t.folder||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); window.scrollTo(0,0); };
   const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); };
-  const handleDeleteRadioTrack = async (id) => { if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioPlaylist(); };
+  const handleDeleteRadioTrack = async (id) => { if(!canDeleteTab('radio')) return alert("Tu n'as pas les droits pour supprimer une programmation radio."); if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioPlaylist(); };
   const handleToggleRadioTrack = async (t) => { if(!canPublishTab('radio')) return alert("Tu n'as pas les droits pour diffuser une piste."); await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
   const getYtId = (url) => getYoutubeId(url);
@@ -1233,7 +1238,7 @@ export default function Admin() {
   };
   const handleEditVideoTrack = (v) => { setEditingVideoId(v.id); setNewVideoTitle(v.title||''); setNewVideoUrl(v.url||''); setNewVideoIsJingle(!!v.is_jingle); setNewVideoIsAd(!!v.is_ad); setNewVideoAdTimes(v.ad_times||[]); setNewVideoFolder(v.folder||''); window.scrollTo(0,0); };
   const handleCancelVideoEdit = () => { setEditingVideoId(null); setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setNewVideoFolder(''); };
-  const handleDeleteVideoTrack = async (id) => { if(!confirm('Supprimer cette video?')) return; await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchVideoPlaylist(); };
+  const handleDeleteVideoTrack = async (id) => { if(!canDeleteTab('videotv')) return alert("Tu n'as pas les droits pour supprimer une programmation video."); if(!confirm('Supprimer cette video?')) return; await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchVideoPlaylist(); };
   const handleToggleVideoTrack = async (v) => { if(!canPublishTab('videotv')) return alert("Tu n'as pas les droits pour diffuser une video."); await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!v.active }) }); fetchVideoPlaylist(); };
 
   const handleAddUne = async () => {
@@ -1417,7 +1422,7 @@ export default function Admin() {
                 <div style={{flex:1, fontSize:13}}>{f.text}</div>
                 <button onClick={()=>handleEditFlash(f)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 {canPublishTab('flash')? <button onClick={()=>handleToggleFlash(f)} style={{background: f.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{f.active?'ON':'OFF'}</button> : <span style={{background: f.active?'#dcfce7':'#fef3c7', color: f.active?'#16a34a':'#b45309', borderRadius:6, padding:'4px 8px', fontSize:10, fontWeight:800}}>{f.active?'Publie':'En attente'}</span>}
-                <button onClick={()=>handleDeleteFlash(f.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+                {canDeleteTab('flash') && <button onClick={()=>handleDeleteFlash(f.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>}
               </div>
             ))}
           </div>
@@ -1434,7 +1439,7 @@ export default function Admin() {
                 <div style={{flex:1, fontSize:13}}>{a.text}</div>
                 <button onClick={()=>handleEditAnnonce(a)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 {canPublishTab('annonces')? <button onClick={()=>handleToggleAnnonce(a)} style={{background: a.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{a.active?'ON':'OFF'}</button> : <span style={{background: a.active?'#dcfce7':'#fef3c7', color: a.active?'#16a34a':'#b45309', borderRadius:6, padding:'4px 8px', fontSize:10, fontWeight:800}}>{a.active?'Publie':'En attente'}</span>}
-                <button onClick={()=>handleDeleteAnnonce(a.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+                {canDeleteTab('annonces') && <button onClick={()=>handleDeleteAnnonce(a.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>}
               </div>
             ))}
           </div>
@@ -1502,7 +1507,7 @@ export default function Admin() {
               {(()=>{ const folderCounts={}; radioPlaylist.forEach(t=>{ if(t.folder){ if(!folderCounts[t.folder]) folderCounts[t.folder]={count:0, lastDate:null}; folderCounts[t.folder].count++; if(t.created_at && (!folderCounts[t.folder].lastDate || t.created_at>folderCounts[t.folder].lastDate)) folderCounts[t.folder].lastDate=t.created_at } }); const names=Object.keys(folderCounts); if(!names.length) return null; return (
                 <div style={{background:'white', border:'1px solid #ddd6fe', borderRadius:8, padding:10, marginBottom:12}}>
                   <div style={{fontSize:10,fontWeight:900,color:'#7c3aed',marginBottom:6}}>DOSSIERS EXISTANTS</div>
-                  {names.map(n=>(<div key={n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:11,color:'#334155',padding:'3px 0'}}><span>📁 <b>{n}</b> — {folderCounts[n].count} fichier{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, dernier ajout le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</span><button type="button" onClick={()=>handleDeleteFolder(n)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,cursor:'pointer',flexShrink:0}}>🗑️ Supprimer ce groupe</button></div>))}
+                  {names.map(n=>(<div key={n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:11,color:'#334155',padding:'3px 0'}}><span>📁 <b>{n}</b> — {folderCounts[n].count} fichier{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, dernier ajout le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</span>{canDeleteTab('radio') && <button type="button" onClick={()=>handleDeleteFolder(n)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,cursor:'pointer',flexShrink:0}}>🗑️ Supprimer ce groupe</button>}</div>))}
                 </div>
               ) })()}
               {(()=>{ const orphans = radioPlaylist.filter(t=>!t.folder && !t.is_jingle && !t.is_ad); if(!orphans.length) return null; return (
@@ -1606,7 +1611,7 @@ export default function Admin() {
                 <button onClick={()=>toggleRadioPreview(t.id)} style={{background: previewingRadioIds.has(t.id)?'#16a34a':'#dcfce7', color: previewingRadioIds.has(t.id)?'white':'#16a34a', border:0, borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:700, cursor:'pointer'}}>{previewingRadioIds.has(t.id)?'■ Stop':'▶ Ecouter'}</button>
                 <button onClick={()=>handleEditRadioTrack(t)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 {canPublishTab('radio')? <button onClick={()=>handleToggleRadioTrack(t)} style={{background: t.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{t.active?'ON':'OFF'}</button> : <span style={{background: t.active?'#dcfce7':'#fef3c7', color: t.active?'#16a34a':'#b45309', borderRadius:6, padding:'4px 8px', fontSize:10, fontWeight:800}}>{t.active?'Publie':'En attente'}</span>}
-                <button onClick={()=>handleDeleteRadioTrack(t.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+                {canDeleteTab('radio') && <button onClick={()=>handleDeleteRadioTrack(t.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>}
                 </div>
                 {previewingRadioIds.has(t.id) && <audio controls autoPlay src={t.url} style={{width:'100%',marginTop:8}} onError={()=>alert(`⚠️ Ce fichier ne se charge pas ("${t.title}"). Le lien est peut-etre casse ou le fichier a ete supprime du stockage.`)} />}
               </div>
@@ -1702,7 +1707,7 @@ export default function Admin() {
               {(()=>{ const folderCounts={}; videoPlaylist.forEach(v=>{ if(v.folder){ if(!folderCounts[v.folder]) folderCounts[v.folder]={count:0, lastDate:null}; folderCounts[v.folder].count++; if(v.created_at && (!folderCounts[v.folder].lastDate || v.created_at>folderCounts[v.folder].lastDate)) folderCounts[v.folder].lastDate=v.created_at } }); const names=Object.keys(folderCounts); if(!names.length) return null; return (
                 <div style={{background:'white', border:'1px solid #ddd6fe', borderRadius:8, padding:10, marginBottom:12}}>
                   <div style={{fontSize:10,fontWeight:900,color:'#7c3aed',marginBottom:6}}>GROUPES EXISTANTS</div>
-                  {names.map(n=>(<div key={n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:11,color:'#334155',padding:'3px 0'}}><span>📁 <b>{n}</b> — {folderCounts[n].count} video{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, derniere ajoutee le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</span><button type="button" onClick={()=>handleDeleteTvFolder(n)} style={{background:'#fef3c7',color:'#92400e',border:0,borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,cursor:'pointer',flexShrink:0}}>📤 Retirer ce groupe</button></div>))}
+                  {names.map(n=>(<div key={n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:11,color:'#334155',padding:'3px 0'}}><span>📁 <b>{n}</b> — {folderCounts[n].count} video{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, derniere ajoutee le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</span>{canDeleteTab('videotv') && <button type="button" onClick={()=>handleDeleteTvFolder(n)} style={{background:'#fef3c7',color:'#92400e',border:0,borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,cursor:'pointer',flexShrink:0}}>📤 Retirer ce groupe</button>}</div>))}
                 </div>
               ) })()}
               {(()=>{ const orphans = videoPlaylist.filter(v=>!v.folder && !v.is_jingle && !v.is_ad); if(!orphans.length) return null; return (
@@ -1811,7 +1816,7 @@ export default function Admin() {
                 <button onClick={()=>toggleTvPreview(v.id)} style={{background: previewingTvIds.has(v.id)?'#dc2626':'#fee2e2', color: previewingTvIds.has(v.id)?'white':'#dc2626', border:0, borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:700, cursor:'pointer'}}>{previewingTvIds.has(v.id)?'■ Fermer':'👁 Previsualiser'}</button>
                 <button onClick={()=>handleEditVideoTrack(v)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 {canPublishTab('videotv')? <button onClick={()=>handleToggleVideoTrack(v)} style={{background: v.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{v.active?'ON':'OFF'}</button> : <span style={{background: v.active?'#dcfce7':'#fef3c7', color: v.active?'#16a34a':'#b45309', borderRadius:6, padding:'4px 8px', fontSize:10, fontWeight:800}}>{v.active?'Publie':'En attente'}</span>}
-                <button onClick={()=>handleDeleteVideoTrack(v.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>
+                {canDeleteTab('videotv') && <button onClick={()=>handleDeleteVideoTrack(v.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Suppr</button>}
                 </div>
                 {previewingTvIds.has(v.id) && (
                   <div style={{marginTop:8}}>
