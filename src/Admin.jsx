@@ -200,6 +200,15 @@ export default function Admin() {
   const toggleRadioPreview = (id) => setPreviewingRadioIds(prev=>{ const next=new Set(prev); if(next.has(id)) next.delete(id); else next.add(id); return next; });
   const toggleTvPreview = (id) => setPreviewingTvIds(prev=>{ const next=new Set(prev); if(next.has(id)) next.delete(id); else next.add(id); return next; });
   const [reassignTvSelectedIds, setReassignTvSelectedIds] = useState(new Set());
+  const [radioSearchQuery, setRadioSearchQuery] = useState('');
+  const [videoSearchQuery, setVideoSearchQuery] = useState('');
+  const [reassignSearchQuery, setReassignSearchQuery] = useState('');
+  const [reassignTvSearchQuery, setReassignTvSearchQuery] = useState('');
+  const matchesSearch = (item, query) => {
+    if(!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return (item.title||'').toLowerCase().includes(q) || (item.original_filename||'').toLowerCase().includes(q) || (item.url||'').toLowerCase().includes(q) || (item.folder||'').toLowerCase().includes(q);
+  };
   const [newBlockStart, setNewBlockStart] = useState('');
   const [newBlockEnd, setNewBlockEnd] = useState('');
   const [newBlockDays, setNewBlockDays] = useState([]);
@@ -1510,16 +1519,17 @@ export default function Admin() {
                   {names.map(n=>(<div key={n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:11,color:'#334155',padding:'3px 0'}}><span>📁 <b>{n}</b> — {folderCounts[n].count} fichier{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, dernier ajout le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</span>{canDeleteTab('radio') && <button type="button" onClick={()=>handleDeleteFolder(n)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,cursor:'pointer',flexShrink:0}}>🗑️ Supprimer ce groupe</button>}</div>))}
                 </div>
               ) })()}
-              {(()=>{ const orphans = radioPlaylist.filter(t=>!t.folder && !t.is_jingle && !t.is_ad); if(!orphans.length) return null; return (
+              {(()=>{ const orphans = radioPlaylist.filter(t=>!t.folder && !t.is_jingle && !t.is_ad); if(!orphans.length) return null; const filtered = orphans.filter(t=>matchesSearch(t, reassignSearchQuery)); return (
                 <div style={{background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8, padding:10, marginBottom:12}}>
                   <div style={{fontSize:10,fontWeight:900,color:'#b45309',marginBottom:6}}>REASSIGNER UN GROUPE ({orphans.length} piste{orphans.length>1?'s':''} sans groupe)</div>
+                  <input placeholder='🔎 Rechercher un fichier (titre ou nom de fichier)...' value={reassignSearchQuery} onChange={e=>setReassignSearchQuery(e.target.value)} style={{width:'100%',padding:8,borderRadius:8,border:'1px solid #fde68a',fontSize:12,marginBottom:8}} />
                   <div style={{maxHeight:150, overflowY:'auto', marginBottom:8}}>
-                    {orphans.map(t=>(
+                    {filtered.length? filtered.map(t=>(
                       <label key={t.id} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,padding:'3px 0',cursor:'pointer'}}>
                         <input type="checkbox" checked={reassignSelectedIds.has(t.id)} onChange={()=>toggleReassignSelect(t.id)} />
                         {t.title}
                       </label>
-                    ))}
+                    )) : <div style={{fontSize:11,color:'#94a3b8',fontStyle:'italic'}}>Aucun fichier ne correspond a cette recherche.</div>}
                   </div>
                   <div style={{display:'flex',gap:6}}>
                     <input placeholder='Nom du groupe a assigner' value={reassignFolderName} onChange={e=>setReassignFolderName(e.target.value)} style={{flex:1,padding:8,borderRadius:8,border:'1px solid #fde68a',fontSize:12}} />
@@ -1598,7 +1608,11 @@ export default function Admin() {
               <button onClick={handleAddRadioTrack} style={{width:'100%',marginTop:10,padding:10,background:'#16a34a',color:'white',fontWeight:800,borderRadius:8,border:0}}>{editingRadioId? 'Modifier la piste' : 'Ajouter a la playlist'}</button>
               {editingRadioId && <button onClick={handleCancelRadioEdit} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#16a34a',fontWeight:700,borderRadius:8,border:'1px solid #16a34a'}}>Annuler la modification</button>}
             </div>
-            {radioPlaylist.map((t,i)=>(
+            <div style={{marginBottom:10}}>
+              <input placeholder='🔎 Rechercher un fichier deja existant dans toute la playlist radio (titre, nom de fichier, groupe)...' value={radioSearchQuery} onChange={e=>setRadioSearchQuery(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #d1d5db',fontSize:12}} />
+              {radioSearchQuery.trim() && <div style={{fontSize:10,color:'#64748b',marginTop:4}}>{radioPlaylist.filter(t=>matchesSearch(t, radioSearchQuery)).length} resultat(s) trouve(s)</div>}
+            </div>
+            {radioPlaylist.filter(t=>matchesSearch(t, radioSearchQuery)).map((t,i)=>(
               <div key={t.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6}}>
                 <div style={{display:'flex', gap:10, alignItems:'center'}}>
                 <img src={t.image||'/logo.png'} style={{width:40,height:40,objectFit:'cover',borderRadius:6}} alt="" />
@@ -1710,16 +1724,17 @@ export default function Admin() {
                   {names.map(n=>(<div key={n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:11,color:'#334155',padding:'3px 0'}}><span>📁 <b>{n}</b> — {folderCounts[n].count} video{folderCounts[n].count>1?'s':''}{folderCounts[n].lastDate? `, derniere ajoutee le ${new Date(folderCounts[n].lastDate).toLocaleDateString('fr-FR')}`:''}</span>{canDeleteTab('videotv') && <button type="button" onClick={()=>handleDeleteTvFolder(n)} style={{background:'#fef3c7',color:'#92400e',border:0,borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,cursor:'pointer',flexShrink:0}}>📤 Retirer ce groupe</button>}</div>))}
                 </div>
               ) })()}
-              {(()=>{ const orphans = videoPlaylist.filter(v=>!v.folder && !v.is_jingle && !v.is_ad); if(!orphans.length) return null; return (
+              {(()=>{ const orphans = videoPlaylist.filter(v=>!v.folder && !v.is_jingle && !v.is_ad); if(!orphans.length) return null; const filtered = orphans.filter(v=>matchesSearch(v, reassignTvSearchQuery)); return (
                 <div style={{background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8, padding:10, marginBottom:12}}>
                   <div style={{fontSize:10,fontWeight:900,color:'#b45309',marginBottom:6}}>REASSIGNER UN GROUPE ({orphans.length} video{orphans.length>1?'s':''} sans groupe)</div>
+                  <input placeholder='🔎 Rechercher une video (titre)...' value={reassignTvSearchQuery} onChange={e=>setReassignTvSearchQuery(e.target.value)} style={{width:'100%',padding:8,borderRadius:8,border:'1px solid #fde68a',fontSize:12,marginBottom:8}} />
                   <div style={{maxHeight:150, overflowY:'auto', marginBottom:8}}>
-                    {orphans.map(v=>(
+                    {filtered.length? filtered.map(v=>(
                       <label key={v.id} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,padding:'3px 0',cursor:'pointer'}}>
                         <input type="checkbox" checked={reassignTvSelectedIds.has(v.id)} onChange={()=>toggleReassignTvSelect(v.id)} />
                         {v.title}
                       </label>
-                    ))}
+                    )) : <div style={{fontSize:11,color:'#94a3b8',fontStyle:'italic'}}>Aucune video ne correspond a cette recherche.</div>}
                   </div>
                   <div style={{display:'flex',gap:6}}>
                     <input placeholder='Nom du groupe a assigner' value={reassignTvFolderName} onChange={e=>setReassignTvFolderName(e.target.value)} style={{flex:1,padding:8,borderRadius:8,border:'1px solid #fde68a',fontSize:12}} />
@@ -1803,7 +1818,11 @@ export default function Admin() {
               <button onClick={handleAddVideoTrack} style={{width:'100%',marginTop:10,padding:10,background:'#dc2626',color:'white',fontWeight:800,borderRadius:8,border:0}}>{editingVideoId? 'Modifier la video' : 'Ajouter a la playlist TV'}</button>
               {editingVideoId && <button onClick={handleCancelVideoEdit} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#dc2626',fontWeight:700,borderRadius:8,border:'1px solid #dc2626'}}>Annuler la modification</button>}
             </div>
-            {videoPlaylist.map((v,i)=>(
+            <div style={{marginBottom:10}}>
+              <input placeholder='🔎 Rechercher une video deja existante dans toute la playlist TV (titre, url, groupe)...' value={videoSearchQuery} onChange={e=>setVideoSearchQuery(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #d1d5db',fontSize:12}} />
+              {videoSearchQuery.trim() && <div style={{fontSize:10,color:'#64748b',marginTop:4}}>{videoPlaylist.filter(v=>matchesSearch(v, videoSearchQuery)).length} resultat(s) trouve(s)</div>}
+            </div>
+            {videoPlaylist.filter(v=>matchesSearch(v, videoSearchQuery)).map((v,i)=>(
               <div key={v.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6}}>
                 <div style={{display:'flex', gap:10, alignItems:'center', flexWrap:'wrap'}}>
                 <img src={v.image} style={{width:60,height:36,objectFit:'cover',borderRadius:6}} alt="" />
