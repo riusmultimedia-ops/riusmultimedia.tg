@@ -74,6 +74,7 @@ export default function Admin() {
     pubs: ['chef_programme','director'],
     kiosque: ['redacteur_chef','director'],
     encadres: ['chef_programme','director'],
+    faq: ['redacteur_chef','chef_programme','director'],
     users: ['director'],
   };
   const canAccess = (tab) => !!myRole && (TAB_ACCESS[tab]||[]).includes(myRole);
@@ -125,8 +126,9 @@ export default function Admin() {
   const [showEmissions, setShowEmissions] = useState(false);
   const [showCommentaires, setShowCommentaires] = useState(false);
   const [showEnvois, setShowEnvois] = useState(false);
-  const resetTabs = () => { setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false); setShowGrille(false); setShowEmissions(false); setShowCommentaires(false); setShowEnvois(false); };
-  const allTabsHidden = !showArticles && !showUsers && !showFlash && !showAnnonces && !showPubs && !showKiosque && !showRadio && !showVideoTV && !showEncadres && !showGrille && !showEmissions && !showCommentaires;
+  const [showFaq, setShowFaq] = useState(false);
+  const resetTabs = () => { setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false); setShowGrille(false); setShowEmissions(false); setShowCommentaires(false); setShowEnvois(false); setShowFaq(false); };
+  const allTabsHidden = !showArticles && !showUsers && !showFlash && !showAnnonces && !showPubs && !showKiosque && !showRadio && !showVideoTV && !showEncadres && !showGrille && !showEmissions && !showCommentaires && !showFaq;
   const [users, setUsers] = useState([]);
   const accessTokenRef = useRef(null);
   const refreshTimerRef = useRef(null);
@@ -278,7 +280,7 @@ export default function Admin() {
           await doRefresh(saved.refresh_token, saved.email)
         }
       }catch{}
-      fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions(); fetchComments(); fetchRadioTimeBlocks(); fetchTvTimeBlocks(); fetchSubmissions();
+      fetchArticles(); fetchFlashes(); fetchAnnonces(); fetchPubs(); fetchUnes(); fetchRadioPlaylist(); fetchVideoPlaylist(); fetchEncadres(); fetchTvWatermark(); fetchProgrammeGrid(); fetchEmissions(); fetchComments(); fetchRadioTimeBlocks(); fetchTvTimeBlocks(); fetchSubmissions(); fetchFaqs();
     }
     init()
   }, []);
@@ -391,6 +393,28 @@ export default function Admin() {
     fetch(`${supabaseUrl}/rest/v1/encadres?select=*&order=order_index.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setEncadres(data); }).catch(()=>{});
   };
+  const [faqs, setFaqs] = useState([]);
+  const [newFaqCategory, setNewFaqCategory] = useState('');
+  const [newFaqQuestion, setNewFaqQuestion] = useState('');
+  const [newFaqAnswer, setNewFaqAnswer] = useState('');
+  const [editingFaqId, setEditingFaqId] = useState(null);
+  const fetchFaqs = () => {
+    fetch(`${supabaseUrl}/rest/v1/faq?select=*&order=display_order.asc,id.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setFaqs(data); }).catch(()=>{});
+  };
+  const resetFaqForm = () => { setNewFaqCategory(''); setNewFaqQuestion(''); setNewFaqAnswer(''); setEditingFaqId(null); };
+  const handleAddFaq = async () => {
+    if(!newFaqCategory.trim() || !newFaqQuestion.trim() || !newFaqAnswer.trim()) return alert('Categorie, question et reponse sont obligatoires');
+    const payload = { category:newFaqCategory.trim(), question:newFaqQuestion.trim(), answer:newFaqAnswer.trim(), active: editingFaqId? undefined : true };
+    if(editingFaqId) delete payload.active;
+    const url = editingFaqId? `${supabaseUrl}/rest/v1/faq?id=eq.${editingFaqId}` : `${supabaseUrl}/rest/v1/faq`;
+    const method = editingFaqId? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
+    if(res.ok){ resetFaqForm(); fetchFaqs(); alert(editingFaqId? 'Question modifiee!' : 'Question ajoutee!'); } else alert(await res.text());
+  };
+  const handleEditFaq = (f) => { setEditingFaqId(f.id); setNewFaqCategory(f.category||''); setNewFaqQuestion(f.question||''); setNewFaqAnswer(f.answer||''); window.scrollTo(0,0); };
+  const handleDeleteFaq = async (id) => { if(!confirm('Supprimer cette question?')) return; await fetch(`${supabaseUrl}/rest/v1/faq?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchFaqs(); };
+  const handleToggleFaq = async (f) => { await fetch(`${supabaseUrl}/rest/v1/faq?id=eq.${f.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!f.active }) }); fetchFaqs(); };
   const fetchTvWatermark = () => {
     fetch(`${supabaseUrl}/rest/v1/tv_watermark?select=*&id=eq.1`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)&&data[0]) setTvWatermark(data[0]); }).catch(()=>{});
@@ -1334,6 +1358,7 @@ export default function Admin() {
           {canAccess('videotv') && <button onClick={()=>{const v=!showVideoTV; resetTabs(); setShowVideoTV(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #fecaca', background: showVideoTV? '#dc2626':'white', color: showVideoTV? 'white':'#dc2626', fontWeight:800}}>Videos TV ({videoPlaylist.length})</button>}
           {canAccess('grille') && <button onClick={()=>{const v=!showGrille; resetTabs(); setShowGrille(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #93c5fd', background: showGrille? '#1d4ed8':'white', color: showGrille? 'white':'#1d4ed8', fontWeight:800}}>Grille ({programmeGrid.length})</button>}
           {canAccess('emissions') && <button onClick={()=>{const v=!showEmissions; resetTabs(); setShowEmissions(v);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #99f6e4', background: showEmissions? '#0d9488':'white', color: showEmissions? 'white':'#0d9488', fontWeight:800}}>Emissions ({emissions.length})</button>}
+          {canAccess('faq') && <button onClick={()=>{const v=!showFaq; resetTabs(); setShowFaq(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #7dd3fc', background: showFaq? '#0284c7':'white', color: showFaq? 'white':'#0284c7', fontWeight:800}}>FAQ ({faqs.length})</button>}
           {canAccess('kiosque') && <button onClick={()=>{const v=!showKiosque; resetTabs(); setShowKiosque(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>}
           {canAccess('encadres') && <button onClick={()=>{const v=!showEncadres; resetTabs(); setShowEncadres(v);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #a855f7', background: showEncadres? '#a855f7':'white', color: showEncadres? 'white':'#a855f7', fontWeight:900}}>ESPACE BUSINESS ({encadres.length})</button>}
           {canAccess('users') && (<button onClick={()=>{const v=!showUsers; resetTabs(); setShowUsers(v);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
@@ -2100,6 +2125,43 @@ export default function Admin() {
               </div>
             ))}
             {encadres.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucun encadre pour l'instant. Ajoute ton premier encadre ci-dessus. Pense a creer la table <code>encadres</code> et le bucket <code>encadres</code> dans Supabase si ce n'est pas fait.</div>}
+          </div>
+        ) : showFaq? (
+          <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #0284c7'}}>
+            <h3 style={{marginTop:0, color:'#0284c7', display:'flex', alignItems:'center', gap:8}}>❓ FAQ - Foire Aux Questions <span style={{background:'#0284c7',color:'white',padding:'2px 8px',borderRadius:10,fontSize:10}}>{faqs.length} question{faqs.length>1?'s':''}</span></h3>
+            <p style={{fontSize:11,color:'#64748b',marginTop:-4,marginBottom:14}}>Ces questions/reponses sont affichees publiquement sur le site, dans l'onglet FAQ. Seules les questions "Publiees" (ON) sont visibles des visiteurs.</p>
+            <div style={{border:'1px solid #bae6fd', padding:12, borderRadius:12, marginBottom:16, background:'#f0f9ff'}}>
+              <label style={{fontSize:10,fontWeight:800,color:'#0284c7'}}>CATEGORIE *</label>
+              <input list="faq-categories" placeholder="Ex: Radio, TV, Kiosque, Contact..." value={newFaqCategory} onChange={e=>setNewFaqCategory(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #bae6fd',fontSize:13,marginTop:4,marginBottom:10}} />
+              <datalist id="faq-categories">{[...new Set(faqs.map(f=>f.category).filter(Boolean))].map(c=>(<option key={c} value={c} />))}</datalist>
+              <label style={{fontSize:10,fontWeight:800,color:'#0284c7'}}>QUESTION *</label>
+              <input placeholder="Ex: Comment ecouter la radio en direct ?" value={newFaqQuestion} onChange={e=>setNewFaqQuestion(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #bae6fd',fontSize:13,marginTop:4,marginBottom:10}} />
+              <label style={{fontSize:10,fontWeight:800,color:'#0284c7'}}>REPONSE *</label>
+              <textarea placeholder="Reponse detaillee..." value={newFaqAnswer} onChange={e=>setNewFaqAnswer(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #bae6fd',fontSize:13,marginTop:4,minHeight:90,fontFamily:'inherit'}} />
+              <button onClick={handleAddFaq} style={{width:'100%',marginTop:10,padding:12,background:'#0284c7',color:'white',fontWeight:900,borderRadius:10,border:0,cursor:'pointer',fontSize:13}}>{editingFaqId? 'METTRE A JOUR LA QUESTION' : 'AJOUTER LA QUESTION'}</button>
+              {editingFaqId && <button onClick={resetFaqForm} style={{width:'100%',marginTop:8,padding:10,background:'transparent',color:'#0284c7',fontWeight:700,borderRadius:10,border:'1px solid #0284c7',cursor:'pointer'}}>Annuler la modification</button>}
+            </div>
+            {(()=>{ const byCat={}; faqs.forEach(f=>{ const c=f.category||'Sans categorie'; if(!byCat[c]) byCat[c]=[]; byCat[c].push(f) }); return Object.entries(byCat).map(([cat,items])=>(
+              <div key={cat} style={{marginBottom:16}}>
+                <div style={{fontSize:11,fontWeight:900,color:'#0284c7',marginBottom:6,textTransform:'uppercase'}}>{cat} ({items.length})</div>
+                {items.map(f=>(
+                  <div key={f.id} style={{border:'1px solid #e0f2fe', padding:10, borderRadius:12, marginBottom:6, background: f.active? 'white':'#f8fafc', opacity: f.active?1:0.6}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10}}>
+                      <div style={{flex:1, minWidth:0}}>
+                        <div style={{fontWeight:800, fontSize:13}}>{f.question}</div>
+                        <div style={{fontSize:11, color:'#64748b', marginTop:4, whiteSpace:'pre-wrap'}}>{f.answer}</div>
+                      </div>
+                      <div style={{display:'flex',flexDirection:'column',gap:4,flexShrink:0}}>
+                        <button onClick={()=>handleEditFaq(f)} style={{background:'#e0f2fe',color:'#0284c7',border:0,borderRadius:8,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Modifier</button>
+                        <button onClick={()=>handleToggleFaq(f)} style={{background: f.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'6px', fontSize:10, fontWeight:800}}>{f.active?'ON':'OFF'}</button>
+                        <button onClick={()=>handleDeleteFaq(f.id)} style={{background:'#fee2e2',color:'#dc2626',border:0,borderRadius:8,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Suppr</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )) })()}
+            {faqs.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucune question pour l'instant. Ajoute ta premiere question ci-dessus. Pense a creer la table <code>faq</code> dans Supabase si ce n'est pas fait.</div>}
           </div>
         ) : showArticles? (
           <div style={{background:'white', padding:14, borderRadius:14, borderTop:'4px solid #2e4fb0'}}>
