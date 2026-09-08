@@ -48,6 +48,55 @@ const getYoutubeThumb = (url) => {
 
 const uid = () => Math.random().toString(36).slice(2,9)
 
+const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY
+
+// Lit la duree (en secondes, arrondie) d'un fichier audio local, sans l'uploader.
+const getAudioFileDuration = (file) => new Promise((resolve) => {
+  try{
+    const el = new Audio()
+    const objUrl = URL.createObjectURL(file)
+    el.preload = 'metadata'
+    el.onloadedmetadata = () => { const d = Math.round(el.duration)||null; URL.revokeObjectURL(objUrl); resolve(d) }
+    el.onerror = () => { URL.revokeObjectURL(objUrl); resolve(null) }
+    el.src = objUrl
+  }catch{ resolve(null) }
+})
+
+// Lit la duree (en secondes) d'un fichier audio deja en ligne (URL publique), en le telechargeant.
+const getRemoteAudioDuration = (url) => new Promise((resolve) => {
+  try{
+    const el = new Audio()
+    el.preload = 'metadata'
+    el.crossOrigin = 'anonymous'
+    el.onloadedmetadata = () => resolve(Math.round(el.duration)||null)
+    el.onerror = () => resolve(null)
+    el.src = url
+  }catch{ resolve(null) }
+})
+
+// Convertit une duree ISO 8601 (format YouTube, ex: PT4M13S) en secondes.
+const parseIsoDuration = (iso) => {
+  if(!iso) return null
+  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
+  if(!m) return null
+  const h = parseInt(m[1]||'0',10), mi = parseInt(m[2]||'0',10), s = parseInt(m[3]||'0',10)
+  return h*3600 + mi*60 + s
+}
+// Recupere la duree d'une ou plusieurs videos YouTube en un seul appel (jusqu'a 50 ids a la fois).
+const fetchYoutubeDurations = async (videoIds) => {
+  if(!YOUTUBE_API_KEY || !videoIds.length) return {}
+  const out = {}
+  for(let i=0;i<videoIds.length;i+=50){
+    const batch = videoIds.slice(i,i+50)
+    try{
+      const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${batch.join(',')}&key=${YOUTUBE_API_KEY}`)
+      const data = await res.json()
+      (data.items||[]).forEach(it=>{ out[it.id] = parseIsoDuration(it.contentDetails?.duration) })
+    }catch{ /* on continue avec les autres lots */ }
+  }
+  return out
+}
+
 export default function Admin() {
   const [isLogged, setIsLogged] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -167,6 +216,7 @@ export default function Admin() {
   const [newVideoUrl, setNewVideoUrl] = useState('');
   const [editingVideoId, setEditingVideoId] = useState(null);
   const [newRadioAudio, setNewRadioAudio] = useState('');
+  const [newRadioDuration, setNewRadioDuration] = useState(null);
   const [newRadioAudioFilename, setNewRadioAudioFilename] = useState('');
   const [newRadioFolder, setNewRadioFolder] = useState('');
   const [newRadioImage, setNewRadioImage] = useState('');
@@ -718,15 +768,19 @@ export default function Admin() {
     setUploading('radio-audio');
     try{
       const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-      const res = await fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
-        method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
-        body: file
-      });
+      const [res, duration] = await Promise.all([
+        fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
+          method: 'POST',
+          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
+          body: file
+        }),
+        getAudioFileDuration(file)
+      ]);
       if(!res.ok) throw new Error(await res.text());
       const publicUrl = `${supabaseUrl}/storage/v1/object/public/radio/${fileName}`;
       setNewRadioAudio(publicUrl);
       setNewRadioAudioFilename(file.name);
+      setNewRadioDuration(duration);
       return publicUrl;
     }catch(e){ alert('Erreur upload audio: '+e.message); return null; }
     finally{ setUploading(''); }
@@ -756,15 +810,18 @@ export default function Admin() {
       if(seen.has(key)){ skipped++; setBulkImportProgress({current:i+1, total:files.length, ok, skipped}); continue; }
       try{
         const fileName = `${Date.now()}_${i}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-        const res = await fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
-          method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert':'true', 'Content-Type':file.type }, body:file
-        });
+        const [res, duration] = await Promise.all([
+          fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
+            method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert':'true', 'Content-Type':file.type }, body:file
+          }),
+          getAudioFileDuration(file)
+        ]);
         if(!res.ok) continue;
         const publicUrl = `${supabaseUrl}/storage/v1/object/public/radio/${fileName}`;
         const title = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g,' ').trim() || 'Sans titre';
         const insertRes = await fetch(`${supabaseUrl}/rest/v1/radio_playlist`, {
           method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-          body: JSON.stringify({ title, url:publicUrl, image:null, is_jingle:false, is_ad:false, ad_times:[], active:true, folder:folderName, original_filename:file.name })
+          body: JSON.stringify({ title, url:publicUrl, image:null, is_jingle:false, is_ad:false, ad_times:[], active:canPublishTab('radio'), folder:folderName, original_filename:file.name, duration_seconds:duration })
         });
         if(insertRes.ok){ ok++; seen.add(key); setBulkImportProgress({current:i+1, total:files.length, ok, skipped}); }
       }catch(e){ /* on continue avec le fichier suivant */ }
@@ -1231,15 +1288,15 @@ export default function Admin() {
     if(!newRadioAudio) return alert('Ajoute un fichier audio');
     if(!newRadioTitle.trim()) return alert('Mets un titre pour la piste');
     if(newRadioIsAd && newRadioAdTimes.length===0) return alert('Ajoute au moins une heure de diffusion pour cette pub');
-    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, is_ad:newRadioIsAd, ad_times:newRadioIsAd? newRadioAdTimes : [], active: editingRadioId? undefined : canPublishTab('radio'), folder:newRadioFolder.trim()||null, original_filename:newRadioAudioFilename||null };
+    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, is_ad:newRadioIsAd, ad_times:newRadioIsAd? newRadioAdTimes : [], active: editingRadioId? undefined : canPublishTab('radio'), folder:newRadioFolder.trim()||null, original_filename:newRadioAudioFilename||null, duration_seconds:newRadioDuration };
     if(editingRadioId) delete payload.active;
     const url = editingRadioId? `${supabaseUrl}/rest/v1/radio_playlist?id=eq.${editingRadioId}` : `${supabaseUrl}/rest/v1/radio_playlist`;
     const method = editingRadioId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : (canPublishTab('radio')? 'Piste ajoutee a la radio!' : 'Piste soumise ! Elle sera diffusee apres validation par un responsable.')); } else alert(await res.text());
+    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setNewRadioDuration(null); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : (canPublishTab('radio')? 'Piste ajoutee a la radio!' : 'Piste soumise ! Elle sera diffusee apres validation par un responsable.')); } else alert(await res.text());
   };
-  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioAudioFilename(t.original_filename||''); setNewRadioFolder(t.folder||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); window.scrollTo(0,0); };
-  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); };
+  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioAudioFilename(t.original_filename||''); setNewRadioFolder(t.folder||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); setNewRadioDuration(t.duration_seconds||null); window.scrollTo(0,0); };
+  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setNewRadioDuration(null); };
   const handleDeleteRadioTrack = async (id) => { if(!canDeleteTab('radio')) return alert("Tu n'as pas les droits pour supprimer une programmation radio."); if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioPlaylist(); };
   const handleToggleRadioTrack = async (t) => { if(!canPublishTab('radio')) return alert("Tu n'as pas les droits pour diffuser une piste."); await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
@@ -1252,6 +1309,50 @@ export default function Admin() {
   }
   const removeVideoAdTime = (t) => setNewVideoAdTimes(newVideoAdTimes.filter(x=>x!==t))
 
+  const [backfillProgress, setBackfillProgress] = useState(null);
+  const handleBackfillRadioDurations = async () => {
+    const missing = radioPlaylist.filter(t=>!t.duration_seconds);
+    if(!missing.length) return alert('Toutes les pistes ont deja une duree enregistree.');
+    if(!confirm(`Recuperer la duree de ${missing.length} piste(s) sans duree connue ? Ca peut prendre un moment.`)) return;
+    setBackfillProgress({current:0, total:missing.length, ok:0});
+    let ok=0;
+    for(let i=0;i<missing.length;i++){
+      const t = missing[i];
+      setBackfillProgress({current:i+1, total:missing.length, ok});
+      const dur = await getRemoteAudioDuration(t.url);
+      if(dur){
+        const res = await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ duration_seconds:dur }) });
+        if(res.ok) ok++;
+      }
+      setBackfillProgress({current:i+1, total:missing.length, ok});
+    }
+    setBackfillProgress(null);
+    fetchRadioPlaylist();
+    alert(`${ok} / ${missing.length} duree(s) recuperee(s) avec succes.`);
+  };
+  const handleBackfillVideoDurations = async () => {
+    const missing = videoPlaylist.filter(v=>!v.duration_seconds);
+    if(!missing.length) return alert('Toutes les videos ont deja une duree enregistree.');
+    if(!YOUTUBE_API_KEY) return alert("La cle API YouTube n'est pas configuree (VITE_YOUTUBE_API_KEY), impossible de recuperer les durees.");
+    if(!confirm(`Recuperer la duree de ${missing.length} video(s) sans duree connue via YouTube ?`)) return;
+    const idMap = missing.map(v=>({ v, ytId:getYtId(v.url||'') })).filter(x=>x.ytId);
+    setBackfillProgress({current:0, total:idMap.length, ok:0});
+    const durs = await fetchYoutubeDurations(idMap.map(x=>x.ytId));
+    let ok=0;
+    for(let i=0;i<idMap.length;i++){
+      const {v, ytId} = idMap[i];
+      setBackfillProgress({current:i+1, total:idMap.length, ok});
+      const dur = durs[ytId];
+      if(dur){
+        const res = await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ duration_seconds:dur }) });
+        if(res.ok) ok++;
+      }
+      setBackfillProgress({current:i+1, total:idMap.length, ok});
+    }
+    setBackfillProgress(null);
+    fetchVideoPlaylist();
+    alert(`${ok} / ${idMap.length} duree(s) recuperee(s) avec succes.`);
+  };
   const handleAddVideoTrack = async () => {
     if(!newVideoUrl.trim()) return alert('Colle un lien YouTube');
     const id = getYtId(newVideoUrl.trim());
@@ -1262,8 +1363,10 @@ export default function Admin() {
     const dup = videoPlaylist.find(v => v.id!==editingVideoId && getYtId(v.url||'')===id && (v.folder||null)===targetFolder);
     if(dup) return alert(`Cette video est deja dans ${targetFolder? `le groupe "${targetFolder}"`:'la playlist generale (sans groupe)'}. Change de groupe si tu veux quand meme l'ajouter.`);
     const thumb = getYoutubeThumb(newVideoUrl.trim());
-    const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, is_jingle:newVideoIsJingle, is_ad:newVideoIsAd, ad_times:newVideoIsAd? newVideoAdTimes : [], active: editingVideoId? undefined : canPublishTab('videotv'), folder:newVideoFolder.trim()||null };
-    if(editingVideoId) delete payload.active;
+    let duration = null;
+    if(!editingVideoId){ try{ const durs = await fetchYoutubeDurations([id]); duration = durs[id]||null; }catch{} }
+    const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, is_jingle:newVideoIsJingle, is_ad:newVideoIsAd, ad_times:newVideoIsAd? newVideoAdTimes : [], active: editingVideoId? undefined : canPublishTab('videotv'), folder:newVideoFolder.trim()||null, duration_seconds: editingVideoId? undefined : duration };
+    if(editingVideoId){ delete payload.active; delete payload.duration_seconds; }
     const url = editingVideoId? `${supabaseUrl}/rest/v1/video_playlist?id=eq.${editingVideoId}` : `${supabaseUrl}/rest/v1/video_playlist`;
     const method = editingVideoId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
@@ -1626,6 +1729,7 @@ export default function Admin() {
               <input type="file" accept="audio/*" onChange={e=>uploadRadioAudio(e.target.files[0])} style={{width:'100%',fontSize:12,marginTop:4}} />
               {uploading==='radio-audio' && <div style={{fontSize:11,color:'#16a34a',marginTop:6}}>Upload audio...</div>}
               {newRadioAudio && <audio controls src={newRadioAudio} style={{width:'100%',marginTop:8}} />}
+              {newRadioAudio && <div style={{fontSize:10,color: newRadioDuration? '#16a34a':'#b45309', marginTop:4}}>{newRadioDuration? `✓ Duree detectee : ${Math.floor(newRadioDuration/60)}min ${newRadioDuration%60}s` : "⚠ Duree non detectee - une duree par defaut sera utilisee pour la diffusion synchronisee"}</div>}
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a',marginTop:10,display:'block'}}>POCHETTE (optionnel)</label>
               <input type="file" accept="image/*" onChange={e=>uploadRadioImage(e.target.files[0])} style={{width:'100%',fontSize:12,marginTop:4}} />
               {uploading==='radio-image' && <div style={{fontSize:11,color:'#16a34a',marginTop:6}}>Upload pochette...</div>}
@@ -1636,6 +1740,12 @@ export default function Admin() {
             <div style={{marginBottom:10}}>
               <input placeholder='🔎 Rechercher un fichier deja existant dans toute la playlist radio (titre, nom de fichier, groupe)...' value={radioSearchQuery} onChange={e=>setRadioSearchQuery(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #d1d5db',fontSize:12}} />
               {radioSearchQuery.trim() && <div style={{fontSize:10,color:'#64748b',marginTop:4}}>{radioPlaylist.filter(t=>matchesSearch(t, radioSearchQuery)).length} resultat(s) trouve(s)</div>}
+              {(()=>{ const missing = radioPlaylist.filter(t=>!t.duration_seconds).length; if(!missing) return null; return (
+                <div style={{marginTop:8,display:'flex',alignItems:'center',gap:8,background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 10px'}}>
+                  <span style={{fontSize:11,color:'#b45309',flex:1}}>⚠ {missing} piste(s) sans duree connue (necessaire pour la diffusion synchronisee).</span>
+                  <button onClick={handleBackfillRadioDurations} disabled={!!backfillProgress} style={{background:'#b45309',color:'white',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,fontWeight:800,cursor:'pointer',flexShrink:0}}>{backfillProgress? `${backfillProgress.current}/${backfillProgress.total}...` : 'Recuperer les durees'}</button>
+                </div>
+              ) })()}
             </div>
             {radioPlaylist.filter(t=>matchesSearch(t, radioSearchQuery)).map((t,i)=>(
               <div key={t.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6}}>
@@ -1846,6 +1956,12 @@ export default function Admin() {
             <div style={{marginBottom:10}}>
               <input placeholder='🔎 Rechercher une video deja existante dans toute la playlist TV (titre, url, groupe)...' value={videoSearchQuery} onChange={e=>setVideoSearchQuery(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #d1d5db',fontSize:12}} />
               {videoSearchQuery.trim() && <div style={{fontSize:10,color:'#64748b',marginTop:4}}>{videoPlaylist.filter(v=>matchesSearch(v, videoSearchQuery)).length} resultat(s) trouve(s)</div>}
+              {(()=>{ const missing = videoPlaylist.filter(v=>!v.duration_seconds).length; if(!missing) return null; return (
+                <div style={{marginTop:8,display:'flex',alignItems:'center',gap:8,background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 10px'}}>
+                  <span style={{fontSize:11,color:'#b45309',flex:1}}>⚠ {missing} video(s) sans duree connue (necessaire pour la diffusion synchronisee).</span>
+                  <button onClick={handleBackfillVideoDurations} disabled={!!backfillProgress} style={{background:'#b45309',color:'white',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,fontWeight:800,cursor:'pointer',flexShrink:0}}>{backfillProgress? `${backfillProgress.current}/${backfillProgress.total}...` : 'Recuperer les durees'}</button>
+                </div>
+              ) })()}
             </div>
             {videoPlaylist.filter(v=>matchesSearch(v, videoSearchQuery)).map((v,i)=>(
               <div key={v.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6}}>

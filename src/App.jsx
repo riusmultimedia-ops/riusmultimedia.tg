@@ -47,12 +47,128 @@ const shuffleArray = (arr) => { const a=[...arr]; for(let i=a.length-1;i>0;i--){
 
 let tvReplayMemory = { videoId: null, time: 0 }
 
+// ==================== MOTEUR DE DIFFUSION SYNCHRONISEE (effet "direct") ====================
+// Le principe : au lieu de choisir une piste au hasard a chaque connexion d'un visiteur, on
+// calcule mathematiquement "ce qui devrait etre en train de jouer maintenant" a partir de
+// l'heure actuelle (UTC = heure de Lomé) et de la duree cumulee des pistes deja "passees"
+// depuis le dernier grand melange (00h00). Ce calcul est deterministe : deux visiteurs qui
+// se connectent au meme instant obtiennent exactement le meme resultat, sans avoir besoin
+// d'un serveur qui "pousse" l'info en continu.
+const DEFAULT_TRACK_DURATION = 210 // 3min30, utilise seulement si la duree reelle d'une piste est inconnue
+
+const hashSeed = (str) => { let h=0; for(let i=0;i<str.length;i++){ h = (Math.imul(31,h) + str.charCodeAt(i))|0 }; return h }
+const mulberry32 = (seed) => { let s=seed|0; return function(){ s = (s + 0x6D2B79F5)|0; let t = Math.imul(s ^ s>>>15, 1 | s); t = (t + Math.imul(t ^ t>>>7, 61 | t)) ^ t; return ((t ^ t>>>14) >>> 0) / 4294967296 } }
+const seededShuffle = (arr, seedStr) => {
+  const rand = mulberry32(hashSeed(seedStr))
+  const a = [...arr]
+  for(let i=a.length-1;i>0;i--){ const j = Math.floor(rand()*(i+1)); [a[i],a[j]]=[a[j],a[i]] }
+  return a
+}
+const utcMidnightOf = (d) => { const x = new Date(d); x.setUTCHours(0,0,0,0); return x }
+const utcDateKey = (d) => d.toISOString().slice(0,10)
+const durOf = (item) => (item && item.duration_seconds) || DEFAULT_TRACK_DURATION
+
+// Construit l'ordre du jour pour une "piste generale" (radio ou tv) : les elements crees avant
+// le dernier 00h sont melanges avec une graine propre au jour (identique pour tout le monde),
+// les elements ajoutes APRES le dernier 00h sont mis en bout de chaine, non melanges, dans
+// l'ordre d'ajout (ils ne rejoindront le grand melange qu'au prochain 00h).
+const buildDailyOrder = (pool, boundary, seedSuffix) => {
+  const before = pool.filter(t => !t.created_at || new Date(t.created_at) < boundary)
+  const after = pool.filter(t => t.created_at && new Date(t.created_at) >= boundary)
+    .sort((a,b)=> new Date(a.created_at) - new Date(b.created_at))
+  return [...seededShuffle(before, utcDateKey(boundary)+':'+seedSuffix), ...after]
+}
+
+// Construit les segments (debut/fin en Date) des groupes programmes qui concernent le jour
+// "dayDate" (gere aussi les plages qui traversent minuit).
+const getDayBlockSegments = (blocks, dayDate) => {
+  const dayKey = ['dim','lun','mar','mer','jeu','ven','sam'][dayDate.getUTCDay()]
+  const prevDayKey = ['dim','lun','mar','mer','jeu','ven','sam'][(dayDate.getUTCDay()+6)%7]
+  const segs = []
+  const atUtc = (hhmm, base) => { const [h,m] = (hhmm||'00:00').split(':').map(Number); const d = new Date(base); d.setUTCHours(h,m,0,0); return d }
+  const endOfDay = new Date(dayDate); endOfDay.setUTCHours(24,0,0,0)
+  ;(blocks||[]).forEach(b=>{
+    if(!b.start_time || !b.end_time || !b.folder) return
+    const appliesToday = (b.days||[]).includes('tous') || (b.days||[]).includes(dayKey)
+    const appliesYesterday = (b.days||[]).includes('tous') || (b.days||[]).includes(prevDayKey)
+    if(b.start_time <= b.end_time){
+      if(appliesToday) segs.push({ id:b.id, folder:b.folder, start:atUtc(b.start_time,dayDate), end:atUtc(b.end_time,dayDate) })
+    } else {
+      if(appliesYesterday) segs.push({ id:b.id, folder:b.folder, start:utcMidnightOf(dayDate), end:atUtc(b.end_time,dayDate) })
+      if(appliesToday) segs.push({ id:b.id, folder:b.folder, start:atUtc(b.start_time,dayDate), end:endOfDay })
+    }
+  })
+  return segs.sort((a,b)=>a.start-b.start)
+}
+
+// Calcule la position (index de piste + decalage en secondes) dans la playlist generale a
+// l'instant "now", en tenant compte des groupes deja passes aujourd'hui : chaque groupe
+// "avale" la piste qui etait en cours au moment ou il a demarre (elle n'est pas terminee,
+// pas reprise plus tard), et la suite reprend a la piste SUIVANTE une fois le groupe fini.
+const computeGeneralPointer = (orderedTracks, jingles, blockSegments, boundary, now) => {
+  const total = orderedTracks.length
+  if(!total) return null
+  let cursor = new Date(boundary)
+  let ptr = 0
+  const cycleDuration = (idx) => {
+    const track = orderedTracks[((idx%total)+total)%total]
+    const jingle = jingles.length? jingles[((idx%jingles.length)+jingles.length)%jingles.length] : null
+    return durOf(track) + (jingle? durOf(jingle) : 0)
+  }
+  for(const seg of blockSegments){
+    if(seg.start >= now) break
+    while(cursor < seg.start){
+      const cyc = cycleDuration(ptr)
+      if(new Date(cursor.getTime()+cyc*1000) <= seg.start){ cursor = new Date(cursor.getTime()+cyc*1000); ptr++ }
+      else break
+    }
+    if(cursor < seg.start) ptr++ // le cycle en cours est interrompu par le groupe : on saute a la piste suivante
+    cursor = seg.end
+    if(cursor > now) return { mode:'inBlock', pendingPtr: ptr, pendingCursor: cursor }
+  }
+  while(true){
+    const cyc = cycleDuration(ptr)
+    if(new Date(cursor.getTime()+cyc*1000) <= now){ cursor = new Date(cursor.getTime()+cyc*1000); ptr++ } else break
+  }
+  const elapsedInCycle = Math.max(0, Math.round((now - cursor)/1000))
+  const trackDur = durOf(orderedTracks[((ptr%total)+total)%total])
+  const inJingle = elapsedInCycle >= trackDur
+  return { mode:'general', index: ((ptr%total)+total)%total, jingleIndex: jingles.length? ((ptr%jingles.length)+jingles.length)%jingles.length : null, offsetSeconds: inJingle? elapsedInCycle-trackDur : elapsedInCycle, inJingle }
+}
+
+// Fonction principale : donne, a l'instant "now", ce qui doit etre diffuse (mode general ou
+// groupe programme), pour une source donnee (pool complet de pistes/videos + jingles + blocs).
+const computeSchedule = (fullPool, timeBlocks, seedSuffix, now) => {
+  now = now || new Date()
+  const generalPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && !t.folder)
+  const jingles = fullPool.filter(t=>t.is_jingle)
+  if(!generalPool.length) return null
+  const boundary = utcMidnightOf(now)
+  const orderedGeneral = buildDailyOrder(generalPool, boundary, seedSuffix)
+  const segsToday = getDayBlockSegments(timeBlocks, boundary)
+  const activeBlock = getActiveBlockFor(timeBlocks, now)
+  if(activeBlock){
+    const folderPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && t.folder===activeBlock.folder)
+    const pool = folderPool.length? folderPool : generalPool
+    // Pour un groupe, l'ancre de synchronisation est le debut du segment actif aujourd'hui (deterministe, identique pour tous)
+    const seg = segsToday.find(s=> s.folder===activeBlock.folder && s.start<=now && now<s.end) || { start: boundary }
+    const orderedGroup = buildDailyOrder(pool, boundary, seedSuffix+':grp:'+activeBlock.folder)
+    const p = computeGeneralPointer(orderedGroup, jingles, [], seg.start, now)
+    if(!p || p.mode!=='general') return null
+    return { folder: activeBlock.folder, track: orderedGroup[p.index], offsetSeconds: p.offsetSeconds, inJingle: p.inJingle, jingle: p.jingleIndex!=null? jingles[p.jingleIndex] : null }
+  }
+  const p = computeGeneralPointer(orderedGeneral, jingles, segsToday, boundary, now)
+  if(!p || p.mode!=='general') return null
+  return { folder: null, track: orderedGeneral[p.index], offsetSeconds: p.offsetSeconds, inJingle: p.inJingle, jingle: p.jingleIndex!=null? jingles[p.jingleIndex] : null }
+}
+// ==================== FIN DU MOTEUR DE DIFFUSION SYNCHRONISEE ====================
+
 const DAY_LABELS = { lun:'Lundi', mar:'Mardi', mer:'Mercredi', jeu:'Jeudi', ven:'Vendredi', sam:'Samedi', dim:'Dimanche' }
-const todayDayKey = () => ['dim','lun','mar','mer','jeu','ven','sam'][new Date().getDay()]
+const todayDayKey = () => ['dim','lun','mar','mer','jeu','ven','sam'][new Date().getUTCDay()]
 const getActiveBlockFor = (blocks, atDate) => {
   const now = atDate || new Date()
-  const nowKey = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
-  const dayKey = ['dim','lun','mar','mer','jeu','ven','sam'][now.getDay()]
+  const nowKey = `${String(now.getUTCHours()).padStart(2,'0')}:${String(now.getUTCMinutes()).padStart(2,'0')}`
+  const dayKey = ['dim','lun','mar','mer','jeu','ven','sam'][now.getUTCDay()]
   const matches = (blocks||[]).filter(b => {
     if(!((b.days||[]).includes('tous') || (b.days||[]).includes(dayKey))) return false
     if(b.start_time <= b.end_time) return nowKey >= b.start_time && nowKey < b.end_time
@@ -173,115 +289,64 @@ function TvWatermark({settings}){
   )
 }
 
-function TvReplayPlayer({allClips, jingles, ads, tvTimeBlocks}){
+function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
   const containerRef = useRef(null)
   const playerRef = useRef(null)
-  const intervalRef = useRef(null)
   const adCheckIntervalRef = useRef(null)
   const scheduleCheckIntervalRef = useRef(null)
-  const clipIndexRef = useRef(0)
-  const clipsSinceJingleRef = useRef(0)
-  const jingleThresholdRef = useRef(3 + Math.floor(Math.random()*3))
   const phaseRef = useRef('clip')
   const pausedForAdRef = useRef(null)
   const playedAdSlotsRef = useRef(new Set())
   const [isLoading, setIsLoading] = useState(true)
-  const allClipsRef = useRef(allClips)
-  allClipsRef.current = allClips
+  const videoPlaylistRef = useRef(videoPlaylist)
+  videoPlaylistRef.current = videoPlaylist
   const tvTimeBlocksRef = useRef(tvTimeBlocks)
   tvTimeBlocksRef.current = tvTimeBlocks
   const scheduleTransitionFiredRef = useRef(null)
-  const pendingFutureBlockRef = useRef(undefined)
-  const poolPositionsRef = useRef({})
-  const currentPoolKeyRef = useRef('GENERAL')
-  const currentPoolRef = useRef([])
-
-  const computeActivePoolForBlock = (block) => {
-    const all = allClipsRef.current
-    let pool = all.filter(c=>!c.folder)
-    if(block){
-      const inFolder = all.filter(c=>c.folder===block.folder)
-      if(inFolder.length) pool = inFolder
-    }
-    return pool.map(c=>c.id)
-  }
-  const computeActivePool = () => computeActivePoolForBlock(getActiveBlockFor(tvTimeBlocksRef.current))
+  const adsList = (videoPlaylist||[]).filter(v=>v.is_ad).map(v=>({ id:v.id, ytId:getYoutubeIdRaw(v.url), ad_times:v.ad_times||[] })).filter(a=>a.ytId)
 
   useEffect(()=>{
-    if(!allClips.length) return
+    if(!videoPlaylist.filter(v=>!v.is_jingle&&!v.is_ad&&!v.folder).length) return
     let destroyed = false
-    currentPoolRef.current = computeActivePool()
-    { const initBlock = getActiveBlockFor(tvTimeBlocksRef.current); currentPoolKeyRef.current = initBlock? initBlock.folder : 'GENERAL' }
-
-    const findStartIndex = () => {
-      const pool = currentPoolRef.current
-      if(tvReplayMemory.videoId){ const idx = pool.indexOf(tvReplayMemory.videoId); if(idx>=0) return idx }
-      return 0
-    }
 
     const showLoadingBriefly = () => {
       setIsLoading(true)
       setTimeout(()=>{ if(!destroyed) setIsLoading(false) }, 1800)
     }
 
-    const playClip = (idx, startSeconds=0) => {
-      const pool = currentPoolRef.current
-      if(!playerRef.current || !pool.length) return
-      phaseRef.current='clip'
-      clipIndexRef.current = ((idx % pool.length) + pool.length) % pool.length
-      const id = pool[clipIndexRef.current]
-      if(!id) return
+    // Diffusion synchronisee : calcule ce qui doit passer MAINTENANT (video generale ou groupe
+    // programme) et le charge. Rappelee a la fin de chaque clip/jingle/pub et lors d'une
+    // transition programmee (debut/fin de groupe).
+    const playScheduledTv = () => {
+      if(destroyed || !playerRef.current) return
+      const sched = computeSchedule(videoPlaylistRef.current, tvTimeBlocksRef.current, 'tv', new Date())
+      if(!sched || !sched.track) return
+      const item = (sched.inJingle && sched.jingle) ? sched.jingle : sched.track
+      const ytId = getYoutubeIdRaw(item.url)
+      if(!ytId){ return }
+      phaseRef.current = (sched.inJingle && sched.jingle) ? 'jingle' : 'clip'
       showLoadingBriefly()
-      try{ playerRef.current.loadVideoById({videoId:id, startSeconds}) }catch{}
+      try{ playerRef.current.loadVideoById({videoId:ytId, startSeconds: Math.max(0, Math.round(sched.offsetSeconds||0))}) }catch{}
     }
-
-    const playJingle = (afterCb) => {
-      if(!jingles.length || !playerRef.current){ if(afterCb) afterCb(); else playClip(clipIndexRef.current+1, 0); return }
-      phaseRef.current='jingle'
-      jingleAfterCbRef.current = afterCb || null
-      const j = jingles[Math.floor(Math.random()*jingles.length)]
-      showLoadingBriefly()
-      try{ playerRef.current.loadVideoById({videoId:j}) }catch{}
-    }
-
-    const advanceAfterClip = () => {
-      clipsSinceJingleRef.current += 1
-      const pool = currentPoolRef.current
-      if(!pool.length) return
-      const nextIdx = ((clipIndexRef.current+1) % pool.length + pool.length) % pool.length
-      clipIndexRef.current = nextIdx
-      if(jingles.length && clipsSinceJingleRef.current >= jingleThresholdRef.current){
-        clipsSinceJingleRef.current = 0
-        jingleThresholdRef.current = 3 + Math.floor(Math.random()*3)
-        playJingle()
-      } else {
-        playClip(nextIdx, 0)
-      }
-    }
-
-    const jingleAfterCbRef = { current: null }
 
     const maybeTriggerAd = () => {
-      if(destroyed || phaseRef.current==='ad' || !ads.length) return
+      if(destroyed || phaseRef.current==='ad' || !adsList.length) return
       if(!playerRef.current || !playerRef.current.getCurrentTime) return
       const now = new Date()
-      const nowKey = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
+      const nowKey = `${String(now.getUTCHours()).padStart(2,'0')}:${String(now.getUTCMinutes()).padStart(2,'0')}`
       const todayStr = now.toISOString().slice(0,10)
-      const due = ads.find(a => Array.isArray(a.ad_times) && a.ad_times.includes(nowKey))
+      const due = adsList.find(a => Array.isArray(a.ad_times) && a.ad_times.includes(nowKey))
       if(!due) return
       const slotKey = `${todayStr}_${nowKey}_${due.id}`
       if(playedAdSlotsRef.current.has(slotKey)) return
       playedAdSlotsRef.current.add(slotKey)
-      let resumeTime = 0
-      try{ resumeTime = playerRef.current.getCurrentTime()||0 }catch{}
-      pausedForAdRef.current = { time: resumeTime }
       phaseRef.current='ad'
       showLoadingBriefly()
       try{ playerRef.current.loadVideoById({videoId: due.ytId}) }catch{}
     }
 
-    const forceEarlyTvTransition = () => {
-      if(!playerRef.current || phaseRef.current!=='clip') return
+    const forceEarlyTvTransition = (afterFadeCb) => {
+      if(!playerRef.current || phaseRef.current!=='clip'){ afterFadeCb && afterFadeCb(); return }
       const el = playerRef.current
       let startVol = 100
       try{ startVol = el.getVolume() }catch{}
@@ -295,21 +360,7 @@ function TvReplayPlayer({allClips, jingles, ads, tvTimeBlocks}){
         if(t<1){ requestAnimationFrame(fadeStep) }
         else {
           try{ el.setVolume(startVol) }catch{}
-          // Sauvegarde ou en etait le groupe qu'on quitte, pour pouvoir y revenir plus tard au bon endroit
-          poolPositionsRef.current[currentPoolKeyRef.current] = clipIndexRef.current
-
-          const newKey = pendingFutureBlockRef.current? pendingFutureBlockRef.current.folder : 'GENERAL'
-          currentPoolRef.current = computeActivePoolForBlock(pendingFutureBlockRef.current)
-          currentPoolKeyRef.current = newKey
-          const savedIdx = poolPositionsRef.current[newKey]
-          const resumeIdx = (savedIdx!==undefined && currentPoolRef.current.length)
-            ? Math.min(savedIdx, currentPoolRef.current.length-1)
-            : 0
-          clipIndexRef.current = resumeIdx
-          clipsSinceJingleRef.current = 0
-          playJingle(()=>{
-            playClip(resumeIdx, 0)
-          })
+          afterFadeCb && afterFadeCb()
         }
       }
       requestAnimationFrame(fadeStep)
@@ -319,38 +370,26 @@ function TvReplayPlayer({allClips, jingles, ads, tvTimeBlocks}){
       if(!window.YT) return
       if(e.data!==window.YT.PlayerState.ENDED) return
       if(phaseRef.current==='ad'){
-        const resume = pausedForAdRef.current; pausedForAdRef.current=null
-        playClip(clipIndexRef.current, resume? resume.time : 0)
-      } else if(phaseRef.current==='jingle'){
-        const cb = jingleAfterCbRef.current; jingleAfterCbRef.current=null
-        if(cb) cb(); else playClip(clipIndexRef.current, 0)
+        pausedForAdRef.current = null
+        playScheduledTv()
       } else {
-        advanceAfterClip()
+        playScheduledTv()
       }
     }
 
     const setup = () => {
       if(destroyed || !containerRef.current || !window.YT || !window.YT.Player) return
-      const startIdx = findStartIndex()
-      clipIndexRef.current = startIdx
+      const initSched = computeSchedule(videoPlaylistRef.current, tvTimeBlocksRef.current, 'tv', new Date())
+      const initItem = initSched? ((initSched.inJingle && initSched.jingle) ? initSched.jingle : initSched.track) : null
+      const initId = initItem? getYoutubeIdRaw(initItem.url) : null
+      phaseRef.current = (initSched && initSched.inJingle && initSched.jingle) ? 'jingle' : 'clip'
       playerRef.current = new window.YT.Player(containerRef.current, {
         width:'100%', height:'100%',
-        videoId: currentPoolRef.current[startIdx],
-        playerVars: { autoplay:1, fs:0, controls:0, disablekb:1, modestbranding:1 },
+        videoId: initId,
+        playerVars: { autoplay:1, fs:0, controls:0, disablekb:1, modestbranding:1, start: initSched? Math.max(0, Math.round(initSched.offsetSeconds||0)) : 0 },
         events: {
           onReady: (e)=>{
             setTimeout(()=>{ if(!destroyed) setIsLoading(false) }, 1800)
-            if(tvReplayMemory.videoId===currentPoolRef.current[startIdx] && tvReplayMemory.time>2){
-              try{ e.target.seekTo(tvReplayMemory.time, true) }catch{}
-            }
-            intervalRef.current = setInterval(()=>{
-              try{
-                if(phaseRef.current!=='clip') return
-                const t = e.target.getCurrentTime()
-                const data = e.target.getVideoData()
-                if(data && data.video_id){ tvReplayMemory = { videoId: data.video_id, time: t } }
-              }catch{}
-            }, 2000)
             adCheckIntervalRef.current = setInterval(maybeTriggerAd, 20000)
             scheduleCheckIntervalRef.current = setInterval(()=>{
               if(destroyed || phaseRef.current!=='clip') return
@@ -365,9 +404,8 @@ function TvReplayPlayer({allClips, jingles, ads, tvTimeBlocks}){
               const futureBlock = getActiveBlockFor(tvTimeBlocksRef.current, future)
               const futureKey = futureBlock? String(futureBlock.id) : 'none'
               if(currentKey===futureKey) return
-              pendingFutureBlockRef.current = futureBlock
               scheduleTransitionFiredRef.current = { from: currentKey, to: futureKey }
-              forceEarlyTvTransition()
+              forceEarlyTvTransition(()=>{ playScheduledTv() })
             }, 1000)
           },
           onStateChange: onPlayerStateChange
@@ -390,22 +428,15 @@ function TvReplayPlayer({allClips, jingles, ads, tvTimeBlocks}){
 
     return ()=>{
       destroyed = true
-      if(intervalRef.current) clearInterval(intervalRef.current)
       if(adCheckIntervalRef.current) clearInterval(adCheckIntervalRef.current)
       if(scheduleCheckIntervalRef.current) clearInterval(scheduleCheckIntervalRef.current)
       if(playerRef.current){
-        try{
-          if(phaseRef.current==='clip'){
-            const t = playerRef.current.getCurrentTime()
-            const data = playerRef.current.getVideoData()
-            if(data && data.video_id) tvReplayMemory = { videoId: data.video_id, time: t }
-          }
-        }catch{}
         try{ playerRef.current.destroy() }catch{}
         playerRef.current = null
       }
     }
-  }, [allClips.map(c=>c.id+':'+(c.folder||'')).join(','), jingles.join(','), JSON.stringify(ads.map(a=>a.id+':'+(a.ad_times||[]).join(',')))])
+  }, [videoPlaylist.map(c=>c.id+':'+(c.folder||'')+':'+(c.duration_seconds||'')).join(','), JSON.stringify(adsList.map(a=>a.id+':'+(a.ad_times||[]).join(',')))])
+
 
   return (
     <div style={{position:'relative', width:'100%', height:'100%'}}>
@@ -636,8 +667,8 @@ export default function App(){
     fetch(`${supabaseUrl}/rest/v1/unes?select=*&active=eq.true&order=date.desc&limit=50`,{headers:{'apikey':supabaseKey,'Authorization':`Bearer ${supabaseKey}`}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)){ setUnes(d) } }).catch(()=>{});
     fetch(`${supabaseUrl}/rest/v1/encadres?select=*&active=eq.true&order=order_index.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setEncadres(d) }).catch(()=>{});
     fetch(`${supabaseUrl}/rest/v1/pubs?select=*&active=eq.true&order=created_at.desc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)&&d.length>0) setPubs(d) }).catch(()=>{}) 
-    fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setRadioPlaylist(shuffleArray(d)) }).catch(()=>{})
-    fetch(`${supabaseUrl}/rest/v1/video_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setVideoPlaylist(shuffleArray(d)) }).catch(()=>{})
+    fetch(`${supabaseUrl}/rest/v1/radio_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setRadioPlaylist(d) }).catch(()=>{})
+    fetch(`${supabaseUrl}/rest/v1/video_playlist?select=*&active=eq.true&order=id.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setVideoPlaylist(d) }).catch(()=>{})
     fetch(`${supabaseUrl}/rest/v1/tv_watermark?select=*&id=eq.1`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)&&d[0]) setTvWatermark(d[0]) }).catch(()=>{})
     fetch(`${supabaseUrl}/rest/v1/programme_grid?select=*&active=eq.true&order=time.asc`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setProgrammeGrid(d) }).catch(()=>{})
     fetch(`${supabaseUrl}/rest/v1/radio_time_blocks?select=*&active=eq.true`,{headers:{'apikey':supabaseKey,'Authorization':'Bearer '+supabaseKey}}).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setRadioTimeBlocks(d) }).catch(()=>{})
@@ -715,6 +746,7 @@ export default function App(){
   const radioAds = radioPlaylist.filter(t=>t.is_ad && t.active)
   const radioPhaseRef = useRef('track')
   const playedAdSlotsRef = useRef(new Set())
+  const [currentRadioItem, setCurrentRadioItem] = useState(null)
 
   const getRadioAudioEl = () => {
     if(!radioAudioElRef.current){
@@ -791,19 +823,9 @@ export default function App(){
     setRadioIsPlaying(true)
   }
 
-  const playJingleThenNext = () => {
-    const jingles = radioJinglesRef.current
-    if(jingles.length>0){
-      radioPhaseRef.current='jingle'
-      const jingle = jingles[Math.floor(Math.random()*jingles.length)]
-      playSource(jingle.url, 0, ()=>{ radioPhaseRef.current='track'; nextRadioTrack() })
-    } else {
-      nextRadioTrack()
-    }
-  }
-  const forceEarlyTransition = () => {
+  const forceEarlyTransition = (afterFadeCb) => {
     const el = radioAudioElRef.current
-    if(!el) return
+    if(!el){ afterFadeCb && afterFadeCb(); return }
     playTokenRef.current++ // invalide les callbacks (onended/ontimeupdate) de la piste en cours
     el.onended = null
     el.ontimeupdate = null
@@ -819,11 +841,33 @@ export default function App(){
         try{ el.pause() }catch{}
         el.volume = startVol
         pausedOffsetRef.current = 0
-        playJingleThenNext()
+        afterFadeCb && afterFadeCb()
       }
     }
     requestAnimationFrame(fadeStep)
   }
+
+  // Diffusion synchronisee : calcule ce qui doit jouer MAINTENANT (piste generale ou groupe
+  // programme) et le lance. Appelee au demarrage, a la fin de chaque piste/jingle, et lors
+  // d'une transition programmee (debut/fin de groupe).
+  const playScheduledRadio = () => {
+    const sched = computeSchedule(radioPlaylistRef.current, radioTimeBlocksRef.current, 'radio', new Date())
+    if(!sched || !sched.track){ return }
+    const source = sched.inJingle && sched.jingle ? sched.jingle : sched.track
+    if(!source || !source.url) return
+    radioPhaseRef.current = (sched.inJingle && sched.jingle) ? 'jingle' : 'track'
+    setCurrentRadioItem(source)
+    setRadioStarted(true)
+    playSource(source.url, Math.max(0, sched.offsetSeconds||0), ()=>{ playScheduledRadio() })
+    // precharge la suite probable (piste suivante ou jingle suivant), pour une transition sans coupure
+    const remaining = Math.max(2, durOf(source) - (sched.offsetSeconds||0) + 1)
+    const soon = new Date(Date.now() + remaining*1000)
+    const nextSched = computeSchedule(radioPlaylistRef.current, radioTimeBlocksRef.current, 'radio', soon)
+    if(nextSched){ const nsrc = (nextSched.inJingle && nextSched.jingle)? nextSched.jingle : nextSched.track; if(nsrc?.url) decodeTrack(nsrc.url).catch(()=>{}) }
+  }
+  const playScheduledRadioRef = useRef(playScheduledRadio)
+  playScheduledRadioRef.current = playScheduledRadio
+
   useEffect(()=>{
     const id = setInterval(()=>{
       if(!radioIsPlayingRef.current) return
@@ -840,32 +884,17 @@ export default function App(){
       const future = new Date(now.getTime()+10000)
       const futureBlock = getActiveBlockFor(radioTimeBlocksRef.current, future)
       const futureKey = futureBlock? String(futureBlock.id) : 'none'
-      if(currentKey===futureKey) return // rien ne va changer dans les 10 prochaines secondes
-
-      // Precharge a l'avance la piste probable du nouveau groupe, pour eviter tout vide au moment de la bascule
-      const pool = radioPlaylistRef.current.filter(t=>!t.is_jingle && !t.is_ad)
-      let futurePool = pool.filter(t=>!t.folder)
-      if(futureBlock){
-        const inFolder = pool.filter(t=>t.folder===futureBlock.folder)
-        if(inFolder.length) futurePool = inFolder
-      }
-      if(futurePool.length){
-        const predictedIdx = (radioTrackIndexRef.current+1) % futurePool.length
-        const predictedUrl = futurePool[predictedIdx]?.url
-        if(predictedUrl) decodeTrack(predictedUrl).catch(()=>{})
-      }
+      if(currentKey===futureKey) return // rien ne va changer dans les 10 prochaines secondes (debut/fin de groupe programme)
 
       scheduleTransitionFiredRef.current = { from: currentKey, to: futureKey }
-      forceEarlyTransition()
+      forceEarlyTransition(()=>{ playScheduledRadioRef.current() })
     }, 1000)
     return ()=>clearInterval(id)
   },[])
 
-  const startPlayback=async(idx, fromOffset=0)=>{ const tracks=radioMainTracksRef.current; if(!tracks.length) return; const url=tracks[idx]?.url; if(!url) return; setRadioStarted(true); radioPhaseRef.current='track'; await playSource(url, fromOffset, playJingleThenNext); const nextIdx=(idx+1)%tracks.length; const nextUrl=tracks[nextIdx]?.url; if(nextUrl) decodeTrack(nextUrl).catch(()=>{}) }
   const pausePlayback=()=>{ const el=radioAudioElRef.current; if(!el) return; const info=bufferCacheRef.current[currentUrlRef.current]; const leadIn=info?.leadIn||0; pausedOffsetRef.current=Math.max(0, el.currentTime-leadIn); try{ el.pause() }catch{}; setRadioIsPlaying(false) }
-  const toggleRadioPlay=()=>{ if(radioIsPlaying) pausePlayback(); else startPlayback(radioTrackIndexRef.current, pausedOffsetRef.current||0) }
-  const nextRadioTrack=()=>{ const tracks=radioMainTracksRef.current; if(!tracks.length) return; const ni=(radioTrackIndexRef.current+1)%tracks.length; radioTrackIndexRef.current=ni; pausedOffsetRef.current=0; setRadioTrackIndex(ni); startPlayback(ni,0) }
-  useEffect(()=>{ if(actif!=='DIRECT-RADIO') return; if(youtubeLive===null) return; if(youtubeLive) return; if(radioIsPlaying) return; if(!radioMainTracks.length) return; startPlayback(radioTrackIndexRef.current, pausedOffsetRef.current||0) },[actif, youtubeLive, radioPlaylist])
+  const toggleRadioPlay=()=>{ if(radioIsPlaying) pausePlayback(); else playScheduledRadio() }
+  useEffect(()=>{ if(actif!=='DIRECT-RADIO') return; if(youtubeLive===null) return; if(youtubeLive) return; if(radioIsPlaying) return; if(!radioPlaylist.filter(t=>!t.is_jingle&&!t.is_ad&&!t.folder).length) return; playScheduledRadio() },[actif, youtubeLive, radioPlaylist])
   useEffect(()=>{ if(actif==='DIRECT-TV') pausePlayback() },[actif])
 
   // Controles ecran verrouille / notification systeme (Media Session API)
@@ -883,19 +912,19 @@ export default function App(){
   },[])
   useEffect(()=>{
     if(!('mediaSession' in navigator)) return
-    const track = radioMainTracks[radioTrackIndex]
+    const track = currentRadioItem
     if(!track) return
     try{
       navigator.mediaSession.metadata = new window.MediaMetadata({ title: track.title||'Radio Rius Multimédia', artist:'Rius Multimédia', album:'Radio', artwork:[{src:track.image||'/logo.png', sizes:'512x512', type:'image/png'}] })
       navigator.mediaSession.playbackState = radioIsPlaying? 'playing':'paused'
     }catch{}
-  },[radioTrackIndex, radioIsPlaying, radioPlaylist])
+  },[currentRadioItem, radioIsPlaying])
 
   const foreignAudioCountRef = useRef(0)
   const duckedRadioRef = useRef(false)
   const startPlaybackRef = useRef(null)
   const pausePlaybackRef = useRef(null)
-  useEffect(()=>{ startPlaybackRef.current = startPlayback; pausePlaybackRef.current = pausePlayback })
+  useEffect(()=>{ startPlaybackRef.current = playScheduledRadio; pausePlaybackRef.current = pausePlayback })
   useEffect(()=>{
     const handlePlay = (e) => {
       const el = e.target
@@ -912,7 +941,7 @@ export default function App(){
       foreignAudioCountRef.current = Math.max(0, foreignAudioCountRef.current - 1)
       if(foreignAudioCountRef.current===0 && duckedRadioRef.current){
         duckedRadioRef.current = false
-        startPlaybackRef.current && startPlaybackRef.current(radioTrackIndexRef.current, pausedOffsetRef.current||0)
+        startPlaybackRef.current && startPlaybackRef.current()
       }
     }
     document.addEventListener('play', handlePlay, true)
@@ -930,8 +959,8 @@ export default function App(){
     if(!radioIsPlaying) return
     if(!radioAds.length) return
     const now = new Date()
-    const hh = String(now.getHours()).padStart(2,'0')
-    const mm = String(now.getMinutes()).padStart(2,'0')
+    const hh = String(now.getUTCHours()).padStart(2,'0')
+    const mm = String(now.getUTCMinutes()).padStart(2,'0')
     const nowKey = `${hh}:${mm}`
     const todayStr = now.toISOString().slice(0,10)
     const dueAd = radioAds.find(ad => Array.isArray(ad.ad_times) && ad.ad_times.includes(nowKey))
@@ -939,12 +968,8 @@ export default function App(){
     const slotKey = `${todayStr}_${nowKey}_${dueAd.id}`
     if(playedAdSlotsRef.current.has(slotKey)) return
     playedAdSlotsRef.current.add(slotKey)
-    const el = radioAudioElRef.current
-    const info = bufferCacheRef.current[currentUrlRef.current]
-    const leadIn = info?.leadIn || 0
-    const resumeOffset = el ? Math.max(0, el.currentTime-leadIn) : 0
     radioPhaseRef.current='ad'
-    playSource(dueAd.url, 0, ()=>{ radioPhaseRef.current='track'; startPlayback(radioTrackIndexRef.current, resumeOffset) })
+    playSource(dueAd.url, 0, ()=>{ radioPhaseRef.current='track'; playScheduledRadioRef.current() })
   }
   useEffect(()=>{ const id=setInterval(maybeTriggerAd, 20000); maybeTriggerAd(); return()=>clearInterval(id) },[radioPlaylist, radioIsPlaying])
 
@@ -1029,7 +1054,7 @@ export default function App(){
   useEffect(()=>{ return ()=>{ if(tvHoverTimeoutRef.current) clearTimeout(tvHoverTimeoutRef.current) } },[])
 
   const handleShareRadio = async () => {
-    const currentTitle = radioMainTracks[radioTrackIndex]?.title
+    const currentTitle = currentRadioItem?.title
     const text = `🎧 J'écoute Radio Rius Multimédia${currentTitle? ' - '+currentTitle : ''} !`
     const url = typeof window!=='undefined'? window.location.origin : ''
     if(navigator.share){ try{ await navigator.share({title:'Radio Rius Multimédia', text, url}) }catch{} }
@@ -1263,7 +1288,7 @@ export default function App(){
         <div style={{maxWidth:1280,margin:'8px auto 0',padding:'0 18px 24px'}}><h2 style={{color:'#00d4ff',fontSize:18,fontWeight:900,margin:'0 0 16px 0'}}>A lire aussi</h2><div className="grid-4" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16,padding:0}}>{articles.filter(a=>a.id!==disp.id).slice(0,4).map(a=>{ const tr=getTranslated(a); return (<div key={a.id} onClick={()=>openArticle(a)} style={{cursor:'pointer',background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,overflow:'hidden'}}><img src={tr.image||''} loading="lazy" style={{width:'100%',height:130,objectFit:'cover',display:'block'}} alt="" /><div style={{padding:'10px 12px'}}><div style={{fontSize:9,color:'#ffcc00',fontWeight:900,textTransform:'uppercase'}}>{tr.category}</div><div style={{fontSize:13,fontWeight:700,color:'white',marginTop:4,lineHeight:1.3}}>{tr.title}</div></div></div>) })}</div></div>
         <footer style={{background:'linear-gradient(180deg, #3a62d1 0%, #2f52b6 100%)',color:'white',borderTop:'1px solid rgba(255,204,0,0.25)',position:'relative',boxShadow:'0 1px 0 rgba(255,255,255,0.04) inset, 0 -10px 40px rgba(0,0,0,0.8) inset',marginTop:30}}><div style={{padding:'36px 24px 24px',maxWidth:1400,margin:'0 auto',display:'grid',gridTemplateColumns:'1.4fr 0.7fr 1fr 1.2fr',gap:32}} className="footer-grid"><div><div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12,cursor:'pointer'}} onClick={()=>{goTo('ACCUEIL')}}><div style={{width:58,height:58,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',background:'transparent',border:'none'}}><img src="/logo.png" style={{width:42,height:42,borderRadius:'50%'}} alt="" /></div><div><div style={{fontSize:19,lineHeight:1}}><span style={{fontFamily:"'Pinyon Script', cursive",fontSize:'1.5em',lineHeight:1}}>Rius</span><span style={{color:'#ffcc00',fontWeight:900,marginLeft:6}}>MultiMédia</span></div><div style={{marginTop:4}}><div style={{fontSize:11,fontWeight:800,fontStyle:'italic'}}>{T.slogan1}</div><div style={{fontSize:10,fontWeight:400,opacity:0.7,textAlign:'center',marginTop:2}}>{T.slogan2}</div></div></div></div><div style={{fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.5,marginTop:8,maxWidth:300}}>Média togolais indépendant. Voir, Vérifier, Informer. Si près de l'info, si près de vous.</div></div><div><h4 style={{color:'#ffcc00',fontSize:12,fontWeight:900,letterSpacing:'0.08em',marginBottom:14,textTransform:'uppercase'}}>{T.categories}</h4>{['Politique','Société','Sport','Culture','Santé','International'].map(l=>(<a key={l} href="#" onClick={e=>{e.preventDefault();goTo(l.toUpperCase())}} style={{display:'block',color:'rgba(255,255,255,0.65)',textDecoration:'none',fontSize:12.5,marginBottom:9}}>› {l}</a>))}</div><div><h4 style={{color:'#ffcc00',fontSize:12,fontWeight:900,letterSpacing:'0.08em',marginBottom:14,textTransform:'uppercase'}}>{T.contact}</h4><div style={{fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.8}}><div>📍 Lomé, Togo</div><div>✉ rmweb.tg@outlook.com</div><div style={{color:'#ffcc00',fontWeight:600}}>📞 +228 22 55 36 76</div></div></div><div><h4 style={{color:'#ffcc00',fontSize:12,fontWeight:900,letterSpacing:'0.08em',marginBottom:14,textTransform:'uppercase'}}>{T.newsletter}</h4><div style={{fontSize:11.5,color:'rgba(255,255,255,0.55)',marginBottom:10}}>Recevez les dernières actus directement par email.</div><div style={{display:'flex',background:'rgba(255,255,255,0.07)',borderRadius:10,padding:4,border:'1px solid rgba(255,255,255,0.08)'}}><input value={newsletterEmail} onChange={e=>setNewsletterEmail(e.target.value)} placeholder="Votre email" style={{flex:1,padding:'10px 12px',borderRadius:'6px',border:'none',fontSize:12,background:'transparent',color:'white',outline:'none'}} /><button onClick={handleNewsletter} style={{background:'#ffcc00',color:'#000',border:'none',padding:'0 18px',borderRadius:'6px',fontWeight:900,fontSize:12,cursor:'pointer'}}>OK</button></div></div></div><div style={{borderTop:'1px solid rgba(255,255,255,0.06)',padding:'12px 24px',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:10.5,color:'rgba(255,255,255,0.35)',maxWidth:1400,margin:'0 auto'}}><span>Conçu avec ❤ à Lomé - © 2026 Rius Multimédia</span><span style={{display:'flex',gap:16}}><a href="#" style={{color:'inherit',textDecoration:'none'}}>Mentions légales</a><a href="#" style={{color:'inherit',textDecoration:'none'}}>Confidentialité</a><a href="#" style={{color:'inherit',textDecoration:'none'}}>Contact</a></span></div></footer>
         <InstallBanner deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} T={T} />
-        {radioStarted && actif!=='DIRECT-RADIO' && actif!=='DIRECT-TV' && (<div style={{position:'fixed', bottom:90, left:12, right:12, maxWidth:420, margin:'0 auto', background:'#0f2040', color:'white', borderRadius:14, padding:'10px 14px', display:'flex', alignItems:'center', gap:12, boxShadow:'0 10px 30px rgba(0,0,0,0.5)', zIndex:9997, border:'2px solid #16a34a'}}><img src={radioMainTracks[radioTrackIndex]?.image||'/logo.png'} style={{width:44,height:44,borderRadius:8,objectFit:'cover',flexShrink:0}} alt="" /><div style={{flex:1,minWidth:0}}><div style={{fontSize:9,fontWeight:900,color:'#a8ff00',textTransform:'uppercase'}}>📻 Radio Rius</div><div style={{fontSize:12,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{radioMainTracks[radioTrackIndex]?.title||'En cours...'}</div></div><button onClick={toggleRadioPlay} style={{background:'#a8ff00',border:0,color:'black',width:36,height:36,borderRadius:'50%',fontSize:14,cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{radioIsPlaying?'⏸':'▶'}</button><button onClick={()=>{ goTo('DIRECT-RADIO') }} title="Revenir a la radio" style={{background:'rgba(255,255,255,0.15)',border:0,color:'white',width:32,height:32,borderRadius:'50%',fontSize:13,cursor:'pointer',flexShrink:0}}>⤴</button><button onClick={()=>{ pausePlayback(); setRadioStarted(false) }} title="Fermer" style={{background:'rgba(255,255,255,0.15)',border:0,color:'white',width:28,height:28,borderRadius:'50%',fontSize:12,cursor:'pointer',flexShrink:0}}>✕</button></div>)}
+        {radioStarted && actif!=='DIRECT-RADIO' && actif!=='DIRECT-TV' && (<div style={{position:'fixed', bottom:90, left:12, right:12, maxWidth:420, margin:'0 auto', background:'#0f2040', color:'white', borderRadius:14, padding:'10px 14px', display:'flex', alignItems:'center', gap:12, boxShadow:'0 10px 30px rgba(0,0,0,0.5)', zIndex:9997, border:'2px solid #16a34a'}}><img src={currentRadioItem?.image||'/logo.png'} style={{width:44,height:44,borderRadius:8,objectFit:'cover',flexShrink:0}} alt="" /><div style={{flex:1,minWidth:0}}><div style={{fontSize:9,fontWeight:900,color:'#a8ff00',textTransform:'uppercase'}}>📻 Radio Rius</div><div style={{fontSize:12,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{currentRadioItem?.title||'En cours...'}</div></div><button onClick={toggleRadioPlay} style={{background:'#a8ff00',border:0,color:'black',width:36,height:36,borderRadius:'50%',fontSize:14,cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{radioIsPlaying?'⏸':'▶'}</button><button onClick={()=>{ goTo('DIRECT-RADIO') }} title="Revenir a la radio" style={{background:'rgba(255,255,255,0.15)',border:0,color:'white',width:32,height:32,borderRadius:'50%',fontSize:13,cursor:'pointer',flexShrink:0}}>⤴</button><button onClick={()=>{ pausePlayback(); setRadioStarted(false) }} title="Fermer" style={{background:'rgba(255,255,255,0.15)',border:0,color:'white',width:28,height:28,borderRadius:'50%',fontSize:12,cursor:'pointer',flexShrink:0}}>✕</button></div>)}
       </div>
     )
   }
@@ -1332,10 +1357,8 @@ export default function App(){
     return <iframe width="100%" height="520" src={`https://www.youtube.com/embed/${youtubeLive.videoId}?autoplay=1&fs=0`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe>
   }
   if(videoPlaylist.length>0){
-    const allClips=videoPlaylist.filter(v=>!v.is_jingle&&!v.is_ad).map(v=>({id:getYoutubeIdRaw(v.url), folder:v.folder||null})).filter(c=>c.id)
-    const jingles=videoPlaylist.filter(v=>v.is_jingle).map(v=>getYoutubeIdRaw(v.url)).filter(Boolean)
-    const ads=videoPlaylist.filter(v=>v.is_ad).map(v=>({id:v.id, ytId:getYoutubeIdRaw(v.url), ad_times:v.ad_times||[]})).filter(a=>a.ytId)
-    return allClips.length? <div className="tv-video-frame" style={{width:'100%',height:520}}><TvReplayPlayer allClips={allClips} jingles={jingles} ads={ads} tvTimeBlocks={tvTimeBlocks} /></div> : null
+    const hasGeneralClips = videoPlaylist.some(v=>!v.is_jingle&&!v.is_ad&&!v.folder&&getYoutubeIdRaw(v.url))
+    return hasGeneralClips? <div className="tv-video-frame" style={{width:'100%',height:520}}><TvReplayPlayer videoPlaylist={videoPlaylist} tvTimeBlocks={tvTimeBlocks} /></div> : null
   }
   return <iframe width="100%" height="520" src={`https://www.youtube.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&fs=0`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe>
 })()}</div><div style={{flex:1,background:'#111',borderRadius:12,border:'1px solid rgba(255,255,255,0.15)',overflow:'hidden',minHeight:400,display:'flex',flexDirection:'column'}}><div style={{padding:'10px 12px',background:'#1a1a1a',fontWeight:900,fontSize:11,borderBottom:'1px solid rgba(255,255,255,0.1)'}}>💬 {T.chat}</div><div style={{padding:20,fontSize:11,opacity:0.6,flex:1}}>Le chat YouTube s'affiche ici quand tu es en live.<br/><br/>Tes abonnés peuvent discuter en direct depuis YouTube.</div><div style={{padding:10,background:'#0f0f0f'}}><a href={`${YOUTUBE_CHANNEL_URL}/live`} target="_blank" rel="noreferrer" style={{background:'#ff0000',color:'white',padding:'8px 12px',borderRadius:8,fontSize:11,fontWeight:800,textDecoration:'none',display:'block',textAlign:'center'}}>Ouvrir le chat sur YouTube</a></div></div></div><div style={{marginTop:16,background:'rgba(255,255,255,0.06)',borderRadius:10,padding:14}}><h4 style={{margin:'0 0 8px 0',fontSize:12,color:'#ffcc00'}}>Dernières vidéos de la chaîne</h4><iframe width="100%" height="300" src={`https://www.youtube.com/embed?listType=user&list=${YOUTUBE_HANDLE}`} style={{border:0,borderRadius:8}} allowFullScreen loading="lazy" title="Playlist"></iframe></div><ProgrammeGridWidget items={programmeGrid} type="tv" /><button onClick={()=>{ setEmissionsFilter('tv'); goTo('EMISSIONS') }} style={{width:'100%',marginTop:16,padding:12,background:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:10,fontWeight:800,fontSize:12,cursor:'pointer'}}>🎬 Voir les émissions passées</button></div>
@@ -1358,8 +1381,8 @@ export default function App(){
               </div>
             ) : (
               <div style={{background:'linear-gradient(135deg,#1a3d7a,#0f2040)',borderRadius:16,padding:28,border:'2px solid #a8ff00',textAlign:'center'}}>
-                <img src={radioMainTracks[radioTrackIndex]?.image||'/logo.png'} style={{width:100,height:100,borderRadius:'50%',border:'3px solid rgba(255,255,255,0.9)',marginBottom:16,objectFit:'cover'}} alt="" />
-                <div style={{fontWeight:900,fontSize:16,marginBottom:4}}>{radioMainTracks[radioTrackIndex]?.title||'Rius Multimédia Radio'}</div>
+                <img src={currentRadioItem?.image||'/logo.png'} style={{width:100,height:100,borderRadius:'50%',border:'3px solid rgba(255,255,255,0.9)',marginBottom:16,objectFit:'cover'}} alt="" />
+                <div style={{fontWeight:900,fontSize:16,marginBottom:4}}>{currentRadioItem?.title||'Rius Multimédia Radio'}</div>
                 <div style={{fontSize:11,opacity:0.7,marginBottom:18}}>{radioMainTracks.length? 'En cours' :'Playlist vide — ajoute des pistes dans Supabase'}</div>
                 {radioMainTracks.length>0&&<>
                   <div style={{display:'flex',gap:16,alignItems:'center',justifyContent:'center'}}>
@@ -1561,7 +1584,7 @@ export default function App(){
 
       <footer style={{background:'linear-gradient(180deg, #3a62d1 0%, #2f52b6 100%)',color:'white',borderTop:'1px solid rgba(255,204,0,0.25)',position:'relative',boxShadow:'0 1px 0 rgba(255,255,255,0.04) inset, 0 -10px 40px rgba(0,0,0,0.8) inset'}}><div className="footer-grid" style={{padding:'36px 24px 24px',maxWidth:1400,margin:'0 auto',display:'grid',gridTemplateColumns:'1.4fr 0.7fr 1fr 1.2fr',gap:32}}><div><div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12,cursor:'pointer'}} onClick={()=>{goTo('ACCUEIL')}}><div style={{width:58,height:58,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',background:'transparent',border:'none'}}><img src="/logo.png" style={{width:42,height:42,borderRadius:'50%'}} alt="" /></div><div><div style={{fontSize:19,lineHeight:1}}><span style={{fontFamily:"'Pinyon Script', cursive",fontSize:'1.5em',lineHeight:1}}>Rius</span><span style={{color:'#ffcc00',fontWeight:900,marginLeft:6}}>MultiMédia</span></div><div style={{marginTop:4}}><div style={{fontSize:11,fontWeight:800,fontStyle:'italic'}}>{T.slogan1}</div><div style={{fontSize:10,fontWeight:400,opacity:0.7,textAlign:'center',marginTop:2}}>{T.slogan2}</div></div></div></div><div style={{fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.5,marginTop:8,maxWidth:300}}>Média togolais indépendant. Voir, Vérifier, Informer. Au plus près de l'info, au plus près de vous.</div></div><div><h4 style={{color:'#ffcc00',fontSize:12,fontWeight:900,letterSpacing:'0.08em',marginBottom:14,textTransform:'uppercase'}}>{T.categories}</h4>{['Politique','Société','Sport','Culture','Santé','International'].map(l=>(<a key={l} href="#" onClick={e=>{e.preventDefault();goTo(l.toUpperCase())}} style={{display:'block',color:'rgba(255,255,255,0.65)',textDecoration:'none',fontSize:12.5,marginBottom:9}}>› {l}</a>))}</div><div><h4 style={{color:'#ffcc00',fontSize:12,fontWeight:900,letterSpacing:'0.08em',marginBottom:14,textTransform:'uppercase'}}>{T.contact}</h4><div style={{fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.8}}><div>📍 Lomé, Togo</div><div>✉ rmweb.tg@outlook.com</div><div style={{color:'#ffcc00',fontWeight:600}}>📞 +228 22 55 36 76</div></div></div><div><h4 style={{color:'#ffcc00',fontSize:12,fontWeight:900,letterSpacing:'0.08em',marginBottom:14,textTransform:'uppercase'}}>{T.newsletter}</h4><div style={{fontSize:11.5,color:'rgba(255,255,255,0.55)',marginBottom:10}}>Recevez les dernières actus directement par email.</div><div style={{display:'flex',background:'rgba(255,255,255,0.07)',borderRadius:10,padding:4,border:'1px solid rgba(255,255,255,0.08)'}}><input value={newsletterEmail} onChange={e=>setNewsletterEmail(e.target.value)} placeholder="Votre email" style={{flex:1,padding:'10px 12px',borderRadius:'6px',border:'none',fontSize:12,background:'transparent',color:'white',outline:'none'}} /><button onClick={handleNewsletter} style={{background:'#ffcc00',color:'#000',border:'none',padding:'0 18px',borderRadius:'6px',fontWeight:900,fontSize:12,cursor:'pointer'}}>OK</button></div><div style={{marginTop:14,fontSize:10,color:'rgba(255,255,255,0.35)',textAlign:'center'}}><div>© 2026 Rius Multimédia • Tous droits réservés</div><div style={{marginTop:4,letterSpacing:'0.06em',opacity:0.7,fontSize:10.5,fontStyle:'normal',fontWeight:400}}>Voir Vérifier Informer</div></div></div></div><div style={{borderTop:'1px solid rgba(255,255,255,0.06)',padding:'12px 24px',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:10.5,color:'rgba(255,255,255,0.35)',maxWidth:1400,margin:'0 auto'}}><span>Conçu avec ❤ à Lomé</span><span style={{display:'flex',gap:16}}><a href="#" style={{color:'inherit',textDecoration:'none'}}>Mentions légales</a><a href="#" style={{color:'inherit',textDecoration:'none'}}>Confidentialité</a><a href="#" style={{color:'inherit',textDecoration:'none'}}>Contact</a></span></div></footer>
       <InstallBanner deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} T={T} />
-      {radioStarted && actif!=='DIRECT-RADIO' && actif!=='DIRECT-TV' && (<div style={{position:'fixed', bottom:90, left:12, right:12, maxWidth:420, margin:'0 auto', background:'#0f2040', color:'white', borderRadius:14, padding:'10px 14px', display:'flex', alignItems:'center', gap:12, boxShadow:'0 10px 30px rgba(0,0,0,0.5)', zIndex:9997, border:'2px solid #16a34a'}}><img src={radioMainTracks[radioTrackIndex]?.image||'/logo.png'} style={{width:44,height:44,borderRadius:8,objectFit:'cover',flexShrink:0}} alt="" /><div style={{flex:1,minWidth:0}}><div style={{fontSize:9,fontWeight:900,color:'#a8ff00',textTransform:'uppercase'}}>📻 Radio Rius</div><div style={{fontSize:12,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{radioMainTracks[radioTrackIndex]?.title||'En cours...'}</div></div><button onClick={toggleRadioPlay} style={{background:'#a8ff00',border:0,color:'black',width:36,height:36,borderRadius:'50%',fontSize:14,cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{radioIsPlaying?'⏸':'▶'}</button><button onClick={()=>{ goTo('DIRECT-RADIO') }} title="Revenir a la radio" style={{background:'rgba(255,255,255,0.15)',border:0,color:'white',width:32,height:32,borderRadius:'50%',fontSize:13,cursor:'pointer',flexShrink:0}}>⤴</button><button onClick={()=>{ pausePlayback(); setRadioStarted(false) }} title="Fermer" style={{background:'rgba(255,255,255,0.15)',border:0,color:'white',width:28,height:28,borderRadius:'50%',fontSize:12,cursor:'pointer',flexShrink:0}}>✕</button></div>)}
+      {radioStarted && actif!=='DIRECT-RADIO' && actif!=='DIRECT-TV' && (<div style={{position:'fixed', bottom:90, left:12, right:12, maxWidth:420, margin:'0 auto', background:'#0f2040', color:'white', borderRadius:14, padding:'10px 14px', display:'flex', alignItems:'center', gap:12, boxShadow:'0 10px 30px rgba(0,0,0,0.5)', zIndex:9997, border:'2px solid #16a34a'}}><img src={currentRadioItem?.image||'/logo.png'} style={{width:44,height:44,borderRadius:8,objectFit:'cover',flexShrink:0}} alt="" /><div style={{flex:1,minWidth:0}}><div style={{fontSize:9,fontWeight:900,color:'#a8ff00',textTransform:'uppercase'}}>📻 Radio Rius</div><div style={{fontSize:12,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{currentRadioItem?.title||'En cours...'}</div></div><button onClick={toggleRadioPlay} style={{background:'#a8ff00',border:0,color:'black',width:36,height:36,borderRadius:'50%',fontSize:14,cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{radioIsPlaying?'⏸':'▶'}</button><button onClick={()=>{ goTo('DIRECT-RADIO') }} title="Revenir a la radio" style={{background:'rgba(255,255,255,0.15)',border:0,color:'white',width:32,height:32,borderRadius:'50%',fontSize:13,cursor:'pointer',flexShrink:0}}>⤴</button><button onClick={()=>{ pausePlayback(); setRadioStarted(false) }} title="Fermer" style={{background:'rgba(255,255,255,0.15)',border:0,color:'white',width:28,height:28,borderRadius:'50%',fontSize:12,cursor:'pointer',flexShrink:0}}>✕</button></div>)}
     </div>
   )
 }
