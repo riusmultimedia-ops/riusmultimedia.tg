@@ -899,7 +899,7 @@ export default function App(){
 
   // Controles ecran verrouille / notification systeme (Media Session API)
   const radioCtrlRef = useRef({})
-  useEffect(()=>{ radioCtrlRef.current = { toggleRadioPlay, startPlayback, pausePlayback } })
+  useEffect(()=>{ radioCtrlRef.current = { toggleRadioPlay, pausePlayback } })
   useEffect(()=>{
     if(!('mediaSession' in navigator)) return
     try{
