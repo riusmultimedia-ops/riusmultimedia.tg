@@ -84,17 +84,20 @@ const parseIsoDuration = (iso) => {
 }
 // Recupere la duree d'une ou plusieurs videos YouTube en un seul appel (jusqu'a 50 ids a la fois).
 const fetchYoutubeDurations = async (videoIds) => {
-  if(!YOUTUBE_API_KEY || !videoIds.length) return {}
-  const out = {}
+  if(!YOUTUBE_API_KEY || !videoIds.length) return { durations:{}, errors: !YOUTUBE_API_KEY? ['Cle API YouTube absente (VITE_YOUTUBE_API_KEY non definie)'] : [] }
+  const durations = {}
+  const errors = []
   for(let i=0;i<videoIds.length;i+=50){
     const batch = videoIds.slice(i,i+50)
     try{
       const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${batch.join(',')}&key=${YOUTUBE_API_KEY}`)
       const data = await res.json()
-      (data.items||[]).forEach(it=>{ out[it.id] = parseIsoDuration(it.contentDetails?.duration) })
-    }catch{ /* on continue avec les autres lots */ }
+      if(!res.ok){ errors.push(data?.error?.message || `Erreur HTTP ${res.status}`); continue }
+      if(!data.items || !data.items.length){ errors.push('Aucune video retournee par YouTube pour ce lot (IDs invalides ou videos privees/supprimees ?)'); continue }
+      data.items.forEach(it=>{ durations[it.id] = parseIsoDuration(it.contentDetails?.duration) })
+    }catch(e){ errors.push(e.message || 'Erreur reseau'); }
   }
-  return out
+  return { durations, errors }
 }
 
 export default function Admin() {
@@ -1336,13 +1339,14 @@ export default function Admin() {
     if(!YOUTUBE_API_KEY) return alert("La cle API YouTube n'est pas configuree (VITE_YOUTUBE_API_KEY), impossible de recuperer les durees.");
     if(!confirm(`Recuperer la duree de ${missing.length} video(s) sans duree connue via YouTube ?`)) return;
     const idMap = missing.map(v=>({ v, ytId:getYtId(v.url||'') })).filter(x=>x.ytId);
+    if(!idMap.length) return alert(`Aucun lien YouTube valide trouve parmi ces ${missing.length} video(s) (impossible d'en extraire l'identifiant).`);
     setBackfillProgress({current:0, total:idMap.length, ok:0});
-    const durs = await fetchYoutubeDurations(idMap.map(x=>x.ytId));
+    const {durations, errors} = await fetchYoutubeDurations(idMap.map(x=>x.ytId));
     let ok=0;
     for(let i=0;i<idMap.length;i++){
       const {v, ytId} = idMap[i];
       setBackfillProgress({current:i+1, total:idMap.length, ok});
-      const dur = durs[ytId];
+      const dur = durations[ytId];
       if(dur){
         const res = await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ duration_seconds:dur }) });
         if(res.ok) ok++;
@@ -1351,6 +1355,7 @@ export default function Admin() {
     }
     setBackfillProgress(null);
     fetchVideoPlaylist();
+    if(ok===0 && errors.length){ alert(`Echec de la recuperation des durees.\n\nErreur(s) retournee(s) par YouTube :\n- ${[...new Set(errors)].join('\n- ')}`); return; }
     alert(`${ok} / ${idMap.length} duree(s) recuperee(s) avec succes.`);
   };
   const handleAddVideoTrack = async () => {
@@ -1364,7 +1369,7 @@ export default function Admin() {
     if(dup) return alert(`Cette video est deja dans ${targetFolder? `le groupe "${targetFolder}"`:'la playlist generale (sans groupe)'}. Change de groupe si tu veux quand meme l'ajouter.`);
     const thumb = getYoutubeThumb(newVideoUrl.trim());
     let duration = null;
-    if(!editingVideoId){ try{ const durs = await fetchYoutubeDurations([id]); duration = durs[id]||null; }catch{} }
+    if(!editingVideoId){ try{ const {durations} = await fetchYoutubeDurations([id]); duration = durations[id]||null; }catch{} }
     const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, is_jingle:newVideoIsJingle, is_ad:newVideoIsAd, ad_times:newVideoIsAd? newVideoAdTimes : [], active: editingVideoId? undefined : canPublishTab('videotv'), folder:newVideoFolder.trim()||null, duration_seconds: editingVideoId? undefined : duration };
     if(editingVideoId){ delete payload.active; delete payload.duration_seconds; }
     const url = editingVideoId? `${supabaseUrl}/rest/v1/video_playlist?id=eq.${editingVideoId}` : `${supabaseUrl}/rest/v1/video_playlist`;
