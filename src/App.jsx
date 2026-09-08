@@ -54,7 +54,8 @@ let tvReplayMemory = { videoId: null, time: 0 }
 // depuis le dernier grand melange (00h00). Ce calcul est deterministe : deux visiteurs qui
 // se connectent au meme instant obtiennent exactement le meme resultat, sans avoir besoin
 // d'un serveur qui "pousse" l'info en continu.
-const DEFAULT_TRACK_DURATION = 210 // 3min30, utilise seulement si la duree reelle d'une piste est inconnue
+const DEFAULT_TRACK_DURATION = 210 // 3min30, utilise seulement si la duree reelle d'une piste/video est inconnue
+const DEFAULT_JINGLE_DURATION = 8 // un jingle est court : ne jamais utiliser la duree par defaut d'une piste pour un jingle
 
 const hashSeed = (str) => { let h=0; for(let i=0;i<str.length;i++){ h = (Math.imul(31,h) + str.charCodeAt(i))|0 }; return h }
 const mulberry32 = (seed) => { let s=seed|0; return function(){ s = (s + 0x6D2B79F5)|0; let t = Math.imul(s ^ s>>>15, 1 | s); t = (t + Math.imul(t ^ t>>>7, 61 | t)) ^ t; return ((t ^ t>>>14) >>> 0) / 4294967296 } }
@@ -66,16 +67,25 @@ const seededShuffle = (arr, seedStr) => {
 }
 const utcMidnightOf = (d) => { const x = new Date(d); x.setUTCHours(0,0,0,0); return x }
 const utcDateKey = (d) => d.toISOString().slice(0,10)
-const durOf = (item) => (item && item.duration_seconds) || DEFAULT_TRACK_DURATION
+const durOf = (item) => (item && item.duration_seconds) || (item && item.is_jingle ? DEFAULT_JINGLE_DURATION : DEFAULT_TRACK_DURATION)
+
+// Interprete une date renvoyee par la base comme un instant UTC absolu, meme si la chaine ne
+// precise pas explicitement de fuseau horaire (sinon chaque appareil l'interprete selon SON
+// PROPRE fuseau local, ce qui desynchronise completement le calcul entre deux visiteurs).
+const parseUtc = (str) => {
+  if(!str) return null
+  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(str)
+  return new Date(hasTz ? str : str.replace(' ','T')+'Z')
+}
 
 // Construit l'ordre du jour pour une "piste generale" (radio ou tv) : les elements crees avant
 // le dernier 00h sont melanges avec une graine propre au jour (identique pour tout le monde),
 // les elements ajoutes APRES le dernier 00h sont mis en bout de chaine, non melanges, dans
 // l'ordre d'ajout (ils ne rejoindront le grand melange qu'au prochain 00h).
 const buildDailyOrder = (pool, boundary, seedSuffix) => {
-  const before = pool.filter(t => !t.created_at || new Date(t.created_at) < boundary)
-  const after = pool.filter(t => t.created_at && new Date(t.created_at) >= boundary)
-    .sort((a,b)=> new Date(a.created_at) - new Date(b.created_at))
+  const before = pool.filter(t => !t.created_at || parseUtc(t.created_at) < boundary)
+  const after = pool.filter(t => t.created_at && parseUtc(t.created_at) >= boundary)
+    .sort((a,b)=> parseUtc(a.created_at) - parseUtc(b.created_at))
   return [...seededShuffle(before, utcDateKey(boundary)+':'+seedSuffix), ...after]
 }
 
@@ -101,39 +111,58 @@ const getDayBlockSegments = (blocks, dayDate) => {
   return segs.sort((a,b)=>a.start-b.start)
 }
 
-// Calcule la position (index de piste + decalage en secondes) dans la playlist generale a
-// l'instant "now", en tenant compte des groupes deja passes aujourd'hui : chaque groupe
-// "avale" la piste qui etait en cours au moment ou il a demarre (elle n'est pas terminee,
-// pas reprise plus tard), et la suite reprend a la piste SUIVANTE une fois le groupe fini.
-const computeGeneralPointer = (orderedTracks, jingles, blockSegments, boundary, now) => {
+// Cadence des jingles : radio = un jingle apres CHAQUE piste (gapFn toujours 1) ;
+// tv = un jingle toutes les 3 a 5 videos (variation deterministe et identique pour tous,
+// basee sur une graine, pour retrouver la variete de l'ancien systeme sans perdre la sync).
+const makeGapFn = (seedSuffix) => {
+  if(seedSuffix.startsWith('radio')) return () => 1
+  return (occIdx) => 3 + (hashSeed(seedSuffix+':gap:'+occIdx) >>> 0) % 3
+}
+
+// Un "pas" de la sequence : soit la piste suivante de la playlist, soit (si le seuil de
+// cadence est atteint) le jingle qui doit s'intercaler avant de continuer.
+const stepAt = (state, orderedTracks, jingles, gapFn) => {
+  const total = orderedTracks.length
+  if(state.pendingJingle && jingles.length){
+    const jIdx = ((state.jingleOccIdx % jingles.length)+jingles.length)%jingles.length
+    const jingle = jingles[jIdx]
+    return { item: jingle, isJingle:true, duration: durOf(jingle), next: { trackPtr: state.trackPtr, tracksSinceJingle:0, jingleOccIdx: state.jingleOccIdx+1, pendingJingle:false } }
+  }
+  const track = orderedTracks[((state.trackPtr%total)+total)%total]
+  const tsj = state.tracksSinceJingle + 1
+  const gap = jingles.length? gapFn(state.jingleOccIdx) : Infinity
+  const pending = tsj >= gap
+  return { item: track, isJingle:false, duration: durOf(track), next: { trackPtr: state.trackPtr+1, tracksSinceJingle: tsj, jingleOccIdx: state.jingleOccIdx, pendingJingle: pending } }
+}
+
+// Calcule ce qui doit etre diffuse a l'instant "now" dans une playlist generale, en tenant
+// compte des groupes deja passes aujourd'hui : chaque groupe "avale" le pas (piste ou jingle)
+// qui etait en cours au moment ou il a demarre (il n'est pas termine, pas repris plus tard),
+// et la cadence de jingle repart de zero une fois le groupe termine.
+const computeGeneralPointer = (orderedTracks, jingles, blockSegments, boundary, now, gapFn) => {
   const total = orderedTracks.length
   if(!total) return null
   let cursor = new Date(boundary)
-  let ptr = 0
-  const cycleDuration = (idx) => {
-    const track = orderedTracks[((idx%total)+total)%total]
-    const jingle = jingles.length? jingles[((idx%jingles.length)+jingles.length)%jingles.length] : null
-    return durOf(track) + (jingle? durOf(jingle) : 0)
-  }
+  let state = { trackPtr:0, tracksSinceJingle:0, jingleOccIdx:0, pendingJingle:false }
   for(const seg of blockSegments){
     if(seg.start >= now) break
     while(cursor < seg.start){
-      const cyc = cycleDuration(ptr)
-      if(new Date(cursor.getTime()+cyc*1000) <= seg.start){ cursor = new Date(cursor.getTime()+cyc*1000); ptr++ }
-      else break
+      const step = stepAt(state, orderedTracks, jingles, gapFn)
+      const stepEnd = new Date(cursor.getTime()+step.duration*1000)
+      if(stepEnd <= seg.start){ cursor = stepEnd; state = step.next } else break
     }
-    if(cursor < seg.start) ptr++ // le cycle en cours est interrompu par le groupe : on saute a la piste suivante
+    if(cursor < seg.start){ state = { trackPtr: state.trackPtr + (state.pendingJingle?0:1), tracksSinceJingle:0, jingleOccIdx: state.jingleOccIdx, pendingJingle:false } }
     cursor = seg.end
-    if(cursor > now) return { mode:'inBlock', pendingPtr: ptr, pendingCursor: cursor }
+    if(cursor > now) return { mode:'inBlock' }
   }
   while(true){
-    const cyc = cycleDuration(ptr)
-    if(new Date(cursor.getTime()+cyc*1000) <= now){ cursor = new Date(cursor.getTime()+cyc*1000); ptr++ } else break
+    const step = stepAt(state, orderedTracks, jingles, gapFn)
+    const stepEnd = new Date(cursor.getTime()+step.duration*1000)
+    if(stepEnd <= now){ cursor = stepEnd; state = step.next } else break
   }
-  const elapsedInCycle = Math.max(0, Math.round((now - cursor)/1000))
-  const trackDur = durOf(orderedTracks[((ptr%total)+total)%total])
-  const inJingle = elapsedInCycle >= trackDur
-  return { mode:'general', index: ((ptr%total)+total)%total, jingleIndex: jingles.length? ((ptr%jingles.length)+jingles.length)%jingles.length : null, offsetSeconds: inJingle? elapsedInCycle-trackDur : elapsedInCycle, inJingle }
+  const finalStep = stepAt(state, orderedTracks, jingles, gapFn)
+  const offsetSeconds = Math.max(0, Math.round((now-cursor)/1000))
+  return { mode:'general', item: finalStep.item, isJingle: finalStep.isJingle, offsetSeconds }
 }
 
 // Fonction principale : donne, a l'instant "now", ce qui doit etre diffuse (mode general ou
@@ -143,6 +172,7 @@ const computeSchedule = (fullPool, timeBlocks, seedSuffix, now) => {
   const generalPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && !t.folder)
   const jingles = fullPool.filter(t=>t.is_jingle)
   if(!generalPool.length) return null
+  const gapFn = makeGapFn(seedSuffix)
   const boundary = utcMidnightOf(now)
   const orderedGeneral = buildDailyOrder(generalPool, boundary, seedSuffix)
   const segsToday = getDayBlockSegments(timeBlocks, boundary)
@@ -153,13 +183,13 @@ const computeSchedule = (fullPool, timeBlocks, seedSuffix, now) => {
     // Pour un groupe, l'ancre de synchronisation est le debut du segment actif aujourd'hui (deterministe, identique pour tous)
     const seg = segsToday.find(s=> s.folder===activeBlock.folder && s.start<=now && now<s.end) || { start: boundary }
     const orderedGroup = buildDailyOrder(pool, boundary, seedSuffix+':grp:'+activeBlock.folder)
-    const p = computeGeneralPointer(orderedGroup, jingles, [], seg.start, now)
+    const p = computeGeneralPointer(orderedGroup, jingles, [], seg.start, now, gapFn)
     if(!p || p.mode!=='general') return null
-    return { folder: activeBlock.folder, track: orderedGroup[p.index], offsetSeconds: p.offsetSeconds, inJingle: p.inJingle, jingle: p.jingleIndex!=null? jingles[p.jingleIndex] : null }
+    return { folder: activeBlock.folder, track: p.isJingle? null : p.item, offsetSeconds: p.offsetSeconds, inJingle: p.isJingle, jingle: p.isJingle? p.item : null }
   }
-  const p = computeGeneralPointer(orderedGeneral, jingles, segsToday, boundary, now)
+  const p = computeGeneralPointer(orderedGeneral, jingles, segsToday, boundary, now, gapFn)
   if(!p || p.mode!=='general') return null
-  return { folder: null, track: orderedGeneral[p.index], offsetSeconds: p.offsetSeconds, inJingle: p.inJingle, jingle: p.jingleIndex!=null? jingles[p.jingleIndex] : null }
+  return { folder: null, track: p.isJingle? null : p.item, offsetSeconds: p.offsetSeconds, inJingle: p.isJingle, jingle: p.isJingle? p.item : null }
 }
 // ==================== FIN DU MOTEUR DE DIFFUSION SYNCHRONISEE ====================
 
