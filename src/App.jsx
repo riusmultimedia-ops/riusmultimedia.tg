@@ -162,7 +162,7 @@ const computeGeneralPointer = (orderedTracks, jingles, blockSegments, boundary, 
   }
   const finalStep = stepAt(state, orderedTracks, jingles, gapFn)
   const offsetSeconds = Math.max(0, Math.round((now-cursor)/1000))
-  return { mode:'general', item: finalStep.item, isJingle: finalStep.isJingle, offsetSeconds }
+  return { mode:'general', item: finalStep.item, isJingle: finalStep.isJingle, offsetSeconds, nextState: finalStep.next }
 }
 
 // Fonction principale : donne, a l'instant "now", ce qui doit etre diffuse (mode general ou
@@ -185,11 +185,18 @@ const computeSchedule = (fullPool, timeBlocks, seedSuffix, now) => {
     const orderedGroup = buildDailyOrder(pool, boundary, seedSuffix+':grp:'+activeBlock.folder)
     const p = computeGeneralPointer(orderedGroup, jingles, [], seg.start, now, gapFn)
     if(!p || p.mode!=='general') return null
-    return { folder: activeBlock.folder, track: p.isJingle? null : p.item, offsetSeconds: p.offsetSeconds, inJingle: p.isJingle, jingle: p.isJingle? p.item : null }
+    return { folder: activeBlock.folder, track: p.isJingle? null : p.item, offsetSeconds: p.offsetSeconds, inJingle: p.isJingle, jingle: p.isJingle? p.item : null, _local: { orderedTracks: orderedGroup, jingles, gapFn, state: p.nextState } }
   }
   const p = computeGeneralPointer(orderedGeneral, jingles, segsToday, boundary, now, gapFn)
   if(!p || p.mode!=='general') return null
-  return { folder: null, track: p.isJingle? null : p.item, offsetSeconds: p.offsetSeconds, inJingle: p.isJingle, jingle: p.isJingle? p.item : null }
+  return { folder: null, track: p.isJingle? null : p.item, offsetSeconds: p.offsetSeconds, inJingle: p.isJingle, jingle: p.isJingle? p.item : null, _local: { orderedTracks: orderedGeneral, jingles, gapFn, state: p.nextState } }
+}
+// Avancement local fiable : utilise directement la sequence deterministe (stepAt), sans jamais
+// recalculer "depuis minuit". Evite qu'un jingle tres court soit "avale" silencieusement par un
+// leger decalage de timing (temps de chargement, etc.) a chaque transition.
+const advanceLocal = (local) => {
+  const step = stepAt(local.state, local.orderedTracks, local.jingles, local.gapFn)
+  return { item: step.item, isJingle: step.isJingle, offsetSeconds: 0, _local: { ...local, state: step.next } }
 }
 // ==================== FIN DU MOTEUR DE DIFFUSION SYNCHRONISEE ====================
 
@@ -344,19 +351,32 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
       setTimeout(()=>{ if(!destroyed) setIsLoading(false) }, 1800)
     }
 
-    // Diffusion synchronisee : calcule ce qui doit passer MAINTENANT (video generale ou groupe
-    // programme) et le charge. Rappelee a la fin de chaque clip/jingle/pub et lors d'une
-    // transition programmee (debut/fin de groupe).
-    const playScheduledTv = () => {
-      if(destroyed || !playerRef.current) return
-      const sched = computeSchedule(videoPlaylistRef.current, tvTimeBlocksRef.current, 'tv', new Date())
-      if(!sched || !sched.track) return
-      const item = (sched.inJingle && sched.jingle) ? sched.jingle : sched.track
+    const localScheduleRef = { current: null }
+    const playTvItem = (item, offsetSeconds) => {
+      if(destroyed || !playerRef.current || !item) return
       const ytId = getYoutubeIdRaw(item.url)
-      if(!ytId){ return }
-      phaseRef.current = (sched.inJingle && sched.jingle) ? 'jingle' : 'clip'
+      if(!ytId) return
+      phaseRef.current = item.is_jingle ? 'jingle' : 'clip'
       showLoadingBriefly()
-      try{ playerRef.current.loadVideoById({videoId:ytId, startSeconds: Math.max(0, Math.round(sched.offsetSeconds||0))}) }catch{}
+      try{ playerRef.current.loadVideoById({videoId:ytId, startSeconds: Math.max(0, Math.round(offsetSeconds||0))}) }catch{}
+    }
+    // Resync complet (calcul depuis l'heure reelle) : utilise uniquement a la connexion initiale
+    // et lors d'une transition programmee (debut/fin de groupe / changement de jour).
+    const resyncTv = () => {
+      const sched = computeSchedule(videoPlaylistRef.current, tvTimeBlocksRef.current, 'tv', new Date())
+      if(!sched) return
+      const item = (sched.inJingle && sched.jingle) ? sched.jingle : sched.track
+      localScheduleRef.current = sched._local || null
+      playTvItem(item, sched.offsetSeconds)
+    }
+    // Avancement normal (fin de clip/jingle) : suit directement la sequence deterministe deja
+    // calculee, sans jamais recalculer "depuis minuit" — evite qu'un jingle tres court soit
+    // avale silencieusement par un leger decalage de timing (voir advanceLocal).
+    const advanceTv = () => {
+      if(!localScheduleRef.current){ resyncTv(); return }
+      const next = advanceLocal(localScheduleRef.current)
+      localScheduleRef.current = next._local
+      playTvItem(next.item, 0)
     }
 
     const maybeTriggerAd = () => {
@@ -401,9 +421,9 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
       if(e.data!==window.YT.PlayerState.ENDED) return
       if(phaseRef.current==='ad'){
         pausedForAdRef.current = null
-        playScheduledTv()
+        resyncTv() // apres une pub, on rattrape la position reelle (evenement rare, pas de risque de saut de jingle)
       } else {
-        playScheduledTv()
+        advanceTv()
       }
     }
 
@@ -413,6 +433,7 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
       const initItem = initSched? ((initSched.inJingle && initSched.jingle) ? initSched.jingle : initSched.track) : null
       const initId = initItem? getYoutubeIdRaw(initItem.url) : null
       phaseRef.current = (initSched && initSched.inJingle && initSched.jingle) ? 'jingle' : 'clip'
+      localScheduleRef.current = initSched? (initSched._local || null) : null
       playerRef.current = new window.YT.Player(containerRef.current, {
         width:'100%', height:'100%',
         videoId: initId,
@@ -421,9 +442,20 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
           onReady: (e)=>{
             setTimeout(()=>{ if(!destroyed) setIsLoading(false) }, 1800)
             adCheckIntervalRef.current = setInterval(maybeTriggerAd, 20000)
+            const lastDayKeyRef = { current: utcDateKey(new Date()) }
             scheduleCheckIntervalRef.current = setInterval(()=>{
               if(destroyed || phaseRef.current!=='clip') return
               const now = new Date()
+
+              // Changement de jour (00h) : le grand melange quotidien a change, on resynchronise completement
+              const dayKeyNow = utcDateKey(now)
+              if(dayKeyNow !== lastDayKeyRef.current){
+                lastDayKeyRef.current = dayKeyNow
+                scheduleTransitionFiredRef.current = { from:'day-change', to:'day-change' }
+                forceEarlyTvTransition(()=>{ scheduleTransitionFiredRef.current=null; resyncTv() })
+                return
+              }
+
               const currentBlock = getActiveBlockFor(tvTimeBlocksRef.current, now)
               const currentKey = currentBlock? String(currentBlock.id) : 'none'
               if(scheduleTransitionFiredRef.current && scheduleTransitionFiredRef.current.to===currentKey){
@@ -435,7 +467,7 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
               const futureKey = futureBlock? String(futureBlock.id) : 'none'
               if(currentKey===futureKey) return
               scheduleTransitionFiredRef.current = { from: currentKey, to: futureKey }
-              forceEarlyTvTransition(()=>{ playScheduledTv() })
+              forceEarlyTvTransition(()=>{ resyncTv() })
             }, 1000)
           },
           onStateChange: onPlayerStateChange
@@ -878,30 +910,55 @@ export default function App(){
   }
 
   // Diffusion synchronisee : calcule ce qui doit jouer MAINTENANT (piste generale ou groupe
-  // programme) et le lance. Appelee au demarrage, a la fin de chaque piste/jingle, et lors
-  // d'une transition programmee (debut/fin de groupe).
-  const playScheduledRadio = () => {
-    const sched = computeSchedule(radioPlaylistRef.current, radioTimeBlocksRef.current, 'radio', new Date())
-    if(!sched || !sched.track){ return }
-    const source = sched.inJingle && sched.jingle ? sched.jingle : sched.track
+  // programme) a partir de l'heure reelle, et le lance. Utilise uniquement a la connexion
+  // initiale et lors d'une transition programmee (debut/fin de groupe / changement de jour).
+  const localScheduleRef = useRef(null)
+  const playItem = (source, offsetSeconds) => {
     if(!source || !source.url) return
-    radioPhaseRef.current = (sched.inJingle && sched.jingle) ? 'jingle' : 'track'
+    radioPhaseRef.current = source.is_jingle ? 'jingle' : 'track'
     setCurrentRadioItem(source)
     setRadioStarted(true)
-    playSource(source.url, Math.max(0, sched.offsetSeconds||0), ()=>{ playScheduledRadio() })
-    // precharge la suite probable (piste suivante ou jingle suivant), pour une transition sans coupure
-    const remaining = Math.max(2, durOf(source) - (sched.offsetSeconds||0) + 1)
-    const soon = new Date(Date.now() + remaining*1000)
-    const nextSched = computeSchedule(radioPlaylistRef.current, radioTimeBlocksRef.current, 'radio', soon)
-    if(nextSched){ const nsrc = (nextSched.inJingle && nextSched.jingle)? nextSched.jingle : nextSched.track; if(nsrc?.url) decodeTrack(nsrc.url).catch(()=>{}) }
+    playSource(source.url, Math.max(0, offsetSeconds||0), ()=>{ advanceRadio() })
+    // precharge la piste/jingle suivant(e) (sans consommer l'etat), pour une transition sans coupure
+    if(localScheduleRef.current){
+      const peek = stepAt(localScheduleRef.current.state, localScheduleRef.current.orderedTracks, localScheduleRef.current.jingles, localScheduleRef.current.gapFn)
+      if(peek?.item?.url) decodeTrack(peek.item.url).catch(()=>{})
+    }
   }
-  const playScheduledRadioRef = useRef(playScheduledRadio)
-  playScheduledRadioRef.current = playScheduledRadio
+  const resyncRadio = () => {
+    const sched = computeSchedule(radioPlaylistRef.current, radioTimeBlocksRef.current, 'radio', new Date())
+    if(!sched){ return }
+    const source = sched.inJingle && sched.jingle ? sched.jingle : sched.track
+    localScheduleRef.current = sched._local || null
+    playItem(source, sched.offsetSeconds)
+  }
+  // Avancement normal (fin de piste/jingle) : suit directement la sequence deterministe deja
+  // calculee, sans jamais recalculer "depuis minuit" — evite qu'un jingle tres court soit
+  // avale silencieusement par un leger decalage de timing (voir advanceLocal).
+  const advanceRadio = () => {
+    if(!localScheduleRef.current){ resyncRadio(); return }
+    const next = advanceLocal(localScheduleRef.current)
+    localScheduleRef.current = next._local
+    playItem(next.item, 0)
+  }
+  const playScheduledRadioRef = useRef(resyncRadio)
+  playScheduledRadioRef.current = resyncRadio
 
+  const lastDayKeyRef = useRef(utcDateKey(new Date()))
   useEffect(()=>{
     const id = setInterval(()=>{
       if(!radioIsPlayingRef.current) return
       const now = new Date()
+
+      // Changement de jour (00h) : le grand melange quotidien a change, on resynchronise completement
+      const dayKeyNow = utcDateKey(now)
+      if(dayKeyNow !== lastDayKeyRef.current){
+        lastDayKeyRef.current = dayKeyNow
+        scheduleTransitionFiredRef.current = { from:'day-change', to:'day-change' }
+        forceEarlyTransition(()=>{ scheduleTransitionFiredRef.current=null; playScheduledRadioRef.current() })
+        return
+      }
+
       const currentBlock = getActiveBlockFor(radioTimeBlocksRef.current, now)
       const currentKey = currentBlock? String(currentBlock.id) : 'none'
 
@@ -923,8 +980,8 @@ export default function App(){
   },[])
 
   const pausePlayback=()=>{ const el=radioAudioElRef.current; if(!el) return; const info=bufferCacheRef.current[currentUrlRef.current]; const leadIn=info?.leadIn||0; pausedOffsetRef.current=Math.max(0, el.currentTime-leadIn); try{ el.pause() }catch{}; setRadioIsPlaying(false) }
-  const toggleRadioPlay=()=>{ if(radioIsPlaying) pausePlayback(); else playScheduledRadio() }
-  useEffect(()=>{ if(actif!=='DIRECT-RADIO') return; if(youtubeLive===null) return; if(youtubeLive) return; if(radioIsPlaying) return; if(!radioPlaylist.filter(t=>!t.is_jingle&&!t.is_ad&&!t.folder).length) return; playScheduledRadio() },[actif, youtubeLive, radioPlaylist])
+  const toggleRadioPlay=()=>{ if(radioIsPlaying) pausePlayback(); else resyncRadio() }
+  useEffect(()=>{ if(actif!=='DIRECT-RADIO') return; if(youtubeLive===null) return; if(youtubeLive) return; if(radioIsPlaying) return; if(!radioPlaylist.filter(t=>!t.is_jingle&&!t.is_ad&&!t.folder).length) return; resyncRadio() },[actif, youtubeLive, radioPlaylist])
   useEffect(()=>{ if(actif==='DIRECT-TV') pausePlayback() },[actif])
 
   // Controles ecran verrouille / notification systeme (Media Session API)
@@ -954,7 +1011,7 @@ export default function App(){
   const duckedRadioRef = useRef(false)
   const startPlaybackRef = useRef(null)
   const pausePlaybackRef = useRef(null)
-  useEffect(()=>{ startPlaybackRef.current = playScheduledRadio; pausePlaybackRef.current = pausePlayback })
+  useEffect(()=>{ startPlaybackRef.current = resyncRadio; pausePlaybackRef.current = pausePlayback })
   useEffect(()=>{
     const handlePlay = (e) => {
       const el = e.target
