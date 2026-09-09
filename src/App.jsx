@@ -983,7 +983,7 @@ export default function App(){
     return ()=>clearInterval(id)
   },[])
 
-  const pausePlayback=()=>{ const el=radioAudioElRef.current; if(!el) return; playTokenRef.current++; el.onended=null; el.ontimeupdate=null; const info=bufferCacheRef.current[currentUrlRef.current]; const leadIn=info?.leadIn||0; pausedOffsetRef.current=Math.max(0, el.currentTime-leadIn); try{ el.pause() }catch{}; setRadioIsPlaying(false) }
+  const pausePlayback=()=>{ playTokenRef.current++; const el=radioAudioElRef.current; if(!el){ setRadioIsPlaying(false); return } el.onended=null; el.ontimeupdate=null; const info=bufferCacheRef.current[currentUrlRef.current]; const leadIn=info?.leadIn||0; pausedOffsetRef.current=Math.max(0, el.currentTime-leadIn); try{ el.pause() }catch{}; setRadioIsPlaying(false) }
   const toggleRadioPlay=()=>{ if(radioIsPlaying) pausePlayback(); else resyncRadio() }
   useEffect(()=>{ if(actif!=='DIRECT-RADIO') return; if(youtubeLive===null) return; if(youtubeLive) return; if(radioIsPlaying) return; if(!radioPlaylist.filter(t=>!t.is_jingle&&!t.is_ad&&!t.folder).length) return; resyncRadio() },[actif, youtubeLive, radioPlaylist])
   useEffect(()=>{ if(actif==='DIRECT-TV') pausePlayback() },[actif])
