@@ -442,15 +442,6 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
         events: {
           onReady: (e)=>{
             setTimeout(()=>{ if(!destroyed) setIsLoading(false) }, 1800)
-            // Tente de reactiver le son automatiquement (fonctionne si le navigateur l'autorise deja
-            // pour ce site) ; sinon, l'utilisateur devra cliquer sur le bouton son.
-            setTimeout(()=>{
-              if(destroyed) return
-              try{
-                e.target.unMute()
-                if(e.target.isMuted && !e.target.isMuted()) setIsMuted(false)
-              }catch{}
-            }, 400)
             adCheckIntervalRef.current = setInterval(maybeTriggerAd, 20000)
             const lastDayKeyRef = { current: utcDateKey(new Date()) }
             scheduleCheckIntervalRef.current = setInterval(()=>{
@@ -521,7 +512,7 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
         </div>
       )}
       {isMuted && !isLoading && (
-        <button onClick={()=>{ try{ playerRef.current && playerRef.current.unMute && playerRef.current.unMute(); setIsMuted(false) }catch{} }} style={{position:'absolute', bottom:12, left:12, zIndex:6, background:'rgba(220,38,38,0.9)', color:'white', border:0, borderRadius:20, padding:'8px 16px', fontSize:12, fontWeight:900, cursor:'pointer', display:'flex', alignItems:'center', gap:6, boxShadow:'0 4px 12px rgba(0,0,0,0.4)'}}>🔇 Activer le son</button>
+        <button onClick={()=>{ try{ if(playerRef.current){ playerRef.current.unMute && playerRef.current.unMute(); playerRef.current.playVideo && playerRef.current.playVideo() } setIsMuted(false) }catch{} }} style={{position:'absolute', bottom:12, left:12, zIndex:6, background:'rgba(220,38,38,0.9)', color:'white', border:0, borderRadius:20, padding:'8px 16px', fontSize:12, fontWeight:900, cursor:'pointer', display:'flex', alignItems:'center', gap:6, boxShadow:'0 4px 12px rgba(0,0,0,0.4)'}}>🔇 Activer le son</button>
       )}
     </div>
   )
