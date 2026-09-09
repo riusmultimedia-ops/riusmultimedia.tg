@@ -278,7 +278,7 @@ function TvTickers({flashList, annoncesList, showInfo=true, showAnnonces=true}){
           <div style={{background:'#0f2040', color:'#ffcc00', fontWeight:900, fontSize:9, padding:'0 8px', height:'100%', display:'flex', alignItems:'center', flexShrink:0}}>📢 ANNONCES</div>
           <div style={{flex:1, overflow:'hidden'}}>
             <div className="live-text2" style={{display:'flex', alignItems:'center', whiteSpace:'nowrap'}}>
-              {annoncesList.map((t,i)=>(<span key={i} style={{color:'white', fontSize:10, fontWeight:700, marginRight:50}}>{t}</span>))}
+              {annoncesList.map((t,i)=>(<span key={i} style={{color:'white', fontSize:10, fontWeight:700, marginRight:50, display:'inline-flex', alignItems:'center', gap:6}}><span style={{width:5,height:5,background:'#ff3b3b',borderRadius:'50%',display:'inline-block',flexShrink:0}}></span>{t}</span>))}
             </div>
           </div>
         </div>
