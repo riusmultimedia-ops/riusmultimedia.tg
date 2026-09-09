@@ -335,6 +335,7 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
   const pausedForAdRef = useRef(null)
   const playedAdSlotsRef = useRef(new Set())
   const [isLoading, setIsLoading] = useState(true)
+  const [isMuted, setIsMuted] = useState(true)
   const videoPlaylistRef = useRef(videoPlaylist)
   videoPlaylistRef.current = videoPlaylist
   const tvTimeBlocksRef = useRef(tvTimeBlocks)
@@ -437,10 +438,19 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
       playerRef.current = new window.YT.Player(containerRef.current, {
         width:'100%', height:'100%',
         videoId: initId,
-        playerVars: { autoplay:1, fs:0, controls:0, disablekb:1, modestbranding:1, start: initSched? Math.max(0, Math.round(initSched.offsetSeconds||0)) : 0 },
+        playerVars: { autoplay:1, mute:1, fs:0, controls:0, disablekb:1, modestbranding:1, start: initSched? Math.max(0, Math.round(initSched.offsetSeconds||0)) : 0 },
         events: {
           onReady: (e)=>{
             setTimeout(()=>{ if(!destroyed) setIsLoading(false) }, 1800)
+            // Tente de reactiver le son automatiquement (fonctionne si le navigateur l'autorise deja
+            // pour ce site) ; sinon, l'utilisateur devra cliquer sur le bouton son.
+            setTimeout(()=>{
+              if(destroyed) return
+              try{
+                e.target.unMute()
+                if(e.target.isMuted && !e.target.isMuted()) setIsMuted(false)
+              }catch{}
+            }, 400)
             adCheckIntervalRef.current = setInterval(maybeTriggerAd, 20000)
             const lastDayKeyRef = { current: utcDateKey(new Date()) }
             scheduleCheckIntervalRef.current = setInterval(()=>{
@@ -509,6 +519,9 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
           <img src="/logo.png" style={{width:56,height:56,borderRadius:'50%',opacity:0.9}} alt="" />
           <div style={{color:'rgba(255,255,255,0.7)',fontSize:12,fontWeight:700,letterSpacing:'0.05em'}}>CHARGEMENT...</div>
         </div>
+      )}
+      {isMuted && !isLoading && (
+        <button onClick={()=>{ try{ playerRef.current && playerRef.current.unMute && playerRef.current.unMute(); setIsMuted(false) }catch{} }} style={{position:'absolute', bottom:12, left:12, zIndex:6, background:'rgba(220,38,38,0.9)', color:'white', border:0, borderRadius:20, padding:'8px 16px', fontSize:12, fontWeight:900, cursor:'pointer', display:'flex', alignItems:'center', gap:6, boxShadow:'0 4px 12px rgba(0,0,0,0.4)'}}>🔇 Activer le son</button>
       )}
     </div>
   )
