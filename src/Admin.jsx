@@ -492,12 +492,24 @@ export default function Admin() {
   };
   const toggleBlockDay = (d) => setNewBlockDays(prev=> prev.includes(d)? prev.filter(x=>x!==d) : [...prev, d]);
   const resetBlockForm = () => { setNewBlockFolder(''); setNewBlockStart(''); setNewBlockEnd(''); setNewBlockDays([]); setEditingBlockId(null); };
+  const daysOverlap = (daysA, daysB) => {
+    if((daysA||[]).includes('tous') || (daysB||[]).includes('tous')) return true;
+    return (daysA||[]).some(d=>(daysB||[]).includes(d));
+  };
+  const timeToMin = (t) => { const [h,m] = (t||'00:00').split(':').map(Number); return h*60+m; };
+  const timeRangesOverlap = (aStart,aEnd,bStart,bEnd) => {
+    const toIntervals = (s,e) => { const S=timeToMin(s), E=timeToMin(e); return S<=E? [[S,E]] : [[S,1440],[0,E]]; };
+    const A = toIntervals(aStart,aEnd), B = toIntervals(bStart,bEnd);
+    return A.some(([as,ae])=>B.some(([bs,be])=> as<be && bs<ae));
+  };
+  const blocksConflict = (a,b) => daysOverlap(a.days,b.days) && timeRangesOverlap(a.start_time,a.end_time,b.start_time,b.end_time);
   const handleAddTimeBlock = async () => {
     if(!newBlockFolder.trim()) return alert('Indique le nom du groupe/dossier a programmer');
     if(!newBlockStart || !newBlockEnd) return alert('Choisis une heure de debut et de fin');
     if(newBlockDays.length===0) return alert('Choisis au moins un jour');
-    const dupBlock = radioTimeBlocks.find(b=> b.id!==editingBlockId && b.folder.trim().toLowerCase()===newBlockFolder.trim().toLowerCase());
-    if(dupBlock) return alert(`Le groupe "${newBlockFolder.trim()}" est deja programme (${dupBlock.start_time} - ${dupBlock.end_time}). Modifie cette plage existante au lieu d'en creer une nouvelle, ou choisis un autre nom de groupe.`);
+    const candidate = { days:newBlockDays, start_time:newBlockStart, end_time:newBlockEnd };
+    const dupBlock = radioTimeBlocks.find(b=> b.id!==editingBlockId && b.folder.trim().toLowerCase()===newBlockFolder.trim().toLowerCase() && blocksConflict(b, candidate));
+    if(dupBlock) return alert(`Le groupe "${newBlockFolder.trim()}" a deja une plage qui chevauche celle-ci (${dupBlock.start_time} - ${dupBlock.end_time}). Choisis un horaire ou des jours qui ne se recoupent pas, ou modifie cette plage existante.`);
     const payload = { folder:newBlockFolder.trim(), start_time:newBlockStart, end_time:newBlockEnd, days:newBlockDays, active:true };
     const url = editingBlockId? `${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${editingBlockId}` : `${supabaseUrl}/rest/v1/radio_time_blocks`;
     const method = editingBlockId? 'PATCH' : 'POST';
@@ -599,8 +611,9 @@ export default function Admin() {
     if(!newTvBlockFolder.trim()) return alert('Indique le nom du groupe a programmer');
     if(!newTvBlockStart || !newTvBlockEnd) return alert('Choisis une heure de debut et de fin');
     if(newTvBlockDays.length===0) return alert('Choisis au moins un jour');
-    const dupBlock = tvTimeBlocks.find(b=> b.id!==editingTvBlockId && b.folder.trim().toLowerCase()===newTvBlockFolder.trim().toLowerCase());
-    if(dupBlock) return alert(`Le groupe "${newTvBlockFolder.trim()}" est deja programme (${dupBlock.start_time} - ${dupBlock.end_time}). Modifie cette plage existante au lieu d'en creer une nouvelle, ou choisis un autre nom de groupe.`);
+    const candidateTv = { days:newTvBlockDays, start_time:newTvBlockStart, end_time:newTvBlockEnd };
+    const dupBlock = tvTimeBlocks.find(b=> b.id!==editingTvBlockId && b.folder.trim().toLowerCase()===newTvBlockFolder.trim().toLowerCase() && blocksConflict(b, candidateTv));
+    if(dupBlock) return alert(`Le groupe "${newTvBlockFolder.trim()}" a deja une plage qui chevauche celle-ci (${dupBlock.start_time} - ${dupBlock.end_time}). Choisis un horaire ou des jours qui ne se recoupent pas, ou modifie cette plage existante.`);
     const payload = { folder:newTvBlockFolder.trim(), start_time:newTvBlockStart, end_time:newTvBlockEnd, days:newTvBlockDays, active:true, external_url:newTvBlockExternalUrl.trim()||null };
     const url = editingTvBlockId? `${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${editingTvBlockId}` : `${supabaseUrl}/rest/v1/tv_time_blocks`;
     const method = editingTvBlockId? 'PATCH' : 'POST';
