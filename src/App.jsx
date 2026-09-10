@@ -743,6 +743,51 @@ export default function App(){
     return ()=>{ window.removeEventListener('click', mark, true); window.removeEventListener('touchstart', mark, true); window.removeEventListener('keydown', mark, true) }
   },[])
 
+  // ==================== SUIVI DE FREQUENTATION ====================
+  // Identifiant anonyme persistant par navigateur (aucune donnee personnelle), utilise pour
+  // ne compter chaque visiteur qu'une seule fois par jour et par zone.
+  const visitorIdRef = useRef(null)
+  if(visitorIdRef.current===null && typeof window!=='undefined'){
+    try{
+      let vid = localStorage.getItem('rius_visitor_id')
+      if(!vid){ vid = (crypto?.randomUUID? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`); localStorage.setItem('rius_visitor_id', vid) }
+      visitorIdRef.current = vid
+    }catch{ visitorIdRef.current = `${Date.now()}-${Math.random().toString(36).slice(2)}` }
+  }
+  const currentZoneRef = useRef('other')
+  // Presence en direct : "bat le rappel" toutes les 20s pour la zone actuellement visitee.
+  useEffect(()=>{
+    const heartbeat = () => {
+      const vid = visitorIdRef.current; if(!vid) return
+      fetch(`${supabaseUrl}/rest/v1/live_presence?on_conflict=session_id,zone`, {
+        method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ session_id:vid, zone: currentZoneRef.current, last_seen: new Date().toISOString() })
+      }).catch(()=>{})
+    }
+    heartbeat()
+    const id = setInterval(heartbeat, 20000)
+    return ()=>clearInterval(id)
+  },[])
+  // Total journalier : n'enregistre qu'une fois par visiteur/zone/jour (les doublons sont ignores).
+  const loggedZonesRef = useRef(new Set())
+  const logDailyVisit = (zone) => {
+    const vid = visitorIdRef.current; if(!vid) return
+    const key = zone
+    if(loggedZonesRef.current.has(key)) return
+    loggedZonesRef.current.add(key)
+    fetch(`${supabaseUrl}/rest/v1/site_visits?on_conflict=session_id,zone,visit_date`, {
+      method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'resolution=ignore-duplicates,return=minimal' },
+      body: JSON.stringify({ session_id:vid, zone })
+    }).catch(()=>{})
+  }
+  useEffect(()=>{ logDailyVisit('total') },[])
+  useEffect(()=>{
+    const zone = actif==='DIRECT-RADIO'? 'radio' : actif==='DIRECT-TV'? 'tv' : selected? 'article' : 'other'
+    currentZoneRef.current = zone
+    if(zone!=='other') logDailyVisit(zone)
+  },[actif, selected])
+  // ==================== FIN DU SUIVI DE FREQUENTATION ====================
+
   useEffect(()=>{ const h=(e)=>{ e.preventDefault(); setDeferredPrompt(e) }; window.addEventListener('beforeinstallprompt',h); return()=>window.removeEventListener('beforeinstallprompt',h) },[])
   useEffect(()=>{ if(typeof window==='undefined') return; localStorage.setItem('rius_lang',lang); document.documentElement.dir=lang==='ar'?'rtl':'ltr'; document.documentElement.lang=lang; const locale=lang==='zh'?'zh-CN':lang==='ar'?'ar-EG':lang; const d=new Date().toLocaleDateString(locale,{weekday:'long',day:'numeric',month:'short',year:'numeric'}); setDateJour(d.charAt(0).toUpperCase()+d.slice(1)) },[lang])
   useEffect(()=>{ const up=()=>{ const now=new Date(); const h=now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:'UTC'}); setHeureTU(h+' TU') }; up(); const id=setInterval(up,60000); return()=>clearInterval(id) },[])

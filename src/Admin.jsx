@@ -128,6 +128,7 @@ export default function Admin() {
     kiosque: ['redacteur_chef','director'],
     encadres: ['chef_programme','director'],
     faq: ['redacteur_chef','chef_programme','director'],
+    stats: ['director','chef_programme','redacteur_chef'],
     users: ['director'],
   };
   const canAccess = (tab) => !!myRole && (TAB_ACCESS[tab]||[]).includes(myRole);
@@ -180,8 +181,9 @@ export default function Admin() {
   const [showCommentaires, setShowCommentaires] = useState(false);
   const [showEnvois, setShowEnvois] = useState(false);
   const [showFaq, setShowFaq] = useState(false);
-  const resetTabs = () => { setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false); setShowGrille(false); setShowEmissions(false); setShowCommentaires(false); setShowEnvois(false); setShowFaq(false); };
-  const allTabsHidden = !showArticles && !showUsers && !showFlash && !showAnnonces && !showPubs && !showKiosque && !showRadio && !showVideoTV && !showEncadres && !showGrille && !showEmissions && !showCommentaires && !showFaq;
+  const [showStats, setShowStats] = useState(false);
+  const resetTabs = () => { setShowArticles(false); setShowUsers(false); setShowFlash(false); setShowAnnonces(false); setShowPubs(false); setShowKiosque(false); setShowRadio(false); setShowVideoTV(false); setShowEncadres(false); setShowGrille(false); setShowEmissions(false); setShowCommentaires(false); setShowEnvois(false); setShowFaq(false); setShowStats(false); };
+  const allTabsHidden = !showArticles && !showUsers && !showFlash && !showAnnonces && !showPubs && !showKiosque && !showRadio && !showVideoTV && !showEncadres && !showGrille && !showEmissions && !showCommentaires && !showFaq && !showStats;
   const [users, setUsers] = useState([]);
   const accessTokenRef = useRef(null);
   const refreshTimerRef = useRef(null);
@@ -456,6 +458,41 @@ export default function Admin() {
     fetch(`${supabaseUrl}/rest/v1/faq?select=*&order=display_order.asc,id.asc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setFaqs(data); }).catch(()=>{});
   };
+  const [liveCounts, setLiveCounts] = useState({ radio:0, tv:0, article:0, total:0 });
+  const [statsHistory, setStatsHistory] = useState([]);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const fetchLiveCounts = () => {
+    const since = new Date(Date.now()-45000).toISOString();
+    fetch(`${supabaseUrl}/rest/v1/live_presence?select=session_id,zone&last_seen=gte.${since}`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
+      .then(r=>r.json()).then(rows=>{
+        if(!Array.isArray(rows)) return;
+        const radio = rows.filter(r=>r.zone==='radio').length;
+        const tv = rows.filter(r=>r.zone==='tv').length;
+        const article = rows.filter(r=>r.zone==='article').length;
+        const total = new Set(rows.map(r=>r.session_id)).size;
+        setLiveCounts({ radio, tv, article, total });
+      }).catch(()=>{});
+  };
+  const fetchStatsHistory = (days=14) => {
+    setStatsLoading(true);
+    const since = new Date(Date.now()-days*24*3600*1000).toISOString().slice(0,10);
+    fetch(`${supabaseUrl}/rest/v1/site_visits?select=zone,visit_date&visit_date=gte.${since}&order=visit_date.desc`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
+      .then(r=>r.json()).then(rows=>{
+        setStatsLoading(false);
+        if(!Array.isArray(rows)) return;
+        const byDate = {};
+        rows.forEach(r=>{ if(!byDate[r.visit_date]) byDate[r.visit_date]={ radio:0, tv:0, article:0, total:0 }; byDate[r.visit_date][r.zone] = (byDate[r.visit_date][r.zone]||0)+1; });
+        const sorted = Object.entries(byDate).sort((a,b)=> a[0]<b[0]?1:-1).map(([date,counts])=>({date, ...counts}));
+        setStatsHistory(sorted);
+      }).catch(()=>{ setStatsLoading(false); });
+  };
+  useEffect(()=>{
+    if(!showStats) return;
+    fetchLiveCounts();
+    fetchStatsHistory();
+    const id = setInterval(fetchLiveCounts, 15000);
+    return ()=>clearInterval(id);
+  },[showStats]);
   const resetFaqForm = () => { setNewFaqCategory(''); setNewFaqQuestion(''); setNewFaqAnswer(''); setEditingFaqId(null); };
   const handleAddFaq = async () => {
     if(!newFaqCategory.trim() || !newFaqQuestion.trim() || !newFaqAnswer.trim()) return alert('Categorie, question et reponse sont obligatoires');
@@ -1509,6 +1546,7 @@ export default function Admin() {
           {canAccess('grille') && <button onClick={()=>{const v=!showGrille; resetTabs(); setShowGrille(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #93c5fd', background: showGrille? '#1d4ed8':'white', color: showGrille? 'white':'#1d4ed8', fontWeight:800}}>Grille ({programmeGrid.length})</button>}
           {canAccess('emissions') && <button onClick={()=>{const v=!showEmissions; resetTabs(); setShowEmissions(v);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #99f6e4', background: showEmissions? '#0d9488':'white', color: showEmissions? 'white':'#0d9488', fontWeight:800}}>Emissions ({emissions.length})</button>}
           {canAccess('faq') && <button onClick={()=>{const v=!showFaq; resetTabs(); setShowFaq(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #7dd3fc', background: showFaq? '#0284c7':'white', color: showFaq? 'white':'#0284c7', fontWeight:800}}>FAQ ({faqs.length})</button>}
+          {canAccess('stats') && <button onClick={()=>{const v=!showStats; resetTabs(); setShowStats(v);}} style={{flex:'1 0 100px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #86efac', background: showStats? '#16a34a':'white', color: showStats? 'white':'#16a34a', fontWeight:800}}>📊 Statistiques</button>}
           {canAccess('kiosque') && <button onClick={()=>{const v=!showKiosque; resetTabs(); setShowKiosque(v);}} style={{flex:'1 0 80px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #ffcc00', background: showKiosque? '#0f2040':'white', color: showKiosque? '#ffcc00':'#0f2040', fontWeight:900}}>KIOSQUE ({unes.length})</button>}
           {canAccess('encadres') && <button onClick={()=>{const v=!showEncadres; resetTabs(); setShowEncadres(v);}} style={{flex:'1 0 90px', padding:'10px', fontSize:11, borderRadius:10, border:'2px solid #a855f7', background: showEncadres? '#a855f7':'white', color: showEncadres? 'white':'#a855f7', fontWeight:900}}>ESPACE BUSINESS ({encadres.length})</button>}
           {canAccess('users') && (<button onClick={()=>{const v=!showUsers; resetTabs(); setShowUsers(v);}} style={{flex:'1 0 70px', padding:'10px', fontSize:11, borderRadius:10, border:'1px solid #c7d2fe', background: showUsers? '#2e4fb0':'white', color: showUsers? 'white':'#2e4fb0', fontWeight:800}}>Users</button>)}
@@ -2331,6 +2369,57 @@ export default function Admin() {
               </div>
             )) })()}
             {faqs.length===0 && <div style={{textAlign:'center',padding:30,color:'#64748b',fontSize:12}}>Aucune question pour l'instant. Ajoute ta premiere question ci-dessus. Pense a creer la table <code>faq</code> dans Supabase si ce n'est pas fait.</div>}
+          </div>
+        ) : showStats? (
+          <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #16a34a'}}>
+            <h3 style={{marginTop:0, color:'#16a34a'}}>📊 Statistiques de frequentation</h3>
+            <div style={{fontSize:11,fontWeight:900,color:'#64748b',marginBottom:8,textTransform:'uppercase'}}>🔴 En direct (mis a jour toutes les 15s)</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:10,marginBottom:24}}>
+              {[
+                {label:'Radio', value:liveCounts.radio, color:'#b45309', bg:'#fffbeb'},
+                {label:'TV', value:liveCounts.tv, color:'#7c3aed', bg:'#f5f3ff'},
+                {label:'Articles', value:liveCounts.article, color:'#2e4fb0', bg:'#eff6ff'},
+                {label:'Total site', value:liveCounts.total, color:'#16a34a', bg:'#f0fdf4'},
+              ].map(c=>(
+                <div key={c.label} style={{background:c.bg, borderRadius:12, padding:'14px 10px', textAlign:'center'}}>
+                  <div style={{fontSize:28,fontWeight:900,color:c.color}}>{c.value}</div>
+                  <div style={{fontSize:11,fontWeight:700,color:'#64748b'}}>{c.label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:9,color:'#94a3b8',marginTop:-16,marginBottom:20}}>"Total site" compte chaque visiteur une seule fois, meme s'il est aussi sur Radio/TV/Article.</div>
+
+            <div style={{fontSize:11,fontWeight:900,color:'#64748b',marginBottom:8,textTransform:'uppercase',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span>📅 Total par jour (visiteurs uniques)</span>
+              <button onClick={()=>fetchStatsHistory()} disabled={statsLoading} style={{background:'#f0fdf4',color:'#16a34a',border:'1px solid #86efac',borderRadius:8,padding:'4px 10px',fontSize:10,fontWeight:800,cursor:'pointer'}}>{statsLoading?'...':'🔄 Actualiser'}</button>
+            </div>
+            {statsHistory.length===0 && !statsLoading && <div style={{textAlign:'center',padding:20,color:'#64748b',fontSize:12}}>Aucune donnee pour l'instant. Les visites d'aujourd'hui apparaitront ici. Pense a creer les tables <code>live_presence</code> et <code>site_visits</code> dans Supabase si ce n'est pas fait.</div>}
+            {statsHistory.length>0 && (
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                  <thead>
+                    <tr style={{borderBottom:'2px solid #e5e7eb'}}>
+                      <th style={{textAlign:'left',padding:'6px 8px',color:'#64748b'}}>Date</th>
+                      <th style={{textAlign:'center',padding:'6px 8px',color:'#b45309'}}>Radio</th>
+                      <th style={{textAlign:'center',padding:'6px 8px',color:'#7c3aed'}}>TV</th>
+                      <th style={{textAlign:'center',padding:'6px 8px',color:'#2e4fb0'}}>Articles</th>
+                      <th style={{textAlign:'center',padding:'6px 8px',color:'#16a34a'}}>Total site</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {statsHistory.map(row=>(
+                      <tr key={row.date} style={{borderBottom:'1px solid #f1f5f9'}}>
+                        <td style={{padding:'8px',fontWeight:700}}>{new Date(row.date+'T00:00:00Z').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'})}{row.date===new Date().toISOString().slice(0,10)? <span style={{marginLeft:6,fontSize:9,background:'#dcfce7',color:'#16a34a',padding:'2px 6px',borderRadius:8,fontWeight:900}}>AUJOURD'HUI</span>:null}</td>
+                        <td style={{padding:'8px',textAlign:'center'}}>{row.radio||0}</td>
+                        <td style={{padding:'8px',textAlign:'center'}}>{row.tv||0}</td>
+                        <td style={{padding:'8px',textAlign:'center'}}>{row.article||0}</td>
+                        <td style={{padding:'8px',textAlign:'center',fontWeight:900,color:'#16a34a'}}>{row.total||0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         ) : showArticles? (
           <div style={{background:'white', padding:14, borderRadius:14, borderTop:'4px solid #2e4fb0'}}>
