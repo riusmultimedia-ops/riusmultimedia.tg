@@ -326,7 +326,7 @@ function TvWatermark({settings}){
   )
 }
 
-function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
+function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
   const containerRef = useRef(null)
   const playerRef = useRef(null)
   const adCheckIntervalRef = useRef(null)
@@ -442,6 +442,15 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks}){
         events: {
           onReady: (e)=>{
             setTimeout(()=>{ if(!destroyed) setIsLoading(false) }, 1800)
+            // Si le visiteur a deja clique/touche/tape quelque part sur le site (meme pour naviguer
+            // vers cette page), le navigateur autorise alors le son de facon fiable (contrairement a
+            // une tentative "a l'aveugle" sans aucune interaction, qui provoque une mise en pause forcee).
+            if(hasUserInteractedRef && hasUserInteractedRef.current){
+              setTimeout(()=>{
+                if(destroyed) return
+                try{ e.target.unMute(); setIsMuted(false) }catch{}
+              }, 300)
+            }
             adCheckIntervalRef.current = setInterval(maybeTriggerAd, 20000)
             const lastDayKeyRef = { current: utcDateKey(new Date()) }
             scheduleCheckIntervalRef.current = setInterval(()=>{
@@ -720,6 +729,19 @@ export default function App(){
   const [authMode,setAuthMode]=useState('login'); const [authEmail,setAuthEmail]=useState(''); const [authPassword,setAuthPassword]=useState(''); const [authError,setAuthError]=useState(''); const [authLoading,setAuthLoading]=useState(false);
   const [submitFiles,setSubmitFiles]=useState([]); const [submitMessage,setSubmitMessage]=useState(''); const [submitting,setSubmitting]=useState(false); const [mySubmissions,setMySubmissions]=useState([]); const [submitRecipient,setSubmitRecipient]=useState('tous');
   const T=UI[lang]||UI.fr
+  const hasUserInteractedRef = useRef(false)
+  useEffect(()=>{
+    const mark = () => {
+      hasUserInteractedRef.current = true
+      window.removeEventListener('click', mark, true)
+      window.removeEventListener('touchstart', mark, true)
+      window.removeEventListener('keydown', mark, true)
+    }
+    window.addEventListener('click', mark, true)
+    window.addEventListener('touchstart', mark, true)
+    window.addEventListener('keydown', mark, true)
+    return ()=>{ window.removeEventListener('click', mark, true); window.removeEventListener('touchstart', mark, true); window.removeEventListener('keydown', mark, true) }
+  },[])
 
   useEffect(()=>{ const h=(e)=>{ e.preventDefault(); setDeferredPrompt(e) }; window.addEventListener('beforeinstallprompt',h); return()=>window.removeEventListener('beforeinstallprompt',h) },[])
   useEffect(()=>{ if(typeof window==='undefined') return; localStorage.setItem('rius_lang',lang); document.documentElement.dir=lang==='ar'?'rtl':'ltr'; document.documentElement.lang=lang; const locale=lang==='zh'?'zh-CN':lang==='ar'?'ar-EG':lang; const d=new Date().toLocaleDateString(locale,{weekday:'long',day:'numeric',month:'short',year:'numeric'}); setDateJour(d.charAt(0).toUpperCase()+d.slice(1)) },[lang])
@@ -1454,7 +1476,7 @@ export default function App(){
   }
   if(videoPlaylist.length>0){
     const hasGeneralClips = videoPlaylist.some(v=>!v.is_jingle&&!v.is_ad&&!v.folder&&getYoutubeIdRaw(v.url))
-    return hasGeneralClips? <div className="tv-video-frame" style={{width:'100%',height:520}}><TvReplayPlayer videoPlaylist={videoPlaylist} tvTimeBlocks={tvTimeBlocks} /></div> : null
+    return hasGeneralClips? <div className="tv-video-frame" style={{width:'100%',height:520}}><TvReplayPlayer videoPlaylist={videoPlaylist} tvTimeBlocks={tvTimeBlocks} hasUserInteractedRef={hasUserInteractedRef} /></div> : null
   }
   return <iframe width="100%" height="520" src={`https://www.youtube.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&fs=0`} style={{border:0,display:'block'}} allowFullScreen loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" title="Direct Rius"></iframe>
 })()}</div><div style={{flex:1,background:'#111',borderRadius:12,border:'1px solid rgba(255,255,255,0.15)',overflow:'hidden',minHeight:400,display:'flex',flexDirection:'column'}}><div style={{padding:'10px 12px',background:'#1a1a1a',fontWeight:900,fontSize:11,borderBottom:'1px solid rgba(255,255,255,0.1)'}}>💬 {T.chat}</div><div style={{padding:20,fontSize:11,opacity:0.6,flex:1}}>Le chat YouTube s'affiche ici quand tu es en live.<br/><br/>Tes abonnés peuvent discuter en direct depuis YouTube.</div><div style={{padding:10,background:'#0f0f0f'}}><a href={`${YOUTUBE_CHANNEL_URL}/live`} target="_blank" rel="noreferrer" style={{background:'#ff0000',color:'white',padding:'8px 12px',borderRadius:8,fontSize:11,fontWeight:800,textDecoration:'none',display:'block',textAlign:'center'}}>Ouvrir le chat sur YouTube</a></div></div></div><div style={{marginTop:16,background:'rgba(255,255,255,0.06)',borderRadius:10,padding:14}}><h4 style={{margin:'0 0 8px 0',fontSize:12,color:'#ffcc00'}}>Dernières vidéos de la chaîne</h4><iframe width="100%" height="300" src={`https://www.youtube.com/embed?listType=user&list=${YOUTUBE_HANDLE}`} style={{border:0,borderRadius:8}} allowFullScreen loading="lazy" title="Playlist"></iframe></div><ProgrammeGridWidget items={programmeGrid} type="tv" /><button onClick={()=>{ setEmissionsFilter('tv'); goTo('EMISSIONS') }} style={{width:'100%',marginTop:16,padding:12,background:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:10,fontWeight:800,fontSize:12,cursor:'pointer'}}>🎬 Voir les émissions passées</button></div>
