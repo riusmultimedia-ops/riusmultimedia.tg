@@ -756,27 +756,40 @@ export default function App(){
   }
   const currentZoneRef = useRef('other')
   // Presence en direct : "bat le rappel" toutes les 20s pour la zone actuellement visitee.
+  // (On tente d'abord une mise a jour ; si rien n'existe encore pour ce visiteur/cette zone, on cree la ligne.
+  //  Ca evite d'avoir besoin d'un mecanisme d'upsert, qui necessiterait un droit de lecture publique.)
   useEffect(()=>{
-    const heartbeat = () => {
+    const heartbeat = async () => {
       const vid = visitorIdRef.current; if(!vid) return
-      fetch(`${supabaseUrl}/rest/v1/live_presence?on_conflict=session_id,zone`, {
-        method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ session_id:vid, zone: currentZoneRef.current, last_seen: new Date().toISOString() })
-      }).catch(()=>{})
+      const zone = currentZoneRef.current
+      try{
+        const patchRes = await fetch(`${supabaseUrl}/rest/v1/live_presence?session_id=eq.${vid}&zone=eq.${zone}`, {
+          method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'return=representation' },
+          body: JSON.stringify({ last_seen: new Date().toISOString() })
+        })
+        const updated = await patchRes.json().catch(()=>[])
+        if(!Array.isArray(updated) || updated.length===0){
+          fetch(`${supabaseUrl}/rest/v1/live_presence`, {
+            method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+            body: JSON.stringify({ session_id:vid, zone, last_seen: new Date().toISOString() })
+          }).catch(()=>{})
+        }
+      }catch{}
     }
     heartbeat()
     const id = setInterval(heartbeat, 20000)
     return ()=>clearInterval(id)
   },[])
-  // Total journalier : n'enregistre qu'une fois par visiteur/zone/jour (les doublons sont ignores).
+  // Total journalier : n'enregistre qu'une fois par visiteur/zone/jour (la contrainte d'unicite
+  // rejette silencieusement les doublons, ce qui est normal et attendu).
   const loggedZonesRef = useRef(new Set())
   const logDailyVisit = (zone) => {
     const vid = visitorIdRef.current; if(!vid) return
     const key = zone
     if(loggedZonesRef.current.has(key)) return
     loggedZonesRef.current.add(key)
-    fetch(`${supabaseUrl}/rest/v1/site_visits?on_conflict=session_id,zone,visit_date`, {
-      method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'resolution=ignore-duplicates,return=minimal' },
+    fetch(`${supabaseUrl}/rest/v1/site_visits`, {
+      method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
       body: JSON.stringify({ session_id:vid, zone })
     }).catch(()=>{})
   }
