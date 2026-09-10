@@ -84,20 +84,21 @@ const parseIsoDuration = (iso) => {
 }
 // Recupere la duree d'une ou plusieurs videos YouTube en un seul appel (jusqu'a 50 ids a la fois).
 const fetchYoutubeDurations = async (videoIds) => {
-  if(!YOUTUBE_API_KEY || !videoIds.length) return { durations:{}, errors: !YOUTUBE_API_KEY? ['Cle API YouTube absente (VITE_YOUTUBE_API_KEY non definie)'] : [] }
+  if(!YOUTUBE_API_KEY || !videoIds.length) return { durations:{}, embeddable:{}, errors: !YOUTUBE_API_KEY? ['Cle API YouTube absente (VITE_YOUTUBE_API_KEY non definie)'] : [] }
   const durations = {}
+  const embeddable = {}
   const errors = []
   for(let i=0;i<videoIds.length;i+=50){
     const batch = videoIds.slice(i,i+50)
     try{
-      const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${batch.join(',')}&key=${YOUTUBE_API_KEY}`)
+      const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails,status&id=${batch.join(',')}&key=${YOUTUBE_API_KEY}`)
       const data = await res.json()
       if(!res.ok){ errors.push(data?.error?.message || `Erreur HTTP ${res.status}`); continue }
       if(!data.items || !data.items.length){ errors.push('Aucune video retournee par YouTube pour ce lot (IDs invalides ou videos privees/supprimees ?)'); continue }
-      data.items.forEach(it=>{ durations[it.id] = parseIsoDuration(it.contentDetails?.duration) })
+      data.items.forEach(it=>{ durations[it.id] = parseIsoDuration(it.contentDetails?.duration); embeddable[it.id] = it.status?.embeddable !== false })
     }catch(e){ errors.push(e.message || 'Erreur reseau'); }
   }
-  return { durations, errors }
+  return { durations, embeddable, errors }
 }
 
 export default function Admin() {
@@ -1326,6 +1327,22 @@ export default function Admin() {
   const removeVideoAdTime = (t) => setNewVideoAdTimes(newVideoAdTimes.filter(x=>x!==t))
 
   const [backfillProgress, setBackfillProgress] = useState(null);
+  const [checkingEmbeddable, setCheckingEmbeddable] = useState(false);
+  const [blockedVideoIds, setBlockedVideoIds] = useState(new Set());
+  const handleCheckAllEmbeddable = async () => {
+    if(!YOUTUBE_API_KEY) return alert("La cle API YouTube n'est pas configuree (VITE_YOUTUBE_API_KEY), impossible de verifier les videos.");
+    const idMap = videoPlaylist.map(v=>({ v, ytId:getYtId(v.url||'') })).filter(x=>x.ytId);
+    if(!idMap.length) return alert('Aucune video avec un lien YouTube valide dans la playlist TV.');
+    if(!confirm(`Verifier aupres de YouTube si chacune des ${idMap.length} video(s) de la playlist TV est bien autorisee a etre lue sur d'autres sites ? Ca peut prendre un moment.`)) return;
+    setCheckingEmbeddable(true);
+    const {embeddable, errors} = await fetchYoutubeDurations(idMap.map(x=>x.ytId));
+    setCheckingEmbeddable(false);
+    if(!Object.keys(embeddable).length && errors.length){ alert(`Echec de la verification.\n\nErreur(s) retournee(s) par YouTube :\n- ${[...new Set(errors)].join('\n- ')}`); return; }
+    const blocked = idMap.filter(x=>embeddable[x.ytId]===false);
+    setBlockedVideoIds(new Set(blocked.map(x=>x.v.id)));
+    if(!blocked.length){ alert(`Bonne nouvelle : aucune des ${idMap.length} video(s) verifiee(s) ne semble bloquee pour la lecture sur d'autres sites.`); return; }
+    alert(`⚠️ ${blocked.length} video(s) sur ${idMap.length} semblent bloquees par leur proprietaire pour une lecture sur d'autres sites (elles risquent de ne pas jouer une fois en ligne) :\n\n- ${blocked.slice(0,15).map(x=>x.v.title||x.ytId).join('\n- ')}${blocked.length>15? '\n- ...':''}\n\nElles sont maintenant marquees d'un badge 🚫 dans la liste ci-dessous.`);
+  };
   const handleBackfillRadioDurations = async () => {
     const missing = radioPlaylist.filter(t=>!t.duration_seconds);
     if(!missing.length) return alert('Toutes les pistes ont deja une duree enregistree.');
@@ -1354,12 +1371,14 @@ export default function Admin() {
     const idMap = missing.map(v=>({ v, ytId:getYtId(v.url||'') })).filter(x=>x.ytId);
     if(!idMap.length) return alert(`Aucun lien YouTube valide trouve parmi ces ${missing.length} video(s) (impossible d'en extraire l'identifiant).`);
     setBackfillProgress({current:0, total:idMap.length, ok:0});
-    const {durations, errors} = await fetchYoutubeDurations(idMap.map(x=>x.ytId));
+    const {durations, embeddable, errors} = await fetchYoutubeDurations(idMap.map(x=>x.ytId));
     let ok=0;
+    const nonEmbeddable=[];
     for(let i=0;i<idMap.length;i++){
       const {v, ytId} = idMap[i];
       setBackfillProgress({current:i+1, total:idMap.length, ok});
       const dur = durations[ytId];
+      if(embeddable[ytId]===false) nonEmbeddable.push(v.title||ytId);
       if(dur){
         const res = await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ duration_seconds:dur }) });
         if(res.ok) ok++;
@@ -1369,7 +1388,9 @@ export default function Admin() {
     setBackfillProgress(null);
     fetchVideoPlaylist();
     if(ok===0 && errors.length){ alert(`Echec de la recuperation des durees.\n\nErreur(s) retournee(s) par YouTube :\n- ${[...new Set(errors)].join('\n- ')}`); return; }
-    alert(`${ok} / ${idMap.length} duree(s) recuperee(s) avec succes.`);
+    let msg = `${ok} / ${idMap.length} duree(s) recuperee(s) avec succes.`;
+    if(nonEmbeddable.length) msg += `\n\n⚠️ ${nonEmbeddable.length} video(s) semblent bloquees pour une lecture sur d'autres sites (risquent de ne pas jouer une fois en ligne) :\n- ${nonEmbeddable.slice(0,15).join('\n- ')}${nonEmbeddable.length>15? '\n- ...':''}`;
+    alert(msg);
   };
   const handleAddVideoTrack = async () => {
     if(!newVideoUrl.trim()) return alert('Colle un lien YouTube');
@@ -1382,7 +1403,15 @@ export default function Admin() {
     if(dup) return alert(`Cette video est deja dans ${targetFolder? `le groupe "${targetFolder}"`:'la playlist generale (sans groupe)'}. Change de groupe si tu veux quand meme l'ajouter.`);
     const thumb = getYoutubeThumb(newVideoUrl.trim());
     let duration = null;
-    if(!editingVideoId){ try{ const {durations} = await fetchYoutubeDurations([id]); duration = durations[id]||null; }catch{} }
+    if(!editingVideoId){
+      try{
+        const {durations, embeddable} = await fetchYoutubeDurations([id]);
+        duration = durations[id]||null;
+        if(embeddable[id]===false){
+          if(!confirm(`⚠️ ATTENTION : cette video semble bloquee par son proprietaire pour une lecture sur d'autres sites (embed desactive). Elle risque de refuser de jouer une fois publiee sur rmweb.tg, meme si elle s'ajoute sans probleme ici.\n\nVeux-tu quand meme l'ajouter ?`)) return;
+        }
+      }catch{}
+    }
     const payload = { title:newVideoTitle.trim(), url:newVideoUrl.trim(), image:thumb, is_jingle:newVideoIsJingle, is_ad:newVideoIsAd, ad_times:newVideoIsAd? newVideoAdTimes : [], active: editingVideoId? undefined : canPublishTab('videotv'), folder:newVideoFolder.trim()||null, duration_seconds: editingVideoId? undefined : duration };
     if(editingVideoId){ delete payload.active; delete payload.duration_seconds; }
     const url = editingVideoId? `${supabaseUrl}/rest/v1/video_playlist?id=eq.${editingVideoId}` : `${supabaseUrl}/rest/v1/video_playlist`;
@@ -1980,13 +2009,19 @@ export default function Admin() {
                   <button onClick={handleBackfillVideoDurations} disabled={!!backfillProgress} style={{background:'#b45309',color:'white',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,fontWeight:800,cursor:'pointer',flexShrink:0}}>{backfillProgress? `${backfillProgress.current}/${backfillProgress.total}...` : 'Recuperer les durees'}</button>
                 </div>
               ) })()}
+              {videoPlaylist.length>0 && (
+                <div style={{marginTop:8,display:'flex',alignItems:'center',gap:8,background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'8px 10px'}}>
+                  <span style={{fontSize:11,color:'#b91c1c',flex:1}}>🚫 Verifie si des videos de la playlist sont bloquees par leur proprietaire pour une lecture sur d'autres sites.</span>
+                  <button onClick={handleCheckAllEmbeddable} disabled={checkingEmbeddable} style={{background:'#b91c1c',color:'white',border:0,borderRadius:6,padding:'6px 10px',fontSize:11,fontWeight:800,cursor:'pointer',flexShrink:0}}>{checkingEmbeddable? 'Verification...' : 'Verifier toutes les videos'}</button>
+                </div>
+              )}
             </div>
             {videoPlaylist.filter(v=>matchesSearch(v, videoSearchQuery)).map((v,i)=>(
-              <div key={v.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6}}>
+              <div key={v.id} style={{border: blockedVideoIds.has(v.id)? '2px solid #dc2626' : '1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6}}>
                 <div style={{display:'flex', gap:10, alignItems:'center', flexWrap:'wrap'}}>
                 <img src={v.image} style={{width:60,height:36,objectFit:'cover',borderRadius:6}} alt="" />
                 <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{v.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : v.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {v.title}</div>
+                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{v.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : v.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {blockedVideoIds.has(v.id) && <span style={{background:'#dc2626',color:'white',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10,flexShrink:0}}>🚫 BLOQUEE</span>} {v.title}</div>
                   {v.is_ad && <div style={{fontSize:10,color:'#92400e',marginTop:2}}>Diffusion : {(v.ad_times||[]).join(', ')||'aucune heure'}</div>}
                   {v.folder && <div style={{fontSize:10,color:'#7c3aed',marginTop:2,fontWeight:700}}>📁 Groupe : {v.folder}</div>}
                   {v.created_at && <div style={{fontSize:9,color:'#94a3b8',marginTop:2}}>Ajoutee le {new Date(v.created_at).toLocaleDateString('fr-FR')}</div>}
