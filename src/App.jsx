@@ -895,13 +895,18 @@ export default function App(){
   const radioJingles = radioPlaylist.filter(t=>t.is_jingle)
   const radioJinglesRef = useRef(radioJingles)
   radioJinglesRef.current = radioJingles
+  const radioAds = radioPlaylist.filter(t=>t.is_ad && t.active)
+  const radioHourly = radioPlaylist.filter(t=>t.is_hourly && t.active)
+  const radioPhaseRef = useRef('track')
+  const playedAdSlotsRef = useRef(new Set())
+  const playedHourSlotsRef = useRef(new Set())
+  const [currentRadioItem, setCurrentRadioItem] = useState(null)
   useEffect(()=>{
     radioJingles.forEach(j=>{ decodeTrack(j.url).catch(()=>{}) })
   },[radioJingles.map(j=>j.id).join(',')])
-  const radioAds = radioPlaylist.filter(t=>t.is_ad && t.active)
-  const radioPhaseRef = useRef('track')
-  const playedAdSlotsRef = useRef(new Set())
-  const [currentRadioItem, setCurrentRadioItem] = useState(null)
+  useEffect(()=>{
+    radioHourly.forEach(h=>{ decodeTrack(h.url).catch(()=>{}) })
+  },[radioHourly.map(h=>h.id).join(',')])
 
   const getRadioAudioEl = () => {
     if(!radioAudioElRef.current){
@@ -1135,7 +1140,7 @@ export default function App(){
   },[])
 
   const maybeTriggerAd = () => {
-    if(radioPhaseRef.current==='ad' || radioPhaseRef.current==='jingle') return
+    if(radioPhaseRef.current==='ad' || radioPhaseRef.current==='jingle' || radioPhaseRef.current==='hourly') return
     if(!radioIsPlaying) return
     if(!radioAds.length) return
     const now = new Date()
@@ -1151,7 +1156,23 @@ export default function App(){
     radioPhaseRef.current='ad'
     playSource(dueAd.url, 0, ()=>{ radioPhaseRef.current='track'; playScheduledRadioRef.current() })
   }
+  // Top horaire : se diffuse automatiquement pile a chaque heure (minute UTC = 0), en interrompant
+  // brievement la piste generale, comme une pub programmee mais sans heures a saisir.
+  const maybeTriggerHourly = () => {
+    if(radioPhaseRef.current==='ad' || radioPhaseRef.current==='jingle' || radioPhaseRef.current==='hourly') return
+    if(!radioIsPlaying) return
+    if(!radioHourly.length) return
+    const now = new Date()
+    if(now.getUTCMinutes()!==0) return
+    const hourKey = now.toISOString().slice(0,13) // AAAA-MM-JJTHH
+    if(playedHourSlotsRef.current.has(hourKey)) return
+    playedHourSlotsRef.current.add(hourKey)
+    const track = radioHourly[now.getUTCHours() % radioHourly.length]
+    radioPhaseRef.current='hourly'
+    playSource(track.url, 0, ()=>{ radioPhaseRef.current='track'; playScheduledRadioRef.current() })
+  }
   useEffect(()=>{ const id=setInterval(maybeTriggerAd, 20000); maybeTriggerAd(); return()=>clearInterval(id) },[radioPlaylist, radioIsPlaying])
+  useEffect(()=>{ const id=setInterval(maybeTriggerHourly, 15000); maybeTriggerHourly(); return()=>clearInterval(id) },[radioPlaylist, radioIsPlaying])
 
   const translateText=async(text,target)=>{ if(!text||target==='fr') return text; try{ const q=encodeURIComponent(text.slice(0,450)); const res=await fetch(`https://api.mymemory.translated.net/get?q=${q}&langpair=fr|${target}`); const data=await res.json(); return data?.responseData?.translatedText||text }catch{return text} }
   const translateChunked=async(text,target)=>{ if(!text||target==='fr') return text; const words=text.split(' '); const chunks=[]; let current=''; for(const w of words){ if((current+' '+w).trim().length>420){ if(current.trim()) chunks.push(current.trim()); current=w } else { current=(current+' '+w).trim() } } if(current.trim()) chunks.push(current.trim()); const out=[]; for(const c of chunks){ out.push(await translateText(c,target)) } return out.join(' ') }
