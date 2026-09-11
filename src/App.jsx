@@ -755,7 +755,10 @@ export default function App(){
     }catch{ visitorIdRef.current = `${Date.now()}-${Math.random().toString(36).slice(2)}` }
   }
   const currentZoneRef = useRef('other')
-  // Presence en direct : "bat le rappel" toutes les 20s pour la zone actuellement visitee.
+  const heartbeatFnRef = useRef(null)
+  // Presence en direct : "bat le rappel" toutes les 20s pour la zone actuellement visitee, et
+  // immediatement des qu'on change de zone (radio/tv/article), pour ne pas attendre jusqu'a 20s
+  // avant que le changement de page soit visible dans le compteur en direct.
   // (On tente d'abord une mise a jour ; si rien n'existe encore pour ce visiteur/cette zone, on cree la ligne.
   //  Ca evite d'avoir besoin d'un mecanisme d'upsert, qui necessiterait un droit de lecture publique.)
   useEffect(()=>{
@@ -776,6 +779,7 @@ export default function App(){
         }
       }catch{}
     }
+    heartbeatFnRef.current = heartbeat
     heartbeat()
     const id = setInterval(heartbeat, 20000)
     return ()=>clearInterval(id)
@@ -798,6 +802,7 @@ export default function App(){
     const zone = actif==='DIRECT-RADIO'? 'radio' : actif==='DIRECT-TV'? 'tv' : selected? 'article' : 'other'
     currentZoneRef.current = zone
     if(zone!=='other') logDailyVisit(zone)
+    if(heartbeatFnRef.current) heartbeatFnRef.current()
   },[actif, selected])
   // ==================== FIN DU SUIVI DE FREQUENTATION ====================
 
