@@ -2460,7 +2460,7 @@ export default function Admin() {
                 </div>
               )}
 
-              <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>CATEGORIE</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe'}}><option>ACCUEIL</option><option>POLITIQUE</option><option>CULTURE</option><option>SOCIETE</option><option>SANTE</option><option>SPORT</option><option>ENVIRONNEMENT</option><option>INTERNATIONAL</option><option>ESPACE BUSINESS</option></select></div>
+              <div><label style={{fontSize:11,fontWeight:800,color:'#2e4fb0'}}>CATEGORIE</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} style={{width:'100%',padding:'12px',marginTop:4,borderRadius:10,border:'1px solid #c7d2fe'}}><option>ACCUEIL</option><option>POLITIQUE</option><option>CULTURE</option><option>SOCIÉTÉ</option><option>SANTÉ</option><option>SPORT</option><option>ENVIRONNEMENT</option><option>INTERNATIONAL</option><option>ESPACE BUSINESS</option></select></div>
 
               <div style={{border:'2px solid #f59e0b', padding:12, borderRadius:12, background:'#fffbeb'}}>
                 <label style={{fontSize:11,fontWeight:800,color:'#b45309'}}>STATUT EDITORIAL</label>
