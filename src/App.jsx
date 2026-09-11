@@ -782,7 +782,11 @@ export default function App(){
     heartbeatFnRef.current = heartbeat
     heartbeat()
     const id = setInterval(heartbeat, 20000)
-    return ()=>clearInterval(id)
+    // Le telephone met en pause l'onglet en arriere-plan (ecran eteint, autre appli) : des qu'il
+    // redevient visible, on renvoie tout de suite un signal au lieu d'attendre le prochain tic.
+    const onVisible = () => { if(document.visibilityState==='visible') heartbeat() }
+    document.addEventListener('visibilitychange', onVisible)
+    return ()=>{ clearInterval(id); document.removeEventListener('visibilitychange', onVisible) }
   },[])
   // Total journalier : n'enregistre qu'une fois par visiteur/zone/jour (la contrainte d'unicite
   // rejette silencieusement les doublons, ce qui est normal et attendu).
