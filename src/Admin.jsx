@@ -462,7 +462,7 @@ export default function Admin() {
   const [statsHistory, setStatsHistory] = useState([]);
   const [statsLoading, setStatsLoading] = useState(false);
   const fetchLiveCounts = () => {
-    const since = new Date(Date.now()-45000).toISOString();
+    const since = new Date(Date.now()-40000).toISOString();
     fetch(`${supabaseUrl}/rest/v1/live_presence?select=session_id,zone&last_seen=gte.${since}`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } })
       .then(r=>r.json()).then(rows=>{
         if(!Array.isArray(rows)) return;

@@ -781,7 +781,7 @@ export default function App(){
     }
     heartbeatFnRef.current = heartbeat
     heartbeat()
-    const id = setInterval(heartbeat, 20000)
+    const id = setInterval(heartbeat, 12000)
     // Le telephone met en pause l'onglet en arriere-plan (ecran eteint, autre appli) : des qu'il
     // redevient visible, on renvoie tout de suite un signal au lieu d'attendre le prochain tic.
     const onVisible = () => { if(document.visibilityState==='visible') heartbeat() }
