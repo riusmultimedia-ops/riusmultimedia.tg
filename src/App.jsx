@@ -498,8 +498,21 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
       window.onYouTubeIframeAPIReady = () => { if(prevCallback) prevCallback(); setup() }
     }
 
+    // Le telephone met en pause l'onglet en arriere-plan (ecran eteint, autre appli), y compris la
+    // verification des changements de programmation : des qu'il redevient visible, on force un
+    // recalcul immediat de ce qui devrait jouer maintenant (equivalent a une actualisation, mais automatique).
+    const tvHiddenAtRef = { current: null }
+    const onVisibleTv = () => {
+      if(document.visibilityState==='hidden'){ tvHiddenAtRef.current = Date.now(); return }
+      if(document.visibilityState==='visible' && !destroyed && tvHiddenAtRef.current && (Date.now()-tvHiddenAtRef.current > 8000)){
+        resyncTv()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibleTv)
+
     return ()=>{
       destroyed = true
+      document.removeEventListener('visibilitychange', onVisibleTv)
       if(adCheckIntervalRef.current) clearInterval(adCheckIntervalRef.current)
       if(scheduleCheckIntervalRef.current) clearInterval(scheduleCheckIntervalRef.current)
       if(playerRef.current){
@@ -1041,6 +1054,21 @@ export default function App(){
   }
   const playScheduledRadioRef = useRef(resyncRadio)
   playScheduledRadioRef.current = resyncRadio
+
+  // Le telephone met en pause l'onglet en arriere-plan (ecran eteint, autre appli), y compris la
+  // verification des changements de programmation : des qu'il redevient visible, on force un
+  // recalcul immediat de ce qui devrait jouer maintenant (equivalent a une actualisation, mais automatique).
+  useEffect(()=>{
+    const hiddenAtRef = { current: null }
+    const onVisible = () => {
+      if(document.visibilityState==='hidden'){ hiddenAtRef.current = Date.now(); return }
+      if(document.visibilityState==='visible' && radioIsPlayingRef.current && hiddenAtRef.current && (Date.now()-hiddenAtRef.current > 8000)){
+        playScheduledRadioRef.current()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return ()=>document.removeEventListener('visibilitychange', onVisible)
+  },[])
 
   const lastDayKeyRef = useRef(utcDateKey(new Date()))
   useEffect(()=>{
