@@ -416,18 +416,20 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
       try{ startVol = el.getVolume() }catch{}
       const fadeStart = Date.now()
       const fadeDuration = 2000
+      // setTimeout (et non requestAnimationFrame, qui se met en pause quand l'onglet n'est pas
+      // visuellement affiche a l'ecran) : la transition doit se terminer meme en arriere-plan.
       const fadeStep = () => {
         if(destroyed) return
         const elapsed = Date.now()-fadeStart
         const t = Math.min(1, elapsed/fadeDuration)
         try{ el.setVolume(Math.round(startVol*(1-t))) }catch{}
-        if(t<1){ requestAnimationFrame(fadeStep) }
+        if(t<1){ setTimeout(fadeStep, 50) }
         else {
           try{ el.setVolume(startVol) }catch{}
           afterFadeCb && afterFadeCb()
         }
       }
-      requestAnimationFrame(fadeStep)
+      setTimeout(fadeStep, 50)
     }
 
     const onPlayerStateChange = (e) => {
@@ -1018,11 +1020,13 @@ export default function App(){
     const startVol = el.volume
     const fadeStart = Date.now()
     const fadeDuration = 2500
+    // setTimeout (et non requestAnimationFrame, qui se met en pause quand l'onglet n'est pas
+    // visuellement affiche a l'ecran) : la radio doit continuer a transitionner meme en fond sonore.
     const fadeStep = () => {
       const elapsed = Date.now() - fadeStart
       const t = Math.min(1, elapsed / fadeDuration)
       el.volume = startVol * (1 - t)
-      if(t < 1){ requestAnimationFrame(fadeStep) }
+      if(t < 1){ setTimeout(fadeStep, 50) }
       else {
         try{ el.pause() }catch{}
         el.volume = startVol
@@ -1030,7 +1034,7 @@ export default function App(){
         afterFadeCb && afterFadeCb()
       }
     }
-    requestAnimationFrame(fadeStep)
+    setTimeout(fadeStep, 50)
   }
 
   // Diffusion synchronisee : calcule ce qui doit jouer MAINTENANT (piste generale ou groupe
