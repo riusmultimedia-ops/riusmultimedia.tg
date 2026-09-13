@@ -535,7 +535,7 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
     const onVisibleTv = () => {
       if(document.visibilityState==='hidden'){ tvHiddenAtRef.current = Date.now(); return }
       if(document.visibilityState==='visible' && !destroyed && tvHiddenAtRef.current && (Date.now()-tvHiddenAtRef.current > 8000)){
-        resyncTv()
+        playTransitionJingleThenResyncTv()
       }
     }
     document.addEventListener('visibilitychange', onVisibleTv)
@@ -1111,7 +1111,7 @@ export default function App(){
     const onVisible = () => {
       if(document.visibilityState==='hidden'){ hiddenAtRef.current = Date.now(); return }
       if(document.visibilityState==='visible' && radioIsPlayingRef.current && hiddenAtRef.current && (Date.now()-hiddenAtRef.current > 8000)){
-        playScheduledRadioRef.current()
+        playTransitionJingleThenResync()
       }
     }
     document.addEventListener('visibilitychange', onVisible)
