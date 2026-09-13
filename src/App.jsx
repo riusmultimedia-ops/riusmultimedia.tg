@@ -487,7 +487,9 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
                 scheduleTransitionFiredRef.current = null
               }
               if(scheduleTransitionFiredRef.current) return
-              const future = new Date(now.getTime()+10000)
+              // Fenetre de detection EGALE a la duree du fondu TV (2s) : le recalcul qui suit
+              // tombe ainsi bien sur la nouvelle programmation, jamais avant l'heure prevue.
+              const future = new Date(now.getTime()+2000)
               const futureBlock = getActiveBlockFor(tvTimeBlocksRef.current, future)
               const futureKey = futureBlock? String(futureBlock.id) : 'none'
               if(currentKey===futureKey) return
@@ -1112,10 +1114,13 @@ export default function App(){
       }
       if(scheduleTransitionFiredRef.current) return // une transition est deja en cours de traitement
 
-      const future = new Date(now.getTime()+10000)
+      // Fenetre de detection EGALE a la duree du fondu (2.5s) : ainsi, dans le pire des cas, le
+      // fondu se termine tout juste A l'heure programmee (jamais avant), et le recalcul qui suit
+      // tombe bien sur la nouvelle programmation.
+      const future = new Date(now.getTime()+2500)
       const futureBlock = getActiveBlockFor(radioTimeBlocksRef.current, future)
       const futureKey = futureBlock? String(futureBlock.id) : 'none'
-      if(currentKey===futureKey) return // rien ne va changer dans les 10 prochaines secondes (debut/fin de groupe programme)
+      if(currentKey===futureKey) return // rien ne va changer avant la fin du fondu (debut/fin de groupe programme)
 
       scheduleTransitionFiredRef.current = { from: currentKey, to: futureKey }
       forceEarlyTransition(()=>{ playScheduledRadioRef.current() })
