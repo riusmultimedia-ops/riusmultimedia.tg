@@ -1093,11 +1093,14 @@ export default function App(){
   // bon endroit. S'il n'y a aucun jingle disponible, on reprend directement.
   const playTransitionJingleThenResync = (onDone) => {
     const jingles = radioJinglesRef.current
+    console.log('[RIUS-DEBUG] playTransitionJingleThenResync: nb jingles disponibles =', jingles.length)
     const finish = () => { playScheduledRadioRef.current(); if(onDone) onDone() }
-    if(!jingles.length){ finish(); return }
+    if(!jingles.length){ console.log('[RIUS-DEBUG] aucun jingle disponible, reprise directe'); finish(); return }
     const jingle = jingles[Math.floor(Date.now()/1000) % jingles.length]
+    console.log('[RIUS-DEBUG] jingle choisi:', jingle.title, jingle.url)
     radioPhaseRef.current = 'jingle'
-    playSource(jingle.url, 0, ()=>{ radioPhaseRef.current='track'; finish() })
+    playSource(jingle.url, 0, ()=>{ console.log('[RIUS-DEBUG] jingle termine, reprise'); radioPhaseRef.current='track'; finish() })
+    console.log('[RIUS-DEBUG] playSource(jingle) appele, en attente...')
   }
 
   // Le telephone met en pause l'onglet en arriere-plan (ecran eteint, autre appli), y compris la
