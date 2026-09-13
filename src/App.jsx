@@ -383,6 +383,15 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
       localScheduleRef.current = sched._local || null
       playTvItem(item, sched.offsetSeconds)
     }
+    // A chaque transition programmee (debut/fin de groupe, changement de jour), un jingle joue
+    // d'abord (comme un "signal d'entree" sur le nouveau programme), puis la lecture reprend.
+    const playTransitionJingleThenResyncTv = () => {
+      const jingles = (videoPlaylistRef.current||[]).filter(v=>v.is_jingle)
+      if(!jingles.length){ resyncTv(); return }
+      const jingle = jingles[Math.floor(Date.now()/1000) % jingles.length]
+      localScheduleRef.current = null // force un resync complet (pas l'ancien contexte) une fois le jingle termine
+      playTvItem(jingle, 0)
+    }
     // Avancement normal (fin de clip/jingle) : suit directement la sequence deterministe deja
     // calculee, sans jamais recalculer "depuis minuit" — evite qu'un jingle tres court soit
     // avale silencieusement par un leger decalage de timing (voir advanceLocal).
@@ -477,7 +486,7 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
               if(dayKeyNow !== lastDayKeyRef.current){
                 lastDayKeyRef.current = dayKeyNow
                 scheduleTransitionFiredRef.current = { from:'day-change', to:'day-change' }
-                forceEarlyTvTransition(()=>{ scheduleTransitionFiredRef.current=null; resyncTv() })
+                forceEarlyTvTransition(()=>{ scheduleTransitionFiredRef.current=null; playTransitionJingleThenResyncTv() })
                 return
               }
 
@@ -494,7 +503,7 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
               const futureKey = futureBlock? String(futureBlock.id) : 'none'
               if(currentKey===futureKey) return
               scheduleTransitionFiredRef.current = { from: currentKey, to: futureKey }
-              forceEarlyTvTransition(()=>{ resyncTv() })
+              forceEarlyTvTransition(()=>{ playTransitionJingleThenResyncTv() })
             }, 1000)
           },
           onStateChange: onPlayerStateChange
@@ -1075,6 +1084,17 @@ export default function App(){
   const playScheduledRadioRef = useRef(resyncRadio)
   playScheduledRadioRef.current = resyncRadio
 
+  // A chaque transition programmee (debut/fin de groupe, changement de jour), un jingle joue
+  // d'abord (comme un "signal d'entree" sur le nouveau programme), puis la lecture reprend au
+  // bon endroit. S'il n'y a aucun jingle disponible, on reprend directement.
+  const playTransitionJingleThenResync = () => {
+    const jingles = radioJinglesRef.current
+    if(!jingles.length){ playScheduledRadioRef.current(); return }
+    const jingle = jingles[Math.floor(Date.now()/1000) % jingles.length]
+    radioPhaseRef.current = 'jingle'
+    playSource(jingle.url, 0, ()=>{ radioPhaseRef.current='track'; playScheduledRadioRef.current() })
+  }
+
   // Le telephone met en pause l'onglet en arriere-plan (ecran eteint, autre appli), y compris la
   // verification des changements de programmation : des qu'il redevient visible, on force un
   // recalcul immediat de ce qui devrait jouer maintenant (equivalent a une actualisation, mais automatique).
@@ -1101,7 +1121,7 @@ export default function App(){
       if(dayKeyNow !== lastDayKeyRef.current){
         lastDayKeyRef.current = dayKeyNow
         scheduleTransitionFiredRef.current = { from:'day-change', to:'day-change' }
-        forceEarlyTransition(()=>{ scheduleTransitionFiredRef.current=null; playScheduledRadioRef.current() })
+        forceEarlyTransition(()=>{ scheduleTransitionFiredRef.current=null; playTransitionJingleThenResync() })
         return
       }
 
@@ -1123,7 +1143,7 @@ export default function App(){
       if(currentKey===futureKey) return // rien ne va changer avant la fin du fondu (debut/fin de groupe programme)
 
       scheduleTransitionFiredRef.current = { from: currentKey, to: futureKey }
-      forceEarlyTransition(()=>{ playScheduledRadioRef.current() })
+      forceEarlyTransition(()=>{ playTransitionJingleThenResync() })
     }, 1000)
     return ()=>clearInterval(id)
   },[])
