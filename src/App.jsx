@@ -385,18 +385,24 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
     }
     // A chaque transition programmee (debut/fin de groupe, changement de jour), un jingle joue
     // d'abord (comme un "signal d'entree" sur le nouveau programme), puis la lecture reprend.
+    const awaitingTransitionRef = { current: false }
     const playTransitionJingleThenResyncTv = () => {
       const jingles = (videoPlaylistRef.current||[]).filter(v=>v.is_jingle)
-      if(!jingles.length){ resyncTv(); return }
+      if(!jingles.length){ resyncTv(); scheduleTransitionFiredRef.current = null; return }
       const jingle = jingles[Math.floor(Date.now()/1000) % jingles.length]
       localScheduleRef.current = null // force un resync complet (pas l'ancien contexte) une fois le jingle termine
+      awaitingTransitionRef.current = true
       playTvItem(jingle, 0)
     }
     // Avancement normal (fin de clip/jingle) : suit directement la sequence deterministe deja
     // calculee, sans jamais recalculer "depuis minuit" — evite qu'un jingle tres court soit
     // avale silencieusement par un leger decalage de timing (voir advanceLocal).
     const advanceTv = () => {
-      if(!localScheduleRef.current){ resyncTv(); return }
+      if(!localScheduleRef.current){
+        resyncTv()
+        if(awaitingTransitionRef.current){ awaitingTransitionRef.current = false; scheduleTransitionFiredRef.current = null }
+        return
+      }
       const next = advanceLocal(localScheduleRef.current)
       localScheduleRef.current = next._local
       playTvItem(next.item, 0)
@@ -486,16 +492,13 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
               if(dayKeyNow !== lastDayKeyRef.current){
                 lastDayKeyRef.current = dayKeyNow
                 scheduleTransitionFiredRef.current = { from:'day-change', to:'day-change' }
-                forceEarlyTvTransition(()=>{ scheduleTransitionFiredRef.current=null; playTransitionJingleThenResyncTv() })
+                forceEarlyTvTransition(()=>{ playTransitionJingleThenResyncTv() })
                 return
               }
 
               const currentBlock = getActiveBlockFor(tvTimeBlocksRef.current, now)
               const currentKey = currentBlock? String(currentBlock.id) : 'none'
-              if(scheduleTransitionFiredRef.current && scheduleTransitionFiredRef.current.to===currentKey){
-                scheduleTransitionFiredRef.current = null
-              }
-              if(scheduleTransitionFiredRef.current) return
+              if(scheduleTransitionFiredRef.current) return // une transition est deja en cours de traitement (fondu, jingle ou reprise)
               // Fenetre de detection EGALE a la duree du fondu TV (2s) : le recalcul qui suit
               // tombe ainsi bien sur la nouvelle programmation, jamais avant l'heure prevue.
               const future = new Date(now.getTime()+2000)
@@ -503,6 +506,7 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
               const futureKey = futureBlock? String(futureBlock.id) : 'none'
               if(currentKey===futureKey) return
               scheduleTransitionFiredRef.current = { from: currentKey, to: futureKey }
+              // Le verrou n'est libere qu'une fois la sequence complete (fondu + jingle + reprise) terminee.
               forceEarlyTvTransition(()=>{ playTransitionJingleThenResyncTv() })
             }, 1000)
           },
@@ -1087,12 +1091,13 @@ export default function App(){
   // A chaque transition programmee (debut/fin de groupe, changement de jour), un jingle joue
   // d'abord (comme un "signal d'entree" sur le nouveau programme), puis la lecture reprend au
   // bon endroit. S'il n'y a aucun jingle disponible, on reprend directement.
-  const playTransitionJingleThenResync = () => {
+  const playTransitionJingleThenResync = (onDone) => {
     const jingles = radioJinglesRef.current
-    if(!jingles.length){ playScheduledRadioRef.current(); return }
+    const finish = () => { playScheduledRadioRef.current(); if(onDone) onDone() }
+    if(!jingles.length){ finish(); return }
     const jingle = jingles[Math.floor(Date.now()/1000) % jingles.length]
     radioPhaseRef.current = 'jingle'
-    playSource(jingle.url, 0, ()=>{ radioPhaseRef.current='track'; playScheduledRadioRef.current() })
+    playSource(jingle.url, 0, ()=>{ radioPhaseRef.current='track'; finish() })
   }
 
   // Le telephone met en pause l'onglet en arriere-plan (ecran eteint, autre appli), y compris la
@@ -1121,18 +1126,14 @@ export default function App(){
       if(dayKeyNow !== lastDayKeyRef.current){
         lastDayKeyRef.current = dayKeyNow
         scheduleTransitionFiredRef.current = { from:'day-change', to:'day-change' }
-        forceEarlyTransition(()=>{ scheduleTransitionFiredRef.current=null; playTransitionJingleThenResync() })
+        forceEarlyTransition(()=>{ playTransitionJingleThenResync(()=>{ scheduleTransitionFiredRef.current=null }) })
         return
       }
 
       const currentBlock = getActiveBlockFor(radioTimeBlocksRef.current, now)
       const currentKey = currentBlock? String(currentBlock.id) : 'none'
 
-      // Si le changement anticipe la derniere fois s'est bien produit entre-temps, on relache le verrou
-      if(scheduleTransitionFiredRef.current && scheduleTransitionFiredRef.current.to===currentKey){
-        scheduleTransitionFiredRef.current = null
-      }
-      if(scheduleTransitionFiredRef.current) return // une transition est deja en cours de traitement
+      if(scheduleTransitionFiredRef.current) return // une transition est deja en cours de traitement (fondu, jingle ou reprise)
 
       // Fenetre de detection EGALE a la duree du fondu (2.5s) : ainsi, dans le pire des cas, le
       // fondu se termine tout juste A l'heure programmee (jamais avant), et le recalcul qui suit
@@ -1143,7 +1144,9 @@ export default function App(){
       if(currentKey===futureKey) return // rien ne va changer avant la fin du fondu (debut/fin de groupe programme)
 
       scheduleTransitionFiredRef.current = { from: currentKey, to: futureKey }
-      forceEarlyTransition(()=>{ playTransitionJingleThenResync() })
+      // Le verrou n'est libere qu'une fois la sequence complete (fondu + jingle + reprise) terminee,
+      // jamais en cours de route — evite qu'une nouvelle verification vienne interrompre le jingle.
+      forceEarlyTransition(()=>{ playTransitionJingleThenResync(()=>{ scheduleTransitionFiredRef.current=null }) })
     }, 1000)
     return ()=>clearInterval(id)
   },[])
