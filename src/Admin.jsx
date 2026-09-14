@@ -303,6 +303,19 @@ export default function Admin() {
     setTimeout(()=>{ el.focus(); el.selectionStart=start; el.selectionEnd=end+marker.length*2 }, 0);
   };
 
+  const wrapSelectionColor = (blockId, colorName) => {
+    const el = blockTextareaRef.current[blockId];
+    if(!el) return;
+    const start = el.selectionStart, end = el.selectionEnd;
+    if(start===end) return alert('Selectionne d\'abord le texte a colorer');
+    const block = blocks.find(b=>b.id===blockId);
+    const text = block.content || '';
+    const open = `[${colorName}]`, close = `[/${colorName}]`;
+    const newText = text.slice(0,start) + open + text.slice(start,end) + close + text.slice(end);
+    updateBlock(blockId, 'content', newText);
+    setTimeout(()=>{ el.focus(); el.selectionStart=start; el.selectionEnd=end+open.length+close.length }, 0);
+  };
+
   const compressImage = (file, maxW=1280, quality=0.65) => {
     return new Promise((resolve)=>{
       if(!file.type.startsWith('image/')) return resolve(file);
@@ -976,6 +989,18 @@ export default function Admin() {
     const newText = text.slice(0,start) + marker + text.slice(start,end) + marker + text.slice(end);
     updateEncadreMedia(mediaId, 'content', newText);
     setTimeout(()=>{ el.focus(); el.selectionStart=start; el.selectionEnd=end+marker.length*2 }, 0);
+  };
+  const wrapEncadreSelectionColor = (mediaId, colorName) => {
+    const el = encadreTextareaRef.current[mediaId];
+    if(!el) return;
+    const start = el.selectionStart, end = el.selectionEnd;
+    if(start===end) return alert('Selectionne d\'abord le texte a colorer');
+    const item = encadreMedia.find(m=>m.id===mediaId);
+    const text = item.content || '';
+    const open = `[${colorName}]`, close = `[/${colorName}]`;
+    const newText = text.slice(0,start) + open + text.slice(start,end) + close + text.slice(end);
+    updateEncadreMedia(mediaId, 'content', newText);
+    setTimeout(()=>{ el.focus(); el.selectionStart=start; el.selectionEnd=end+open.length+close.length }, 0);
   };
 
   const uploadEncadreMedia = async (mediaId, file) => {
@@ -2270,6 +2295,10 @@ export default function Admin() {
                             <button type="button" onClick={()=>wrapEncadreSelection(m.id,'**')} title="Gras" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontWeight:900,cursor:'pointer',fontSize:13}}>G</button>
                             <button type="button" onClick={()=>wrapEncadreSelection(m.id,'_')} title="Italique" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontStyle:'italic',cursor:'pointer',fontSize:13}}>I</button>
                             <button type="button" onClick={()=>wrapEncadreSelection(m.id,'~')} title="Texte plus petit" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',cursor:'pointer',fontSize:10,fontWeight:800}}>T-</button>
+                            <span style={{width:1,alignSelf:'stretch',background:'#e5e7eb',margin:'0 2px'}}></span>
+                            {[['rouge','#dc2626'],['jaune','#facc15'],['vert','#16a34a'],['bleu','#3b82f6'],['orange','#f97316'],['violet','#9333ea']].map(([name,hex])=>(
+                              <button key={name} type="button" onClick={()=>wrapEncadreSelectionColor(m.id,name)} title={`Colorer en ${name}`} style={{width:24,height:28,border:'1px solid #ddd',borderRadius:6,background:hex,cursor:'pointer'}}></button>
+                            ))}
                             <span style={{fontSize:9,color:'#94a3b8',alignSelf:'center'}}>Selectionne du texte puis clique G/I/T-</span>
                           </div>
                           <textarea ref={el=>encadreTextareaRef.current[m.id]=el} placeholder="Ecris ton texte ici..." value={m.content||''} onChange={e=>updateEncadreMedia(m.id,'content',e.target.value)} style={{width:'100%', minHeight:80, padding:10, borderRadius:8, border:'1px solid #e9d5ff', fontSize:13}} />
@@ -2517,7 +2546,11 @@ export default function Admin() {
                           <button type="button" onClick={()=>wrapSelection(block.id,'**')} title="Gras" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontWeight:900,cursor:'pointer',fontSize:13}}>G</button>
                           <button type="button" onClick={()=>wrapSelection(block.id,'_')} title="Italique" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',fontStyle:'italic',cursor:'pointer',fontSize:13}}>I</button>
                           <button type="button" onClick={()=>wrapSelection(block.id,'~')} title="Texte plus petit" style={{width:32,height:28,border:'1px solid #ddd',borderRadius:6,background:'white',cursor:'pointer',fontSize:10,fontWeight:800}}>T-</button>
-                          <span style={{fontSize:10,color:'#94a3b8',alignSelf:'center'}}>Selectionne du texte puis clique G (gras), I (italique) ou T- (plus petit)</span>
+                          <span style={{width:1,alignSelf:'stretch',background:'#e5e7eb',margin:'0 2px'}}></span>
+                          {[['rouge','#dc2626'],['jaune','#facc15'],['vert','#16a34a'],['bleu','#3b82f6'],['orange','#f97316'],['violet','#9333ea']].map(([name,hex])=>(
+                            <button key={name} type="button" onClick={()=>wrapSelectionColor(block.id,name)} title={`Colorer en ${name}`} style={{width:24,height:28,border:'1px solid #ddd',borderRadius:6,background:hex,cursor:'pointer'}}></button>
+                          ))}
+                          <span style={{fontSize:10,color:'#94a3b8',alignSelf:'center'}}>Selectionne du texte puis clique G (gras), I (italique), T- (plus petit) ou une couleur</span>
                         </div>
                         <textarea ref={el=>blockTextareaRef.current[block.id]=el} placeholder="Ecris ton texte ici..." value={block.content} onChange={e=>updateBlock(block.id,'content',e.target.value)} style={{width:'100%', minHeight:90, padding:10, borderRadius:8, border:'1px solid #c7d2fe', fontSize:13}} />
                       </div>
