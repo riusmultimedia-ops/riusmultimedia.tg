@@ -212,6 +212,9 @@ export default function Admin() {
   const [newRadioIsAd, setNewRadioIsAd] = useState(false);
   const [newRadioIsHourly, setNewRadioIsHourly] = useState(false);
   const [newRadioHourlyHour, setNewRadioHourlyHour] = useState('');
+  const [newRadioHourlyDays, setNewRadioHourlyDays] = useState(['tous']);
+  const [newRadioHourlyDate, setNewRadioHourlyDate] = useState('');
+  const toggleRadioHourlyDay = (d) => setNewRadioHourlyDays(prev=> prev.includes(d)? prev.filter(x=>x!==d) : [...prev, d]);
   const [newRadioAdTimes, setNewRadioAdTimes] = useState([]);
   const [adTimeInput, setAdTimeInput] = useState('');
   const [editingRadioId, setEditingRadioId] = useState(null);
@@ -1370,19 +1373,25 @@ export default function Admin() {
     if(!newRadioTitle.trim()) return alert('Mets un titre pour la piste');
     if(newRadioIsAd && newRadioAdTimes.length===0) return alert('Ajoute au moins une heure de diffusion pour cette pub');
     if(newRadioIsHourly && newRadioHourlyHour==='') return alert('Choisis l\'heure a laquelle ce fichier doit jouer');
+    if(newRadioIsHourly && !newRadioHourlyDate && newRadioHourlyDays.length===0) return alert('Choisis au moins un jour, ou une date precise pour un jour special');
     if(newRadioIsHourly){
-      const dupHour = radioPlaylist.find(t=> t.id!==editingRadioId && t.is_hourly && t.hourly_hour===Number(newRadioHourlyHour));
-      if(dupHour) return alert(`Un autre fichier ("${dupHour.title}") est deja programme pour ${String(dupHour.hourly_hour).padStart(2,'0')}h00. Choisis une autre heure, ou modifie cette piste existante.`);
+      if(newRadioHourlyDate){
+        const dupDate = radioPlaylist.find(t=> t.id!==editingRadioId && t.is_hourly && t.hourly_hour===Number(newRadioHourlyHour) && t.hourly_date===newRadioHourlyDate);
+        if(dupDate) return alert(`Un autre fichier ("${dupDate.title}") est deja programme pour ${String(dupDate.hourly_hour).padStart(2,'0')}h00 le ${newRadioHourlyDate}. Choisis une autre heure, ou modifie cette piste existante.`);
+      } else {
+        const dupHour = radioPlaylist.find(t=> t.id!==editingRadioId && t.is_hourly && !t.hourly_date && t.hourly_hour===Number(newRadioHourlyHour) && daysOverlap(t.hourly_days||[], newRadioHourlyDays));
+        if(dupHour) return alert(`Un autre fichier ("${dupHour.title}") est deja programme pour ${String(dupHour.hourly_hour).padStart(2,'0')}h00 sur un jour en commun. Choisis une autre heure/jour, ou modifie cette piste existante.`);
+      }
     }
-    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, is_ad:newRadioIsAd, ad_times:newRadioIsAd? newRadioAdTimes : [], is_hourly:newRadioIsHourly, hourly_hour:newRadioIsHourly? Number(newRadioHourlyHour) : null, active: editingRadioId? undefined : canPublishTab('radio'), folder:newRadioFolder.trim()||null, original_filename:newRadioAudioFilename||null, duration_seconds:newRadioDuration };
+    const payload = { title:newRadioTitle.trim(), url:newRadioAudio, image:newRadioImage||null, is_jingle:newRadioIsJingle, is_ad:newRadioIsAd, ad_times:newRadioIsAd? newRadioAdTimes : [], is_hourly:newRadioIsHourly, hourly_hour:newRadioIsHourly? Number(newRadioHourlyHour) : null, hourly_days:newRadioIsHourly && !newRadioHourlyDate? newRadioHourlyDays : null, hourly_date:newRadioIsHourly && newRadioHourlyDate? newRadioHourlyDate : null, active: editingRadioId? undefined : canPublishTab('radio'), folder:newRadioFolder.trim()||null, original_filename:newRadioAudioFilename||null, duration_seconds:newRadioDuration };
     if(editingRadioId) delete payload.active;
     const url = editingRadioId? `${supabaseUrl}/rest/v1/radio_playlist?id=eq.${editingRadioId}` : `${supabaseUrl}/rest/v1/radio_playlist`;
     const method = editingRadioId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setNewRadioIsHourly(false); setNewRadioHourlyHour(''); setNewRadioDuration(null); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : (canPublishTab('radio')? 'Piste ajoutee a la radio!' : 'Piste soumise ! Elle sera diffusee apres validation par un responsable.')); } else alert(await res.text());
+    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setNewRadioIsHourly(false); setNewRadioHourlyHour(''); setNewRadioHourlyDays(['tous']); setNewRadioHourlyDate(''); setNewRadioDuration(null); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : (canPublishTab('radio')? 'Piste ajoutee a la radio!' : 'Piste soumise ! Elle sera diffusee apres validation par un responsable.')); } else alert(await res.text());
   };
-  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioAudioFilename(t.original_filename||''); setNewRadioFolder(t.folder||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); setNewRadioIsHourly(!!t.is_hourly); setNewRadioHourlyHour(t.hourly_hour!=null? String(t.hourly_hour) : ''); setNewRadioDuration(t.duration_seconds||null); window.scrollTo(0,0); };
-  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setNewRadioIsHourly(false); setNewRadioHourlyHour(''); setNewRadioDuration(null); };
+  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioAudioFilename(t.original_filename||''); setNewRadioFolder(t.folder||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); setNewRadioIsHourly(!!t.is_hourly); setNewRadioHourlyHour(t.hourly_hour!=null? String(t.hourly_hour) : ''); setNewRadioHourlyDays(t.hourly_days&&t.hourly_days.length? t.hourly_days : ['tous']); setNewRadioHourlyDate(t.hourly_date||''); setNewRadioDuration(t.duration_seconds||null); window.scrollTo(0,0); };
+  const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setNewRadioIsHourly(false); setNewRadioHourlyHour(''); setNewRadioHourlyDays(['tous']); setNewRadioHourlyDate(''); setNewRadioDuration(null); };
   const handleDeleteRadioTrack = async (id) => { if(!canDeleteTab('radio')) return alert("Tu n'as pas les droits pour supprimer une programmation radio."); if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioPlaylist(); };
   const handleToggleRadioTrack = async (t) => { if(!canPublishTab('radio')) return alert("Tu n'as pas les droits pour diffuser une piste."); await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
 
@@ -1851,7 +1860,20 @@ export default function Admin() {
                     <option value="">-- Choisir l'heure --</option>
                     {Array.from({length:24},(_,h)=>h).map(h=>(<option key={h} value={h}>{String(h).padStart(2,'0')}h00</option>))}
                   </select>
-                  <div style={{fontSize:9,color:'#64748b',marginTop:4}}>Heure de Lomé. Ce fichier ne jouera qu'a cette heure precise, tous les jours.</div>
+                  <div style={{fontSize:9,color:'#64748b',marginTop:4,marginBottom:10}}>Heure de Lomé.</div>
+
+                  <label style={{fontSize:10,fontWeight:800,color:'#2563eb'}}>JOUR SPECIAL (optionnel — pour une date precise, ex: 25 decembre)</label>
+                  <input type="date" value={newRadioHourlyDate} onChange={e=>setNewRadioHourlyDate(e.target.value)} style={{width:'100%',padding:8,marginTop:4,borderRadius:8,border:'1px solid #bfdbfe',fontSize:12}} />
+                  <div style={{fontSize:9,color:'#64748b',marginTop:4,marginBottom:10}}>{newRadioHourlyDate? `Ce fichier remplacera le top horaire habituel uniquement le ${newRadioHourlyDate}, a l'heure choisie ci-dessus. Les jours ci-dessous seront ignores.` : "Laisse vide pour un top horaire habituel (choisis les jours ci-dessous)."}</div>
+
+                  {!newRadioHourlyDate && (<>
+                    <label style={{fontSize:10,fontWeight:800,color:'#2563eb'}}>JOURS *</label>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>
+                      {[['lun','Lun'],['mar','Mar'],['mer','Mer'],['jeu','Jeu'],['ven','Ven'],['sam','Sam'],['dim','Dim'],['tous','Tous les jours']].map(([val,label])=>(
+                        <button key={val} type="button" onClick={()=>toggleRadioHourlyDay(val)} style={{padding:'6px 10px',borderRadius:20,border: newRadioHourlyDays.includes(val)? '2px solid #2563eb':'1px solid #bfdbfe',background: newRadioHourlyDays.includes(val)? '#2563eb':'white',color: newRadioHourlyDays.includes(val)? 'white':'#2563eb',fontWeight:800,fontSize:11,cursor:'pointer'}}>{label}</button>
+                      ))}
+                    </div>
+                  </>)}
                 </div>
               )}
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>GROUPE (optionnel, pour la programmation par plage horaire)</label>
@@ -1883,7 +1905,7 @@ export default function Admin() {
                 <div style={{display:'flex', gap:10, alignItems:'center'}}>
                 <img src={t.image||'/logo.png'} style={{width:40,height:40,objectFit:'cover',borderRadius:6}} alt="" />
                 <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{t.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : t.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {t.is_hourly && <span style={{background:'#dbeafe',color:'#2563eb',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>⏰ {t.hourly_hour!=null? `${String(t.hourly_hour).padStart(2,'0')}h00` : 'TOP HORAIRE'}</span>} {t.title}</div>
+                  <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>{t.is_jingle? <span style={{background:'#0f2040',color:'#ffcc00',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>JINGLE</span> : t.is_ad? <span style={{background:'#fde68a',color:'#92400e',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>PUB</span> : `${i+1}.`} {t.is_hourly && <span style={{background:'#dbeafe',color:'#2563eb',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:10}}>⏰ {t.hourly_hour!=null? `${String(t.hourly_hour).padStart(2,'0')}h00` : 'TOP HORAIRE'}{t.hourly_date? ` le ${t.hourly_date}` : (t.hourly_days&&t.hourly_days.length&&!t.hourly_days.includes('tous')? ` (${t.hourly_days.join(',')})` : '')}</span>} {t.title}</div>
                   {t.is_ad && <div style={{fontSize:10,color:'#92400e',marginTop:2}}>Diffusion : {(t.ad_times||[]).join(', ')||'aucune heure'}</div>}
                   {t.folder && <div style={{fontSize:10,color:'#7c3aed',marginTop:2,fontWeight:700}}>📁 Groupe : {t.folder}</div>}
                   {t.created_at && <div style={{fontSize:9,color:'#94a3b8',marginTop:2}}>Ajoute le {new Date(t.created_at).toLocaleDateString('fr-FR')}</div>}
