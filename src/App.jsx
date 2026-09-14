@@ -191,7 +191,7 @@ const computeGeneralPointer = (pool, dayBoundary, seedSuffix, jingles, blockSegm
 // groupe programme), pour une source donnee (pool complet de pistes/videos + jingles + blocs).
 const computeSchedule = (fullPool, timeBlocks, seedSuffix, now) => {
   now = now || new Date()
-  const generalPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && !t.folder)
+  const generalPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && !t.folder && !t.is_hourly)
   const jingles = fullPool.filter(t=>t.is_jingle)
   if(!generalPool.length) return null
   const gapFn = makeGapFn(seedSuffix)
@@ -199,7 +199,7 @@ const computeSchedule = (fullPool, timeBlocks, seedSuffix, now) => {
   const segsToday = getDayBlockSegments(timeBlocks, dayBoundary)
   const activeBlock = getActiveBlockFor(timeBlocks, now)
   if(activeBlock){
-    const folderPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && t.folder===activeBlock.folder)
+    const folderPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && !t.is_hourly && t.folder===activeBlock.folder)
     const pool = folderPool.length? folderPool : generalPool
     // Pour un groupe, l'ancre de synchronisation est le debut du segment actif aujourd'hui (deterministe, identique pour tous)
     const seg = segsToday.find(s=> s.folder===activeBlock.folder && s.start<=now && now<s.end) || { start: dayBoundary }
