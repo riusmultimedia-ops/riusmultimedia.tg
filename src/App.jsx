@@ -95,12 +95,19 @@ const buildDailyOrder = (pool, boundary, seedSuffix) => {
 // suivant est alors remelange integralement avec sa propre graine (differente mais deterministe,
 // identique pour tous les auditeurs), pour qu'aucune piste ne revienne avant que toutes les autres
 // soient passees, et que l'ordre d'un tour a l'autre ne soit jamais le meme.
-const trackAtPtr = (pool, boundary, seedSuffix, ptr) => {
+// "lapCache" evite de remelanger inutilement le meme tour a chaque piste consultee (important :
+// sans ce cache, calculer la position du jour necessite un remelange complet par piste ecoulee
+// depuis minuit, ce qui peut devenir tres lent en fin de journee).
+const trackAtPtr = (pool, boundary, seedSuffix, ptr, lapCache) => {
   const total = pool.length
   if(!total) return null
   const lap = Math.floor(ptr/total)
   const pos = ((ptr%total)+total)%total
-  const order = lap===0 ? buildDailyOrder(pool, boundary, seedSuffix) : seededShuffle(pool, utcDateKey(boundary)+':'+seedSuffix+':lap'+lap)
+  let order = lapCache && lapCache.get(lap)
+  if(!order){
+    order = lap===0 ? buildDailyOrder(pool, boundary, seedSuffix) : seededShuffle(pool, utcDateKey(boundary)+':'+seedSuffix+':lap'+lap)
+    if(lapCache) lapCache.set(lap, order)
+  }
   return order[pos]
 }
 
@@ -136,13 +143,13 @@ const makeGapFn = (seedSuffix) => {
 
 // Un "pas" de la sequence : soit la piste suivante de la playlist, soit (si le seuil de
 // cadence est atteint) le jingle qui doit s'intercaler avant de continuer.
-const stepAt = (state, pool, boundary, seedSuffix, jingles, gapFn) => {
+const stepAt = (state, pool, boundary, seedSuffix, jingles, gapFn, lapCache) => {
   if(state.pendingJingle && jingles.length){
     const jIdx = ((state.jingleOccIdx % jingles.length)+jingles.length)%jingles.length
     const jingle = jingles[jIdx]
     return { item: jingle, isJingle:true, duration: durOf(jingle), next: { trackPtr: state.trackPtr, tracksSinceJingle:0, jingleOccIdx: state.jingleOccIdx+1, pendingJingle:false } }
   }
-  const track = trackAtPtr(pool, boundary, seedSuffix, state.trackPtr)
+  const track = trackAtPtr(pool, boundary, seedSuffix, state.trackPtr, lapCache)
   const tsj = state.tracksSinceJingle + 1
   const gap = jingles.length? gapFn(state.jingleOccIdx) : Infinity
   const pending = tsj >= gap
@@ -156,12 +163,13 @@ const stepAt = (state, pool, boundary, seedSuffix, jingles, gapFn) => {
 const computeGeneralPointer = (pool, dayBoundary, seedSuffix, jingles, blockSegments, walkStart, now, gapFn) => {
   const total = pool.length
   if(!total) return null
+  const lapCache = new Map() // un seul remelange par tour pour tout le calcul, pas un par piste
   let cursor = new Date(walkStart)
   let state = { trackPtr:0, tracksSinceJingle:0, jingleOccIdx:0, pendingJingle:false }
   for(const seg of blockSegments){
     if(seg.start >= now) break
     while(cursor < seg.start){
-      const step = stepAt(state, pool, dayBoundary, seedSuffix, jingles, gapFn)
+      const step = stepAt(state, pool, dayBoundary, seedSuffix, jingles, gapFn, lapCache)
       const stepEnd = new Date(cursor.getTime()+step.duration*1000)
       if(stepEnd <= seg.start){ cursor = stepEnd; state = step.next } else break
     }
@@ -170,13 +178,13 @@ const computeGeneralPointer = (pool, dayBoundary, seedSuffix, jingles, blockSegm
     if(cursor > now) return { mode:'inBlock' }
   }
   while(true){
-    const step = stepAt(state, pool, dayBoundary, seedSuffix, jingles, gapFn)
+    const step = stepAt(state, pool, dayBoundary, seedSuffix, jingles, gapFn, lapCache)
     const stepEnd = new Date(cursor.getTime()+step.duration*1000)
     if(stepEnd <= now){ cursor = stepEnd; state = step.next } else break
   }
-  const finalStep = stepAt(state, pool, dayBoundary, seedSuffix, jingles, gapFn)
+  const finalStep = stepAt(state, pool, dayBoundary, seedSuffix, jingles, gapFn, lapCache)
   const offsetSeconds = Math.max(0, Math.round((now-cursor)/1000))
-  return { mode:'general', item: finalStep.item, isJingle: finalStep.isJingle, offsetSeconds, nextState: finalStep.next }
+  return { mode:'general', item: finalStep.item, isJingle: finalStep.isJingle, offsetSeconds, nextState: finalStep.next, lapCache }
 }
 
 // Fonction principale : donne, a l'instant "now", ce qui doit etre diffuse (mode general ou
@@ -198,17 +206,17 @@ const computeSchedule = (fullPool, timeBlocks, seedSuffix, now) => {
     const groupSeed = seedSuffix+':grp:'+activeBlock.folder
     const p = computeGeneralPointer(pool, dayBoundary, groupSeed, jingles, [], seg.start, now, gapFn)
     if(!p || p.mode!=='general') return null
-    return { folder: activeBlock.folder, track: p.isJingle? null : p.item, offsetSeconds: p.offsetSeconds, inJingle: p.isJingle, jingle: p.isJingle? p.item : null, _local: { pool, boundary: dayBoundary, seedSuffix: groupSeed, jingles, gapFn, state: p.nextState } }
+    return { folder: activeBlock.folder, track: p.isJingle? null : p.item, offsetSeconds: p.offsetSeconds, inJingle: p.isJingle, jingle: p.isJingle? p.item : null, _local: { pool, boundary: dayBoundary, seedSuffix: groupSeed, jingles, gapFn, state: p.nextState, lapCache: p.lapCache } }
   }
   const p = computeGeneralPointer(generalPool, dayBoundary, seedSuffix, jingles, segsToday, dayBoundary, now, gapFn)
   if(!p || p.mode!=='general') return null
-  return { folder: null, track: p.isJingle? null : p.item, offsetSeconds: p.offsetSeconds, inJingle: p.isJingle, jingle: p.isJingle? p.item : null, _local: { pool: generalPool, boundary: dayBoundary, seedSuffix, jingles, gapFn, state: p.nextState } }
+  return { folder: null, track: p.isJingle? null : p.item, offsetSeconds: p.offsetSeconds, inJingle: p.isJingle, jingle: p.isJingle? p.item : null, _local: { pool: generalPool, boundary: dayBoundary, seedSuffix, jingles, gapFn, state: p.nextState, lapCache: p.lapCache } }
 }
 // Avancement local fiable : utilise directement la sequence deterministe (stepAt), sans jamais
 // recalculer "depuis minuit". Evite qu'un jingle tres court soit "avale" silencieusement par un
 // leger decalage de timing (temps de chargement, etc.) a chaque transition.
 const advanceLocal = (local) => {
-  const step = stepAt(local.state, local.pool, local.boundary, local.seedSuffix, local.jingles, local.gapFn)
+  const step = stepAt(local.state, local.pool, local.boundary, local.seedSuffix, local.jingles, local.gapFn, local.lapCache)
   return { item: step.item, isJingle: step.isJingle, offsetSeconds: 0, _local: { ...local, state: step.next } }
 }
 // ==================== FIN DU MOTEUR DE DIFFUSION SYNCHRONISEE ====================
@@ -1065,7 +1073,7 @@ export default function App(){
     // precharge la piste/jingle suivant(e) (sans consommer l'etat), pour une transition sans coupure
     if(localScheduleRef.current){
       const local = localScheduleRef.current
-      const peek = stepAt(local.state, local.pool, local.boundary, local.seedSuffix, local.jingles, local.gapFn)
+      const peek = stepAt(local.state, local.pool, local.boundary, local.seedSuffix, local.jingles, local.gapFn, local.lapCache)
       if(peek?.item?.url) decodeTrack(peek.item.url).catch(()=>{})
     }
   }
@@ -1099,6 +1107,14 @@ export default function App(){
     radioPhaseRef.current = 'jingle'
     setCurrentRadioItem(jingle) // affiche bien "le jingle en cours" plutot que l'ancien titre pendant sa lecture
     playSource(jingle.url, 0, ()=>{ radioPhaseRef.current='track'; finish() })
+    // Precharge des maintenant (pendant que le jingle joue) le programme qui doit suivre, pour
+    // qu'il soit deja pret (telecharge + decode) au moment ou le jingle se termine, et eviter
+    // ainsi un blanc au demarrage du nouveau programme.
+    try{
+      const upcoming = computeSchedule(radioPlaylistRef.current, radioTimeBlocksRef.current, 'radio', new Date(Date.now()+durOf(jingle)*1000))
+      const upcomingSrc = upcoming? ((upcoming.inJingle && upcoming.jingle) ? upcoming.jingle : upcoming.track) : null
+      if(upcomingSrc?.url) decodeTrack(upcomingSrc.url).catch(()=>{})
+    }catch{}
   }
 
   // Le telephone met en pause l'onglet en arriere-plan (ecran eteint, autre appli), y compris la
