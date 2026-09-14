@@ -1277,8 +1277,11 @@ export default function App(){
     if(now.getUTCMinutes()!==0) return
     const hourKey = now.toISOString().slice(0,13) // AAAA-MM-JJTHH
     if(playedHourSlotsRef.current.has(hourKey)) return
+    // Cherche le fichier precisement assigne a l'heure actuelle (heure de Lomé = UTC) ; si
+    // aucun fichier n'est assigne a cette heure precise, on ne joue rien (pas de rotation au hasard).
+    const track = radioHourly.find(t=>t.hourly_hour===now.getUTCHours())
+    if(!track) return
     playedHourSlotsRef.current.add(hourKey)
-    const track = radioHourly[now.getUTCHours() % radioHourly.length]
     radioPhaseRef.current='hourly'
     playSource(track.url, 0, ()=>{ radioPhaseRef.current='track'; playScheduledRadioRef.current() })
   }
