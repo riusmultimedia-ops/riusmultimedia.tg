@@ -374,10 +374,12 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
     }
 
     const localScheduleRef = { current: null }
+    const currentTvVideoIdRef = { current: null }
     const playTvItem = (item, offsetSeconds) => {
       if(destroyed || !playerRef.current || !item) return
       const ytId = getYoutubeIdRaw(item.url)
       if(!ytId) return
+      currentTvVideoIdRef.current = ytId
       phaseRef.current = item.is_jingle ? 'jingle' : 'clip'
       showLoadingBriefly()
       try{ playerRef.current.loadVideoById({videoId:ytId, startSeconds: Math.max(0, Math.round(offsetSeconds||0))}) }catch{}
@@ -389,6 +391,10 @@ function TvReplayPlayer({videoPlaylist, tvTimeBlocks, hasUserInteractedRef}){
       if(!sched) return
       const item = (sched.inJingle && sched.jingle) ? sched.jingle : sched.track
       localScheduleRef.current = sched._local || null
+      // Si la video calculee est deja celle en cours de lecture, on ne la recharge pas (pas de
+      // saut/coupure visible) : elle continue naturellement, seul le contexte interne est mis a jour.
+      const ytId = item? getYoutubeIdRaw(item.url) : null
+      if(ytId && ytId===currentTvVideoIdRef.current && phaseRef.current!=='ad'){ return }
       playTvItem(item, sched.offsetSeconds)
     }
     // A chaque transition programmee (debut/fin de groupe, changement de jour), un jingle joue
@@ -1092,6 +1098,10 @@ export default function App(){
     if(!sched){ return }
     const source = sched.inJingle && sched.jingle ? sched.jingle : sched.track
     localScheduleRef.current = sched._local || null
+    // Si la piste calculee est deja celle en train de jouer, on ne touche pas a la position de
+    // lecture (pas de "saut" audible) : l'audio continue naturellement sans coupure, on se
+    // contente de mettre a jour le contexte interne pour les prochaines transitions.
+    if(source && source.url===currentUrlRef.current && radioIsPlayingRef.current){ return }
     playItem(source, sched.offsetSeconds)
   }
   // Avancement normal (fin de piste/jingle) : suit directement la sequence deterministe deja
