@@ -191,7 +191,7 @@ const computeGeneralPointer = (pool, dayBoundary, seedSuffix, jingles, blockSegm
 // groupe programme), pour une source donnee (pool complet de pistes/videos + jingles + blocs).
 const computeSchedule = (fullPool, timeBlocks, seedSuffix, now) => {
   now = now || new Date()
-  const generalPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && !t.folder && !t.is_hourly)
+  const generalPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && !t.is_hourly)
   const jingles = fullPool.filter(t=>t.is_jingle)
   if(!generalPool.length) return null
   const gapFn = makeGapFn(seedSuffix)
