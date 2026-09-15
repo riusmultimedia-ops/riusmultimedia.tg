@@ -373,7 +373,7 @@ export default function Admin() {
               const boxW = logoSize + padding + textWidth + padding*1.5;
               const boxH = logoSize + padding;
               const boxX = canvas.width - boxW - margin;
-              const boxY = canvas.height - boxH - margin;
+              const boxY = margin;
               ctx.fillStyle = 'rgba(0,0,0,0.4)';
               ctx.fillRect(boxX, boxY, boxW, boxH);
               ctx.drawImage(logo, boxX+padding/2, boxY+padding/2, logoSize, logoSize);
