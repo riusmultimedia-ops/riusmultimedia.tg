@@ -1270,7 +1270,7 @@ export default function App(){
   // Top horaire : se diffuse automatiquement pile a chaque heure (minute UTC = 0), en interrompant
   // brievement la piste generale, comme une pub programmee mais sans heures a saisir.
   const maybeTriggerHourly = () => {
-    if(radioPhaseRef.current==='ad' || radioPhaseRef.current==='jingle' || radioPhaseRef.current==='hourly') return
+    if(radioPhaseRef.current==='ad' || radioPhaseRef.current==='hourly') return
     if(!radioIsPlaying) return
     if(!radioHourly.length) return
     const now = new Date()
@@ -1288,8 +1288,12 @@ export default function App(){
       || candidates.find(t=> !t.hourly_date && (t.hourly_days||[]).some(d=>d==='tous'||d===todayKey))
     if(!track) return
     playedHourSlotsRef.current.add(hourKey)
-    radioPhaseRef.current='hourly'
-    playSource(track.url, 0, ()=>{ radioPhaseRef.current='track'; playScheduledRadioRef.current() })
+    // Interrompt systematiquement ce qui est en train de jouer (chanson OU jingle), avec un
+    // petit fondu, pour garantir que le top horaire se declenche toujours a l'heure prevue.
+    forceEarlyTransition(()=>{
+      radioPhaseRef.current='hourly'
+      playSource(track.url, 0, ()=>{ radioPhaseRef.current='track'; playScheduledRadioRef.current() })
+    })
   }
   useEffect(()=>{ const id=setInterval(maybeTriggerAd, 20000); maybeTriggerAd(); return()=>clearInterval(id) },[radioPlaylist, radioIsPlaying])
   useEffect(()=>{ const id=setInterval(maybeTriggerHourly, 15000); maybeTriggerHourly(); return()=>clearInterval(id) },[radioPlaylist, radioIsPlaying])
