@@ -347,40 +347,46 @@ export default function Admin() {
       if(!file.type.startsWith('image/')) return resolve(file);
       const img = new Image();
       img.onload = ()=>{
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width; canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, img.width, img.height);
-        const finish = () => {
-          canvas.toBlob(function(blob){
-            if(blob) resolve(new File([blob], file.name, {type:'image/jpeg'}));
-            else resolve(file);
-          }, 'image/jpeg', 0.85);
-        };
-        const logo = new Image();
-        logo.onload = ()=>{
-          const margin = Math.max(8, Math.round(canvas.width*0.018));
-          const logoSize = Math.max(20, Math.round(canvas.width*0.07));
-          const fontSize = Math.max(11, Math.round(logoSize*0.36));
-          ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-          const text = 'Rius MultiMédia';
-          const textWidth = ctx.measureText(text).width;
-          const padding = 10;
-          const boxW = logoSize + padding + textWidth + padding*1.5;
-          const boxH = logoSize + padding;
-          const boxX = canvas.width - boxW - margin;
-          const boxY = canvas.height - boxH - margin;
-          ctx.fillStyle = 'rgba(0,0,0,0.4)';
-          ctx.fillRect(boxX, boxY, boxW, boxH);
-          ctx.drawImage(logo, boxX+padding/2, boxY+padding/2, logoSize, logoSize);
-          ctx.fillStyle = 'white';
-          ctx.textBaseline = 'middle';
-          ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-          ctx.fillText(text, boxX+padding/2+logoSize+padding/2, boxY+boxH/2);
-          finish();
-        };
-        logo.onerror = finish; // si le logo ne charge pas, on renvoie l'image sans filigrane plutot que d'echouer
-        logo.src = '/logo.png';
+        try{
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width; canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, img.width, img.height);
+          const finish = () => {
+            try{
+              canvas.toBlob(function(blob){
+                if(blob) resolve(new File([blob], file.name, {type:'image/jpeg'}));
+                else { alert("Le filigrane n'a pas pu etre applique (echec de generation de l'image). L'image a ete envoyee sans filigrane."); resolve(file); }
+              }, 'image/jpeg', 0.85);
+            }catch(err){ alert("Le filigrane n'a pas pu etre applique : "+err.message+". L'image a ete envoyee sans filigrane."); resolve(file); }
+          };
+          const logo = new Image();
+          logo.onload = ()=>{
+            try{
+              const margin = Math.max(8, Math.round(canvas.width*0.018));
+              const logoSize = Math.max(20, Math.round(canvas.width*0.07));
+              const fontSize = Math.max(11, Math.round(logoSize*0.36));
+              ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+              const text = 'Rius MultiMédia';
+              const textWidth = ctx.measureText(text).width;
+              const padding = 10;
+              const boxW = logoSize + padding + textWidth + padding*1.5;
+              const boxH = logoSize + padding;
+              const boxX = canvas.width - boxW - margin;
+              const boxY = canvas.height - boxH - margin;
+              ctx.fillStyle = 'rgba(0,0,0,0.4)';
+              ctx.fillRect(boxX, boxY, boxW, boxH);
+              ctx.drawImage(logo, boxX+padding/2, boxY+padding/2, logoSize, logoSize);
+              ctx.fillStyle = 'white';
+              ctx.textBaseline = 'middle';
+              ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+              ctx.fillText(text, boxX+padding/2+logoSize+padding/2, boxY+boxH/2);
+            }catch(err){ alert("Le filigrane n'a pas pu etre dessine : "+err.message+". L'image sera envoyee sans filigrane."); }
+            finish();
+          };
+          logo.onerror = ()=>{ alert("Le logo n'a pas pu etre charge (/logo.png introuvable ou bloque). L'image a ete envoyee sans filigrane."); finish(); };
+          logo.src = '/logo.png';
+        }catch(err){ alert("Le filigrane n'a pas pu etre applique : "+err.message+". L'image a ete envoyee sans filigrane."); resolve(file); }
       };
       img.onerror = function(){ resolve(file); };
       img.src = URL.createObjectURL(file);
@@ -820,6 +826,7 @@ export default function Admin() {
   const [newArticleWatermark, setNewArticleWatermark] = useState(false);
   const uploadUne = async (file) => {
     if(!file) return null;
+    console.log('[RIUS-DEBUG] uploadUne: case filigrane cochee =', newArticleWatermark);
     if(file.type.startsWith('image/')){ file = await compressImage(file); if(newArticleWatermark) file = await watermarkImage(file); }
     setUploading('UNE');
     try{
