@@ -341,6 +341,52 @@ export default function Admin() {
     });
   };
 
+  // Dessine le logo + le nom du site en filigrane, en bas a droite de l'image, avant l'envoi.
+  const watermarkImage = (file) => {
+    return new Promise((resolve)=>{
+      if(!file.type.startsWith('image/')) return resolve(file);
+      const img = new Image();
+      img.onload = ()=>{
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width; canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+        const finish = () => {
+          canvas.toBlob(function(blob){
+            if(blob) resolve(new File([blob], file.name, {type:'image/jpeg'}));
+            else resolve(file);
+          }, 'image/jpeg', 0.85);
+        };
+        const logo = new Image();
+        logo.onload = ()=>{
+          const margin = Math.max(8, Math.round(canvas.width*0.018));
+          const logoSize = Math.max(20, Math.round(canvas.width*0.07));
+          const fontSize = Math.max(11, Math.round(logoSize*0.36));
+          ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+          const text = 'Rius MultiMédia';
+          const textWidth = ctx.measureText(text).width;
+          const padding = 10;
+          const boxW = logoSize + padding + textWidth + padding*1.5;
+          const boxH = logoSize + padding;
+          const boxX = canvas.width - boxW - margin;
+          const boxY = canvas.height - boxH - margin;
+          ctx.fillStyle = 'rgba(0,0,0,0.4)';
+          ctx.fillRect(boxX, boxY, boxW, boxH);
+          ctx.drawImage(logo, boxX+padding/2, boxY+padding/2, logoSize, logoSize);
+          ctx.fillStyle = 'white';
+          ctx.textBaseline = 'middle';
+          ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+          ctx.fillText(text, boxX+padding/2+logoSize+padding/2, boxY+boxH/2);
+          finish();
+        };
+        logo.onerror = finish; // si le logo ne charge pas, on renvoie l'image sans filigrane plutot que d'echouer
+        logo.src = '/logo.png';
+      };
+      img.onerror = function(){ resolve(file); };
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
   const TIMEOUT_MIN = 5;
   const [lastActivity, setLastActivity] = useState(Date.now());
   
@@ -771,9 +817,10 @@ export default function Admin() {
     setBlocks(copy)
   }
 
+  const [newArticleWatermark, setNewArticleWatermark] = useState(false);
   const uploadUne = async (file) => {
     if(!file) return null;
-    if(file.type.startsWith('image/')){ file = await compressImage(file); }
+    if(file.type.startsWith('image/')){ file = await compressImage(file); if(newArticleWatermark) file = await watermarkImage(file); }
     setUploading('UNE');
     try{
       const fileName = `UNE_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
@@ -1320,7 +1367,7 @@ export default function Admin() {
   const afterPublish = () => {
     setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[], slug:'' }); setSlugTouched(false); 
     setBlocks([{id:uid(), type:'text', content:''}])
-    setGallery([]); setEditLang('fr'); fetchArticles(); setShowArticles(true);
+    setGallery([]); setEditLang('fr'); setNewArticleWatermark(false); fetchArticles(); setShowArticles(true);
   }
 
   const [editingFlashId, setEditingFlashId] = useState(null);
@@ -2546,6 +2593,10 @@ export default function Admin() {
               
               <div style={{border:'2px dashed #93c5fd', padding:12, borderRadius:12, background:'#f0f7ff'}}>
                 <div style={{fontSize:11,fontWeight:900,color:'#2e4fb0', marginBottom:6}}>PHOTO PRINCIPALE</div>
+                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,color:'#2e4fb0',marginBottom:8,cursor:'pointer'}}>
+                  <input type="checkbox" checked={newArticleWatermark} onChange={e=>setNewArticleWatermark(e.target.checked)} />
+                  Ajouter le logo et le nom du site en filigrane (visible sur le carrousel d'accueil)
+                </label>
                 <input type="file" accept="image/*" onChange={e=>uploadUne(e.target.files[0])} style={{width:'100%',fontSize:12}} />
                 {uploading==='UNE' && <div style={{fontSize:11,color:'#2e4fb0',marginTop:6}}>Upload...</div>}
                 {form.image && <img src={form.image} style={{width:'100%', maxHeight:180, objectFit:'cover', borderRadius:10, marginTop:8}} alt="" />}
