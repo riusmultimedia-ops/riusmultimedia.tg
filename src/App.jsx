@@ -191,7 +191,11 @@ const computeGeneralPointer = (pool, dayBoundary, seedSuffix, jingles, blockSegm
 // groupe programme), pour une source donnee (pool complet de pistes/videos + jingles + blocs).
 const computeSchedule = (fullPool, timeBlocks, seedSuffix, now) => {
   now = now || new Date()
-  const generalPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && !t.is_hourly)
+  // La playlist generale n'utilise QUE les pistes sans groupe (priorite a la playlist normale,
+  // qui doit couvrir les 24h a elle seule). Les pistes assignees a un groupe ne jouent que
+  // pendant leur creneau programme, jamais dans la rotation generale au hasard — ca evite
+  // qu'une meme piste de groupe soit entendue deux fois (une fois au hasard, une fois programmee).
+  const generalPool = fullPool.filter(t=>!t.is_jingle && !t.is_ad && !t.folder && !t.is_hourly)
   const jingles = fullPool.filter(t=>t.is_jingle)
   if(!generalPool.length) return null
   const gapFn = makeGapFn(seedSuffix)
