@@ -515,6 +515,206 @@ function btnStyle(){
   return { background:C.gold, color:'#0f2040', border:0, borderRadius:20, padding:'12px 20px', fontWeight:900, fontSize:13, cursor:'pointer' }
 }
 
+
+// ==================================================================
+// 7) PUZZLE A GLISSIERE (taquin / 15-puzzle)
+// ==================================================================
+function isSolvable(tiles, size){
+  const flat = tiles.filter(t=>t!==null)
+  let inversions = 0
+  for(let i=0;i<flat.length;i++) for(let j=i+1;j<flat.length;j++) if(flat[i]>flat[j]) inversions++
+  if(size % 2 === 1) return inversions % 2 === 0
+  const emptyRow = Math.floor(tiles.indexOf(null) / size)
+  const emptyRowFromBottom = size - emptyRow
+  return (inversions + emptyRowFromBottom) % 2 === 0
+}
+function shuffledPuzzle(size){
+  let tiles
+  do {
+    tiles = shuffleArr([...Array(size*size-1)].map((_,i)=>i+1).concat([null]))
+  } while(!isSolvable(tiles, size) || tiles.every((t,i)=> t===(i===size*size-1? null : i+1)))
+  return tiles
+}
+function SlidingPuzzle(){
+  const [size, setSize] = useState(null)
+  const [tiles, setTiles] = useState([])
+  const [moves, setMoves] = useState(0)
+
+  const start = (n) => { setSize(n); setTiles(shuffledPuzzle(n)); setMoves(0) }
+  const won = size && tiles.every((t,i)=> t===(i===size*size-1? null : i+1))
+
+  const move = (idx) => {
+    if(won) return
+    const emptyIdx = tiles.indexOf(null)
+    const row = Math.floor(idx/size), col = idx%size
+    const erow = Math.floor(emptyIdx/size), ecol = emptyIdx%size
+    const adjacent = (row===erow && Math.abs(col-ecol)===1) || (col===ecol && Math.abs(row-erow)===1)
+    if(!adjacent) return
+    const nt = [...tiles]; nt[emptyIdx]=tiles[idx]; nt[idx]=null
+    setTiles(nt); setMoves(m=>m+1)
+  }
+
+  if(!size){
+    return (
+      <div style={{textAlign:'center', padding:20}}>
+        <div style={{fontSize:14, color:'white', marginBottom:16}}>Choisis la difficulte :</div>
+        <div style={{display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap'}}>
+          <button onClick={()=>start(3)} style={btnStyle()}>Facile (3x3)</button>
+          <button onClick={()=>start(4)} style={btnStyle()}>Difficile (4x4)</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{textAlign:'center', padding:10}}>
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12, maxWidth:320, margin:'0 auto 12px'}}>
+        <div style={{color:'white', fontWeight:800, fontSize:13}}>Coups : {moves}</div>
+        <button onClick={()=>setSize(null)} style={{background:'transparent', border:'1px solid rgba(255,255,255,0.4)', color:'white', borderRadius:8, padding:'6px 12px', fontSize:11, cursor:'pointer'}}>Changer</button>
+      </div>
+      <div style={{display:'grid', gridTemplateColumns:`repeat(${size}, 1fr)`, gap:6, width: size===3?240:300, margin:'0 auto'}}>
+        {tiles.map((t,idx)=>(
+          <div key={idx} onClick={()=>move(idx)} style={{
+            aspectRatio:'1', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:24, fontWeight:900, cursor: t?'pointer':'default',
+            background: t? 'white':'transparent', color:'#0f2040',
+            boxShadow: t? '0 2px 6px rgba(0,0,0,0.3)':'none'
+          }}>{t}</div>
+        ))}
+      </div>
+      {won && <GameResultBanner text="🎉 Puzzle resolu !" sub={`En ${moves} coups`} color={C.green} onReplay={()=>start(size)} />}
+    </div>
+  )
+}
+
+// ==================================================================
+// 8) SUDOKU
+// ==================================================================
+function sudokuValid(grid, row, col, val){
+  for(let i=0;i<9;i++){ if(grid[row][i]===val || grid[i][col]===val) return false }
+  const br=Math.floor(row/3)*3, bc=Math.floor(col/3)*3
+  for(let r=br;r<br+3;r++) for(let c=bc;c<bc+3;c++) if(grid[r][c]===val) return false
+  return true
+}
+function sudokuGenerateFull(){
+  const grid = Array.from({length:9},()=>Array(9).fill(0))
+  const fill = (pos) => {
+    if(pos===81) return true
+    const row=Math.floor(pos/9), col=pos%9
+    const nums = shuffleArr([1,2,3,4,5,6,7,8,9])
+    for(const n of nums){
+      if(sudokuValid(grid,row,col,n)){
+        grid[row][col]=n
+        if(fill(pos+1)) return true
+        grid[row][col]=0
+      }
+    }
+    return false
+  }
+  fill(0)
+  return grid
+}
+function sudokuMakePuzzle(difficulty){
+  const full = sudokuGenerateFull()
+  const puzzle = full.map(r=>[...r])
+  const toRemove = difficulty==='facile'? 35 : difficulty==='moyen'? 45 : 52
+  let removed = 0
+  const cells = shuffleArr(Array.from({length:81},(_,i)=>i))
+  for(const idx of cells){
+    if(removed>=toRemove) break
+    const r=Math.floor(idx/9), c=idx%9
+    puzzle[r][c]=0
+    removed++
+  }
+  return { puzzle, solution:full }
+}
+function SudokuGame(){
+  const [difficulty, setDifficulty] = useState(null)
+  const [puzzle, setPuzzle] = useState(null)
+  const [solution, setSolution] = useState(null)
+  const [grid, setGrid] = useState(null)
+  const [fixed, setFixed] = useState(null)
+  const [selected, setSelected] = useState(null)
+  const [wrongCells, setWrongCells] = useState([])
+
+  const start = (diff) => {
+    const { puzzle:p, solution:s } = sudokuMakePuzzle(diff)
+    setDifficulty(diff); setPuzzle(p); setSolution(s)
+    setGrid(p.map(r=>[...r])); setFixed(p.map(r=>r.map(v=>v!==0)))
+    setSelected(null); setWrongCells([])
+  }
+
+  const won = grid && grid.every((row,r)=>row.every((v,c)=>v===solution[r][c]))
+
+  const place = (val) => {
+    if(!selected || won) return
+    const [r,c] = selected
+    if(fixed[r][c]) return
+    const ng = grid.map(row=>[...row]); ng[r][c]=val; setGrid(ng)
+    setWrongCells(wc=>wc.filter(([wr,wc2])=>!(wr===r&&wc2===c)))
+  }
+  const checkGrid = () => {
+    const wrongs = []
+    grid.forEach((row,r)=>row.forEach((v,c)=>{ if(v!==0 && v!==solution[r][c]) wrongs.push([r,c]) }))
+    setWrongCells(wrongs)
+  }
+  const clearCell = () => {
+    if(!selected) return
+    const [r,c] = selected
+    if(fixed[r][c]) return
+    const ng = grid.map(row=>[...row]); ng[r][c]=0; setGrid(ng)
+  }
+
+  if(!difficulty){
+    return (
+      <div style={{textAlign:'center', padding:20}}>
+        <div style={{fontSize:14, color:'white', marginBottom:16}}>Choisis la difficulte :</div>
+        <div style={{display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap'}}>
+          <button onClick={()=>start('facile')} style={btnStyle()}>Facile</button>
+          <button onClick={()=>start('moyen')} style={btnStyle()}>Moyen</button>
+          <button onClick={()=>start('difficile')} style={btnStyle()}>Difficile</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{textAlign:'center', padding:10}}>
+      <button onClick={()=>setDifficulty(null)} style={{background:'transparent', border:'1px solid rgba(255,255,255,0.4)', color:'white', borderRadius:8, padding:'6px 12px', fontSize:11, cursor:'pointer', marginBottom:12}}>Changer de niveau</button>
+      <div style={{display:'inline-block', background:'#0f2040', padding:3, borderRadius:6}}>
+        {grid.map((row,r)=>(
+          <div key={r} style={{display:'flex'}}>
+            {row.map((v,c)=>{
+              const isSel = selected && selected[0]===r && selected[1]===c
+              const isWrong = wrongCells.some(([wr,wc])=>wr===r&&wc===c)
+              return (
+                <div key={c} onClick={()=>!fixed[r][c] && setSelected([r,c])} style={{
+                  width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:15, fontWeight: fixed[r][c]? 900:700, cursor: fixed[r][c]?'default':'pointer',
+                  background: isWrong? '#ffcccc' : isSel? '#fff3b0' : 'white',
+                  color: fixed[r][c]? '#0f2040' : isWrong? C.red : '#2e4fb0',
+                  borderRight: (c+1)%3===0 && c!==8? '2px solid #0f2040':'1px solid #ccc',
+                  borderBottom: (r+1)%3===0 && r!==8? '2px solid #0f2040':'1px solid #ccc',
+                }}>{v||''}</div>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+      <div style={{display:'flex', justifyContent:'center', gap:6, flexWrap:'wrap', marginTop:14, maxWidth:280, marginLeft:'auto', marginRight:'auto'}}>
+        {[1,2,3,4,5,6,7,8,9].map(n=>(
+          <button key={n} onClick={()=>place(n)} style={{width:32, height:32, borderRadius:6, border:0, background:C.gold, color:'#0f2040', fontWeight:900, fontSize:14, cursor:'pointer'}}>{n}</button>
+        ))}
+        <button onClick={clearCell} style={{width:32, height:32, borderRadius:6, border:0, background:'rgba(255,255,255,0.2)', color:'white', fontWeight:900, fontSize:14, cursor:'pointer'}}>✕</button>
+      </div>
+      <div style={{marginTop:12}}>
+        <button onClick={checkGrid} style={{background:'rgba(255,255,255,0.15)', color:'white', border:0, borderRadius:20, padding:'8px 18px', fontWeight:800, fontSize:12, cursor:'pointer'}}>✓ Verifier ma grille</button>
+      </div>
+      {won && <GameResultBanner text="🎉 Sudoku resolu, bravo !" color={C.green} onReplay={()=>start(difficulty)} />}
+    </div>
+  )
+}
+
 // ==================================================================
 // PAGE PRINCIPALE — grille de selection des jeux
 // ==================================================================
@@ -525,6 +725,8 @@ const GAMES_LIST = [
   { id:'quiz', title:'Quiz Culture Generale', desc:'15 questions varies', emoji:'❓', component:QuizGame },
   { id:'pendu', title:'Pendu', desc:'Devine le mot mystere', emoji:'🔤', component:HangmanGame },
   { id:'snake', title:'Serpent', desc:'Jeu de reflexes classique', emoji:'🐍', component:SnakeGame },
+  { id:'taquin', title:'Puzzle a glissiere', desc:'Remets les nombres en ordre', emoji:'🧩', component:SlidingPuzzle },
+  { id:'sudoku', title:'Sudoku', desc:'3 niveaux de difficulte', emoji:'🔢', component:SudokuGame },
 ]
 
 export default function GamesPage(){
