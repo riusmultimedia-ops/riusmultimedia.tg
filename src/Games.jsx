@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { AdBanner } from './AdBanner'
 
 // ==================================================================
 // Couleurs du site, reprises pour une coherence visuelle
@@ -729,7 +730,7 @@ const GAMES_LIST = [
   { id:'sudoku', title:'Sudoku', desc:'3 niveaux de difficulte', emoji:'🔢', component:SudokuGame },
 ]
 
-export default function GamesPage(){
+export default function GamesPage({pubsTop, pubsMid}){
   const [activeGame, setActiveGame] = useState(null)
 
   if(activeGame){
@@ -740,6 +741,7 @@ export default function GamesPage(){
         <button onClick={()=>setActiveGame(null)} style={{background:'transparent', border:'1px solid rgba(255,255,255,0.4)', color:'white', borderRadius:20, padding:'8px 16px', fontSize:12, cursor:'pointer', marginBottom:16}}>← Retour aux jeux</button>
         <h2 style={{color:'white', fontSize:20, marginTop:0, marginBottom:16}}>{game.emoji} {game.title}</h2>
         <div key={activeGame}><GameComp /></div>
+        {pubsMid && pubsMid.length>0 && <div style={{marginTop:28, paddingTop:20, borderTop:'1px solid rgba(255,255,255,0.12)'}}><AdBanner pubs={pubsMid} format="leaderboard" /></div>}
       </div>
     )
   }
@@ -747,7 +749,8 @@ export default function GamesPage(){
   return (
     <div style={{maxWidth:900, margin:'0 auto', padding:'24px 14px'}}>
       <h2 style={{color:'white', fontSize:22, marginTop:0}}>🎮 Espace Jeux</h2>
-      <p style={{color:'rgba(255,255,255,0.75)', fontSize:13, marginBottom:20}}>Des jeux gratuits pour se detendre en famille — enfants, jeunes et adultes !</p>
+      <p style={{color:'rgba(255,255,255,0.75)', fontSize:13, marginBottom:16}}>Des jeux gratuits pour se detendre en famille — enfants, jeunes et adultes !</p>
+      {pubsTop && pubsTop.length>0 && <div style={{marginBottom:20}}><AdBanner pubs={pubsTop} format="leaderboard" /></div>}
       <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:14}}>
         {GAMES_LIST.map(g=>(
           <div key={g.id} onClick={()=>setActiveGame(g.id)} style={{

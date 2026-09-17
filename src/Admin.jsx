@@ -24,6 +24,8 @@ const PUB_SLOTS = [
   { value:'sidebar', label:'Article - Encart sidebar #1 - 300x250' },
   { value:'article-incontent', label:'Article - Bandeau sous l\'image - 728x90' },
   { value:'article-sidebar-2', label:'Article - Encart sidebar #2, demi-page - 300x600' },
+  { value:'jeux-top', label:'Jeux - Bandeau en haut de la page - 728x90' },
+  { value:'jeux-mid', label:'Jeux - Bandeau sous chaque jeu - 728x90' },
 ];
 const slotLabel = (v) => (PUB_SLOTS.find(s=>s.value===v)?.label) || 'Bandeau Header (toutes pages) - 728x90';
 
