@@ -895,17 +895,22 @@ export default function Admin() {
     if(dup){ alert(`Ce fichier ("${file.name}") existe deja dans ${targetFolder? `le groupe "${targetFolder}"` : 'la playlist generale (sans groupe)'}. Change de groupe si tu veux quand meme l'importer, ou choisis un autre fichier.`); return null; }
     setUploading('radio-audio');
     try{
-      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-      const [res, duration] = await Promise.all([
-        fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
-          method: 'POST',
-          headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert': 'true', 'Content-Type': file.type },
-          body: file
-        }),
+      const [uploadResult, duration] = await Promise.all([
+        (async () => {
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await fetch(`${supabaseUrl}/functions/v1/upload-radio-r2`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` },
+            body: formData
+          });
+          const data = await res.json();
+          if(!res.ok || !data.success) throw new Error(data.error || 'Erreur upload R2');
+          return data;
+        })(),
         getAudioFileDuration(file)
       ]);
-      if(!res.ok) throw new Error(await res.text());
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/radio/${fileName}`;
+      const publicUrl = uploadResult.url;
       setNewRadioAudio(publicUrl);
       setNewRadioAudioFilename(file.name);
       setNewRadioDuration(duration);
@@ -937,15 +942,23 @@ export default function Admin() {
       const key = `${file.name}|||${folderName||''}`;
       if(seen.has(key)){ skipped++; setBulkImportProgress({current:i+1, total:files.length, ok, skipped}); continue; }
       try{
-        const fileName = `${Date.now()}_${i}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-        const [res, duration] = await Promise.all([
-          fetch(`${supabaseUrl}/storage/v1/object/radio/${fileName}`, {
-            method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'x-upsert':'true', 'Content-Type':file.type }, body:file
-          }),
+        const [uploadResult, duration] = await Promise.all([
+          (async () => {
+            const formData = new FormData();
+            formData.append('file', file);
+            const r = await fetch(`${supabaseUrl}/functions/v1/upload-radio-r2`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` },
+              body: formData
+            });
+            const d = await r.json();
+            if(!r.ok || !d.success) return null;
+            return d;
+          })(),
           getAudioFileDuration(file)
         ]);
-        if(!res.ok) continue;
-        const publicUrl = `${supabaseUrl}/storage/v1/object/public/radio/${fileName}`;
+        if(!uploadResult) continue;
+        const publicUrl = uploadResult.url;
         const title = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g,' ').trim() || 'Sans titre';
         const insertRes = await fetch(`${supabaseUrl}/rest/v1/radio_playlist`, {
           method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
