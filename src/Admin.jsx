@@ -1947,7 +1947,7 @@ export default function Admin() {
               )}
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>GROUPE (optionnel, pour la programmation par plage horaire)</label>
               <input placeholder='Ex: Slow' value={newRadioFolder} onChange={e=>setNewRadioFolder(e.target.value)} style={{width:'100%',padding:8,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #bbf7d0',fontSize:12}} />
-              <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>FICHIER AUDIO (MP3) *</label>
+              <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>FICHIER AUDIO (MP3, AAC, M4A, WAV, OGG) *</label>
               <input type="file" accept="audio/*" onChange={e=>uploadRadioAudio(e.target.files[0])} style={{width:'100%',fontSize:12,marginTop:4}} />
               {uploading==='radio-audio' && <div style={{fontSize:11,color:'#16a34a',marginTop:6}}>Upload audio...</div>}
               {newRadioAudio && <audio controls src={newRadioAudio} style={{width:'100%',marginTop:8}} />}

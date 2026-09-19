@@ -10,10 +10,7 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  S3Client,
-  PutObjectCommand,
-} from "https://esm.sh/@aws-sdk/client-s3@3.600.0";
+import { AwsClient } from "https://esm.sh/aws4fetch@1.0.20";
 
 // --- Variables d'environnement (à définir avec `supabase secrets set`) ---
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -39,14 +36,13 @@ const ALLOWED_MIME_TYPES = [
 ];
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 Mo
 
-const s3 = new S3Client({
+const r2 = new AwsClient({
+  accessKeyId: R2_ACCESS_KEY_ID,
+  secretAccessKey: R2_SECRET_ACCESS_KEY,
   region: "auto",
-  endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY_ID,
-    secretAccessKey: R2_SECRET_ACCESS_KEY,
-  },
+  service: "s3",
 });
+const R2_ENDPOINT = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -71,7 +67,14 @@ function sanitizeFileName(name: string) {
 serve(async (req) => {
   // Pré-vol CORS
   if (req.method === "OPTIONS") {
-    return jsonResponse({}, 204);
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "authorization, content-type",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+      },
+    });
   }
 
   if (req.method !== "POST") {
@@ -133,14 +136,16 @@ serve(async (req) => {
 
     // --- 5. Upload vers R2 ---
     const arrayBuffer = await file.arrayBuffer();
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: objectKey,
-        Body: new Uint8Array(arrayBuffer),
-        ContentType: file.type,
-      }),
-    );
+    const uploadUrl = `${R2_ENDPOINT}/${R2_BUCKET_NAME}/${objectKey}`;
+    const uploadRes = await r2.fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: arrayBuffer,
+    });
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      throw new Error(`Échec upload R2 (${uploadRes.status}): ${errText}`);
+    }
 
     const publicUrl = `${R2_PUBLIC_BASE_URL.replace(/\/$/, "")}/${objectKey}`;
 
