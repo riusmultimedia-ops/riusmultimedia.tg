@@ -717,6 +717,499 @@ function SudokuGame(){
 }
 
 // ==================================================================
+// JEUX POUR LES PETITS (des 3 ans) — glisser-deposer tactile, coloriage, puzzles, tri des couleurs
+// Aucune lecture necessaire : gros boutons, images, pas de "perdu", encouragements a la fin.
+// ==================================================================
+function KidStyles(){
+  return <style>{`
+    @keyframes riusShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+    @keyframes riusPop{0%{transform:scale(0.6);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+    .riusShake{animation:riusShake .45s}
+    .riusPop{animation:riusPop .35s}
+  `}</style>
+}
+
+// Glisser-deposer qui marche au doigt ET a la souris (pointer events). "begin" est a brancher
+// sur onPointerDown d'un element ; les zones de depot portent l'attribut data-drop="...".
+// Un simple toucher (sans deplacement) appelle onTap : sert d'alternative "touche puis touche la case".
+function useDragDrop({ onDrop, onTap }){
+  const [drag, setDrag] = useState(null)
+  const ref = useRef(null)
+  const cb = useRef({ onDrop, onTap })
+  cb.current = { onDrop, onTap }
+  const begin = (e, id) => {
+    if(e.button !== undefined && e.button !== 0) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    ref.current = { id, sx:e.clientX, sy:e.clientY, moved:false }
+    setDrag({ id, x:e.clientX, y:e.clientY, dx:e.clientX-rect.left, dy:e.clientY-rect.top, w:rect.width, h:rect.height })
+    const move = (ev) => {
+      const r = ref.current; if(!r) return
+      if(Math.abs(ev.clientX-r.sx)+Math.abs(ev.clientY-r.sy) > 8) r.moved = true
+      setDrag(d => d ? { ...d, x:ev.clientX, y:ev.clientY } : d)
+    }
+    const clean = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel) }
+    const up = (ev) => {
+      clean()
+      const r = ref.current; ref.current = null; setDrag(null)
+      if(!r) return
+      if(!r.moved){ if(cb.current.onTap) cb.current.onTap(r.id); return }
+      const target = document.elementsFromPoint(ev.clientX, ev.clientY).find(el => el.dataset && el.dataset.drop)
+      cb.current.onDrop(r.id, target ? target.dataset.drop : null)
+    }
+    const cancel = () => { clean(); ref.current = null; setDrag(null) }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', cancel)
+  }
+  return { drag, begin }
+}
+
+function DragGhost({ drag, children }){
+  if(!drag) return null
+  return (
+    <div style={{ position:'fixed', left:drag.x-drag.dx, top:drag.y-drag.dy, width:drag.w, height:drag.h, pointerEvents:'none', zIndex:9999,
+      transform:'scale(1.12) rotate(-4deg)', filter:'drop-shadow(0 8px 10px rgba(0,0,0,0.35))' }}>{children}</div>
+  )
+}
+
+function LevelPicker({ intro, levels, onPick }){
+  return (
+    <div style={{textAlign:'center'}}>
+      <p style={{color:'rgba(255,255,255,0.85)', fontSize:14, margin:'0 0 16px'}}>{intro}</p>
+      <div style={{display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap'}}>
+        {levels.map(lv=>(
+          <button key={lv.label} onClick={()=>onPick(lv)} style={{...btnStyle(), padding:'16px 22px', fontSize:15, borderRadius:16, minWidth:110}}>
+            <div style={{fontSize:32}}>{lv.emoji}</div>{lv.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const KID_COLORS = [
+  { id:'rouge', hex:'#e53935' }, { id:'bleu', hex:'#1e88e5' }, { id:'vert', hex:'#43a047' },
+  { id:'jaune', hex:'#fdd835' }, { id:'orange', hex:'#fb8c00' }, { id:'violet', hex:'#8e24aa' },
+  { id:'rose', hex:'#ec407a' },
+]
+const kidHex = (id) => (KID_COLORS.find(c=>c.id===id) || KID_COLORS[0]).hex
+
+function BrickSvg({ color, size=72 }){
+  return (
+    <svg viewBox="0 0 60 40" width={size} height={size*40/60} style={{display:'block'}}>
+      <rect x="10" y="4" width="14" height="10" rx="3" fill={color} stroke="rgba(0,0,0,0.35)" strokeWidth="1.5" />
+      <rect x="36" y="4" width="14" height="10" rx="3" fill={color} stroke="rgba(0,0,0,0.35)" strokeWidth="1.5" />
+      <rect x="3" y="12" width="54" height="25" rx="5" fill={color} stroke="rgba(0,0,0,0.35)" strokeWidth="1.5" />
+      <rect x="8" y="16" width="44" height="5" rx="2.5" fill="rgba(255,255,255,0.35)" />
+    </svg>
+  )
+}
+function CarSvg({ color, size=84 }){
+  return (
+    <svg viewBox="0 0 80 44" width={size} height={size*44/80} style={{display:'block'}}>
+      <path d="M17 20 L26 6 H53 L64 20 Z" fill={color} stroke="rgba(0,0,0,0.35)" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M26 19 L31 9 H39 V19 Z" fill="#d6efff" />
+      <path d="M43 19 V9 H51 L58 19 Z" fill="#d6efff" />
+      <rect x="3" y="18" width="74" height="17" rx="7" fill={color} stroke="rgba(0,0,0,0.35)" strokeWidth="1.5" />
+      <rect x="68" y="22" width="7" height="5" rx="2" fill="#fff59d" />
+      <circle cx="22" cy="35" r="8" fill="#263238" /><circle cx="22" cy="35" r="3.2" fill="#cfd8dc" />
+      <circle cx="58" cy="35" r="8" fill="#263238" /><circle cx="58" cy="35" r="3.2" fill="#cfd8dc" />
+    </svg>
+  )
+}
+
+// ==================================================================
+// 8) RANGE LES BRIQUES / 9) LE GARAGE — meme mecanique : glisser chaque objet vers sa couleur
+// ==================================================================
+const SORT_LEVELS = [
+  { label:'Petit', emoji:'🐣', colors:3, per:2 },
+  { label:'Moyen', emoji:'🐥', colors:4, per:3 },
+  { label:'Grand', emoji:'🐔', colors:5, per:3 },
+]
+function SortGame({ kind }){
+  const isCar = kind === 'car'
+  const [level, setLevel] = useState(null)
+  const [items, setItems] = useState([])
+  const [placed, setPlaced] = useState({})
+  const [selected, setSelected] = useState(null)
+  const [shake, setShake] = useState(null)
+
+  const start = (lv) => {
+    const list = []
+    KID_COLORS.slice(0, lv.colors).forEach(c=>{ for(let i=0;i<lv.per;i++) list.push({ id:c.id+i, color:c.id }) })
+    setItems(shuffleArr(list)); setPlaced({}); setSelected(null); setShake(null); setLevel(lv)
+  }
+  const tryPlace = (itemId, binColor) => {
+    const it = items.find(x=>x.id===itemId)
+    if(!it || !binColor) return
+    if(it.color === binColor){ setPlaced(p=>({ ...p, [itemId]:true })); setSelected(null) }
+    else { setShake(itemId); setTimeout(()=>setShake(null), 500) }
+  }
+  const { drag, begin } = useDragDrop({
+    onDrop: (id, target) => tryPlace(id, target && target.startsWith('bin:') ? target.slice(4) : null),
+    onTap: (id) => setSelected(s => s===id ? null : id),
+  })
+  const visual = (color, size) => isCar ? <CarSvg color={kidHex(color)} size={size} /> : <BrickSvg color={kidHex(color)} size={size} />
+
+  if(!level){
+    return (<div><KidStyles /><LevelPicker levels={SORT_LEVELS} onPick={start}
+      intro={isCar ? 'Glisse chaque voiture sur la place de la même couleur !' : 'Glisse chaque brique dans la boîte de la même couleur !'} /></div>)
+  }
+  const remaining = items.filter(i=>!placed[i.id])
+  const won = items.length>0 && remaining.length===0
+  const bins = KID_COLORS.slice(0, level.colors)
+  return (
+    <div style={{userSelect:'none', WebkitUserSelect:'none'}}>
+      <KidStyles />
+      <p style={{color:'rgba(255,255,255,0.8)', fontSize:13, margin:'0 0 10px', textAlign:'center'}}>
+        {isCar ? '🚗 Glisse (ou touche) chaque voiture, puis sa place de parking' : '🧱 Glisse (ou touche) chaque brique, puis sa boîte'}
+      </p>
+      <div style={{display:'flex', flexWrap:'wrap', gap:10, justifyContent:'center', minHeight:70, padding:'10px 6px', background:'rgba(0,0,0,0.15)', borderRadius:14}}>
+        {remaining.map(it=>(
+          <div key={it.id} className={shake===it.id ? 'riusShake' : ''} onPointerDown={e=>begin(e, it.id)}
+            style={{ touchAction:'none', cursor:'grab', padding:4, borderRadius:12,
+              opacity: drag && drag.id===it.id ? 0.25 : 1,
+              outline: selected===it.id ? '3px solid '+C.gold : 'none', background: selected===it.id ? 'rgba(255,204,0,0.2)' : 'transparent' }}>
+            {visual(it.color, isCar ? 84 : 72)}
+          </div>
+        ))}
+        {won && <div style={{color:C.green, fontWeight:900, fontSize:16, alignSelf:'center'}}>Tout est rangé !</div>}
+      </div>
+      <div style={{display:'flex', flexWrap:'wrap', gap:12, justifyContent:'center', marginTop:16}}>
+        {bins.map(c=>{
+          const inside = items.filter(i=>i.color===c.id && placed[i.id])
+          return (
+            <div key={c.id} data-drop={'bin:'+c.id} onClick={()=>{ if(selected) tryPlace(selected, c.id) }}
+              style={ isCar
+                ? { width:132, minHeight:96, borderRadius:10, background:'#455a64', border:'3px dashed '+c.hex, padding:6, boxSizing:'border-box', display:'flex', flexWrap:'wrap', gap:2, alignContent:'center', justifyContent:'center', position:'relative', cursor:'pointer' }
+                : { width:118, minHeight:92, borderRadius:'8px 8px 18px 18px', background:c.hex+'40', borderStyle:'solid', borderColor:c.hex, borderWidth:'8px 3px 3px 3px', padding:6, boxSizing:'border-box', display:'flex', flexWrap:'wrap', gap:2, alignContent:'center', justifyContent:'center', position:'relative', cursor:'pointer' } }>
+              <div style={{position:'absolute', top:4, left:6, width:16, height:16, borderRadius:'50%', background:c.hex, border:'2px solid #fff'}} />
+              {inside.length===0 && isCar && <div style={{color:'rgba(255,255,255,0.35)', fontWeight:900, fontSize:34}}>P</div>}
+              {inside.map(it=>(<div key={it.id} className="riusPop" style={{pointerEvents:'none'}}>{visual(it.color, isCar ? 46 : 40)}</div>))}
+            </div>
+          )
+        })}
+      </div>
+      <DragGhost drag={drag}>{drag && (()=>{ const it = items.find(x=>x.id===drag.id); return it ? visual(it.color, drag.w-8) : null })()}</DragGhost>
+      {won && <GameResultBanner text="🎉 Bravo !" sub="Tout est bien rangé" color={C.green} onReplay={()=>start(level)} />}
+      <div style={{textAlign:'center', marginTop:12}}>
+        <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white', padding:'8px 16px', fontSize:12}}>↩ Changer de niveau</button>
+      </div>
+    </div>
+  )
+}
+function BrickSortGame(){ return <SortGame kind="brick" /> }
+function GarageGame(){ return <SortGame kind="car" /> }
+
+// ==================================================================
+// DESSINS (coloriage + puzzle) — 4 dessins definis une seule fois, 300 x 300
+// t : rect | circle | ellipse | poly ; f : couleur "de vrai" (utilisee par le puzzle)
+// ==================================================================
+const PETAL_SHAPES = Array.from({length:6}, (_,k)=>{
+  const a = k*60, rad = a*Math.PI/180
+  return { t:'ellipse', cx:150+40*Math.sin(rad), cy:112-40*Math.cos(rad), rx:19, ry:32, r:a, f: k%2 ? '#ff8ab5' : '#ff5c9d' }
+})
+const DRAWINGS = [
+  { id:'maison', name:'Maison', emoji:'🏠', shapes:[
+    { t:'rect', x:0, y:0, w:300, h:300, f:'#bfe6ff' },
+    { t:'circle', cx:245, cy:55, r:28, f:'#ffd93b' },
+    { t:'ellipse', cx:70, cy:52, rx:40, ry:16, f:'#ffffff' },
+    { t:'ellipse', cx:98, cy:42, rx:24, ry:14, f:'#ffffff' },
+    { t:'rect', x:0, y:215, w:300, h:85, f:'#6cc24a' },
+    { t:'poly', p:'128,240 172,240 195,300 105,300', f:'#d7ccc8' },
+    { t:'rect', x:190, y:68, w:26, h:50, f:'#8d6e63' },
+    { t:'rect', x:70, y:130, w:160, h:110, f:'#ffb74d' },
+    { t:'poly', p:'55,135 150,58 245,135', f:'#e53935' },
+    { t:'rect', x:130, y:175, w:40, h:65, f:'#6d4c41' },
+    { t:'rect', x:88, y:158, w:32, h:32, f:'#81d4fa' },
+    { t:'rect', x:182, y:158, w:32, h:32, f:'#81d4fa' },
+  ]},
+  { id:'poisson', name:'Poisson', emoji:'🐠', shapes:[
+    { t:'rect', x:0, y:0, w:300, h:300, f:'#4fc3f7' },
+    { t:'rect', x:0, y:255, w:300, h:45, f:'#f5deb3' },
+    { t:'ellipse', cx:45, cy:225, rx:11, ry:36, f:'#2e7d32' },
+    { t:'ellipse', cx:262, cy:222, rx:11, ry:38, f:'#2e7d32' },
+    { t:'poly', p:'210,150 272,102 272,198', f:'#ff9800' },
+    { t:'poly', p:'112,108 150,66 188,108', f:'#ff7043' },
+    { t:'ellipse', cx:150, cy:150, rx:78, ry:52, f:'#ffb300' },
+    { t:'ellipse', cx:152, cy:172, rx:24, ry:12, r:-20, f:'#ff7043' },
+    { t:'circle', cx:106, cy:136, r:14, f:'#ffffff' },
+    { t:'circle', cx:103, cy:136, r:6, f:'#222222' },
+    { t:'circle', cx:58, cy:110, r:11, f:'#e1f5fe' },
+    { t:'circle', cx:76, cy:80, r:8, f:'#e1f5fe' },
+    { t:'circle', cx:52, cy:62, r:6, f:'#e1f5fe' },
+  ]},
+  { id:'fleur', name:'Fleur', emoji:'🌸', shapes:[
+    { t:'rect', x:0, y:0, w:300, h:300, f:'#c8f0ff' },
+    { t:'ellipse', cx:62, cy:48, rx:36, ry:14, f:'#ffffff' },
+    { t:'circle', cx:250, cy:50, r:24, f:'#ffd93b' },
+    { t:'rect', x:0, y:238, w:300, h:62, f:'#7ed957' },
+    { t:'rect', x:142, y:130, w:16, h:115, f:'#388e3c' },
+    { t:'ellipse', cx:112, cy:200, rx:32, ry:12, r:-30, f:'#4caf50' },
+    { t:'ellipse', cx:188, cy:184, rx:32, ry:12, r:30, f:'#4caf50' },
+    ...PETAL_SHAPES,
+    { t:'circle', cx:150, cy:112, r:26, f:'#ffd93b' },
+  ]},
+  { id:'voiture', name:'Voiture', emoji:'🚗', shapes:[
+    { t:'rect', x:0, y:0, w:300, h:300, f:'#bbdefb' },
+    { t:'circle', cx:245, cy:52, r:26, f:'#ffd93b' },
+    { t:'rect', x:0, y:215, w:300, h:85, f:'#607d8b' },
+    { t:'rect', x:30, y:262, w:50, h:9, f:'#ffffff' },
+    { t:'rect', x:125, y:262, w:50, h:9, f:'#ffffff' },
+    { t:'rect', x:220, y:262, w:50, h:9, f:'#ffffff' },
+    { t:'poly', p:'88,168 116,118 196,118 226,168', f:'#e53935' },
+    { t:'rect', x:38, y:162, w:224, h:54, rx:16, f:'#e53935' },
+    { t:'poly', p:'104,168 124,130 150,130 150,168', f:'#b3e5fc' },
+    { t:'poly', p:'160,130 190,130 208,168 160,168', f:'#b3e5fc' },
+    { t:'circle', cx:90, cy:216, r:26, f:'#37474f' },
+    { t:'circle', cx:210, cy:216, r:26, f:'#37474f' },
+    { t:'circle', cx:90, cy:216, r:10, f:'#cfd8dc' },
+    { t:'circle', cx:210, cy:216, r:10, f:'#cfd8dc' },
+    { t:'circle', cx:250, cy:184, r:9, f:'#fff59d' },
+  ]},
+]
+
+function DrawingSvg({ shapes, fills, onShape, viewBox='0 0 300 300', width='100%', height }){
+  return (
+    <svg viewBox={viewBox} width={width} height={height} style={{display:'block', touchAction:'manipulation'}}>
+      {shapes.map((s,i)=>{
+        const common = {
+          fill: fills ? (fills[i] || '#ffffff') : s.f,
+          stroke:'#1a2a4a', strokeWidth:2.5, strokeLinejoin:'round',
+          onClick: onShape ? ()=>onShape(i) : undefined,
+          style: { cursor: onShape ? 'pointer' : 'default' },
+        }
+        if(s.t==='rect') return <rect key={i} {...common} x={s.x} y={s.y} width={s.w} height={s.h} rx={s.rx||0} />
+        if(s.t==='circle') return <circle key={i} {...common} cx={s.cx} cy={s.cy} r={s.r} />
+        if(s.t==='ellipse') return <ellipse key={i} {...common} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} transform={s.r ? `rotate(${s.r} ${s.cx} ${s.cy})` : undefined} />
+        return <polygon key={i} {...common} points={s.p} />
+      })}
+    </svg>
+  )
+}
+
+// ==================================================================
+// 10) COLORIAGE MAGIQUE — on choisit une couleur puis on touche une partie du dessin
+// ==================================================================
+const PAINT_COLORS = ['#e53935','#fb8c00','#fdd835','#7ed957','#43a047','#26c6da','#1e88e5','#8e24aa','#ec407a','#8d6e63','#263238','#ffffff']
+function ColoringGame(){
+  const [drawing, setDrawing] = useState(null)
+  const [fills, setFills] = useState({})
+  const [color, setColor] = useState(PAINT_COLORS[0])
+
+  if(!drawing){
+    return (
+      <div style={{textAlign:'center'}}>
+        <p style={{color:'rgba(255,255,255,0.85)', fontSize:14, margin:'0 0 16px'}}>🎨 Choisis un dessin à colorier !</p>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:14}}>
+          {DRAWINGS.map(d=>(
+            <div key={d.id} onClick={()=>{ setDrawing(d); setFills({}) }} style={{background:'rgba(255,255,255,0.1)', borderRadius:14, padding:10, cursor:'pointer', border:'1px solid rgba(255,255,255,0.2)'}}>
+              <div style={{borderRadius:8, overflow:'hidden', background:'#fff'}}><DrawingSvg shapes={d.shapes} fills={{}} /></div>
+              <div style={{color:'white', fontWeight:800, fontSize:13, marginTop:6}}>{d.emoji} {d.name}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div style={{userSelect:'none', WebkitUserSelect:'none'}}>
+      <div style={{maxWidth:420, margin:'0 auto', background:'#fff', borderRadius:12, overflow:'hidden', boxShadow:'0 4px 14px rgba(0,0,0,0.3)'}}>
+        <DrawingSvg shapes={drawing.shapes} fills={fills} onShape={(i)=>setFills(f=>({ ...f, [i]: color }))} />
+      </div>
+      <div style={{display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center', marginTop:14}}>
+        {PAINT_COLORS.map(c=>(
+          <button key={c} onClick={()=>setColor(c)} aria-label={'Couleur '+c}
+            style={{ width:42, height:42, borderRadius:'50%', background:c, cursor:'pointer', padding:0,
+              border: color===c ? '4px solid '+C.gold : '3px solid rgba(255,255,255,0.6)',
+              transform: color===c ? 'scale(1.18)' : 'none', boxShadow:'0 2px 6px rgba(0,0,0,0.3)' }} />
+        ))}
+      </div>
+      <div style={{display:'flex', gap:10, justifyContent:'center', marginTop:14, flexWrap:'wrap'}}>
+        <button onClick={()=>setFills({})} style={btnStyle()}>🧽 Tout effacer</button>
+        <button onClick={()=>setDrawing(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>🖼️ Autre dessin</button>
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
+// 11) PUZZLE EN DESSINS — glisser chaque morceau a sa place (le dessin apparait en filigrane)
+// ==================================================================
+const JIGSAW_LEVELS = [
+  { label:'4 pièces', emoji:'🧩', cols:2, rows:2 },
+  { label:'6 pièces', emoji:'🧩', cols:3, rows:2 },
+  { label:'9 pièces', emoji:'🧩', cols:3, rows:3 },
+]
+const JIGSAW_BOARD = 270
+function PictureJigsaw(){
+  const [lv, setLv] = useState(JIGSAW_LEVELS[0])
+  const [drawing, setDrawing] = useState(null)
+  const [tray, setTray] = useState([])
+  const [placed, setPlaced] = useState({})
+  const [selected, setSelected] = useState(null)
+  const [shake, setShake] = useState(null)
+
+  const cw = JIGSAW_BOARD / lv.cols, ch = JIGSAW_BOARD / lv.rows
+  const vw = 300 / lv.cols, vh = 300 / lv.rows
+  const total = lv.cols * lv.rows
+
+  const startWith = (d) => {
+    setDrawing(d); setTray(shuffleArr(Array.from({length:total}, (_,i)=>i))); setPlaced({}); setSelected(null); setShake(null)
+  }
+  const tryPlace = (pieceId, slot) => {
+    if(slot === null || slot === undefined) return
+    if(pieceId === slot){ setPlaced(p=>({ ...p, [pieceId]:true })); setSelected(null) }
+    else { setShake(pieceId); setTimeout(()=>setShake(null), 500) }
+  }
+  const { drag, begin } = useDragDrop({
+    onDrop: (id, target) => tryPlace(id, target && target.startsWith('slot:') ? Number(target.slice(5)) : null),
+    onTap: (id) => setSelected(s => s===id ? null : id),
+  })
+  const pieceView = (id, w, h) => {
+    const c = id % lv.cols, r = Math.floor(id / lv.cols)
+    return <DrawingSvg shapes={drawing.shapes} viewBox={`${c*vw} ${r*vh} ${vw} ${vh}`} width={w} height={h} />
+  }
+
+  if(!drawing){
+    return (
+      <div style={{textAlign:'center'}}>
+        <p style={{color:'rgba(255,255,255,0.85)', fontSize:14, margin:'0 0 12px'}}>🧩 Choisis la difficulté, puis un dessin</p>
+        <div style={{display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap', marginBottom:16}}>
+          {JIGSAW_LEVELS.map(l=>(
+            <button key={l.label} onClick={()=>setLv(l)} style={{...btnStyle(), padding:'10px 16px',
+              background: lv.label===l.label ? C.gold : 'rgba(255,255,255,0.15)', color: lv.label===l.label ? '#0f2040' : 'white'}}>{l.label}</button>
+          ))}
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:14}}>
+          {DRAWINGS.map(d=>(
+            <div key={d.id} onClick={()=>startWith(d)} style={{background:'rgba(255,255,255,0.1)', borderRadius:14, padding:10, cursor:'pointer', border:'1px solid rgba(255,255,255,0.2)'}}>
+              <div style={{borderRadius:8, overflow:'hidden'}}><DrawingSvg shapes={d.shapes} /></div>
+              <div style={{color:'white', fontWeight:800, fontSize:13, marginTop:6}}>{d.emoji} {d.name}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  const remaining = tray.filter(id=>!placed[id])
+  const won = remaining.length === 0
+  return (
+    <div style={{userSelect:'none', WebkitUserSelect:'none'}}>
+      <KidStyles />
+      <p style={{color:'rgba(255,255,255,0.8)', fontSize:13, margin:'0 0 10px', textAlign:'center'}}>Glisse (ou touche) chaque morceau, puis sa place</p>
+      <div style={{position:'relative', width:JIGSAW_BOARD, height:JIGSAW_BOARD, margin:'0 auto', borderRadius:10, overflow:'hidden', background:'rgba(255,255,255,0.08)', boxShadow:'0 4px 14px rgba(0,0,0,0.3)'}}>
+        <div style={{position:'absolute', inset:0, opacity:0.22}}><DrawingSvg shapes={drawing.shapes} width={JIGSAW_BOARD} height={JIGSAW_BOARD} /></div>
+        <div style={{position:'absolute', inset:0, display:'grid', gridTemplateColumns:`repeat(${lv.cols}, ${cw}px)`, gridTemplateRows:`repeat(${lv.rows}, ${ch}px)`}}>
+          {Array.from({length:total}, (_,i)=>(
+            <div key={i} data-drop={'slot:'+i} onClick={()=>{ if(selected!==null) tryPlace(selected, i) }}
+              style={{ boxSizing:'border-box', border:'1.5px dashed rgba(255,255,255,0.45)', overflow:'hidden', cursor:'pointer' }}>
+              {placed[i] && <div className="riusPop" style={{pointerEvents:'none'}}>{pieceView(i, cw, ch)}</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center', marginTop:16, minHeight:ch+8}}>
+        {remaining.map(id=>(
+          <div key={id} className={shake===id ? 'riusShake' : ''} onPointerDown={e=>begin(e, id)}
+            style={{ touchAction:'none', cursor:'grab', width:cw, height:ch, borderRadius:8, overflow:'hidden', border:'2px solid #fff', boxSizing:'border-box',
+              opacity: drag && drag.id===id ? 0.25 : 1, outline: selected===id ? '3px solid '+C.gold : 'none' }}>
+            {pieceView(id, cw-4, ch-4)}
+          </div>
+        ))}
+      </div>
+      <DragGhost drag={drag}>{drag && <div style={{width:'100%', height:'100%', borderRadius:8, overflow:'hidden', border:'2px solid #fff', boxSizing:'border-box'}}>{pieceView(drag.id, cw-4, ch-4)}</div>}</DragGhost>
+      {won && <GameResultBanner text="🎉 Bravo !" sub="Le dessin est complet" color={C.green} onReplay={()=>startWith(drawing)} />}
+      <div style={{textAlign:'center', marginTop:12}}>
+        <button onClick={()=>setDrawing(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white', padding:'8px 16px', fontSize:12}}>↩ Autre dessin</button>
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
+// 12) TRI DES COULEURS — on verse les liquides d'un tube a l'autre (tube = touche, puis destination)
+// ==================================================================
+const LIQUID_COLORS = ['#e53935','#1e88e5','#43a047','#fdd835','#fb8c00','#8e24aa','#ec407a','#26c6da']
+const TUBE_CAP = 4
+const LIQUID_LEVELS = [
+  { label:'Petit', emoji:'🐣', colors:2 },
+  { label:'Moyen', emoji:'🐥', colors:4 },
+  { label:'Grand', emoji:'🐔', colors:6 },
+]
+const tubeDone = (t) => t.length===0 || (t.length===TUBE_CAP && t.every(c=>c===t[0]))
+function makeLiquidTubes(n){
+  let tubes = []
+  for(let tries=0; tries<200; tries++){
+    const units = []
+    for(let c=0;c<n;c++) for(let k=0;k<TUBE_CAP;k++) units.push(c)
+    const sh = shuffleArr(units)
+    tubes = Array.from({length:n}, (_,i)=>sh.slice(i*TUBE_CAP, (i+1)*TUBE_CAP))
+    if(!tubes.some(t=>tubeDone(t))) break
+  }
+  return [...tubes, [], []]
+}
+function pourTubes(tubes, from, to){
+  if(from===to) return null
+  const src = tubes[from], dst = tubes[to]
+  if(!src.length) return null
+  const color = src[src.length-1]
+  if(dst.length && dst[dst.length-1]!==color) return null
+  const room = TUBE_CAP - dst.length
+  if(room<=0) return null
+  let n = 0
+  for(let i=src.length-1; i>=0 && src[i]===color; i--) n++
+  const k = Math.min(n, room)
+  const next = tubes.map(t=>[...t])
+  next[from] = src.slice(0, src.length-k)
+  next[to] = [...dst, ...Array(k).fill(color)]
+  return next
+}
+function WaterSortGame(){
+  const [level, setLevel] = useState(null)
+  const [tubes, setTubes] = useState([])
+  const [history, setHistory] = useState([])
+  const [selected, setSelected] = useState(null)
+
+  const start = (lv) => { setLevel(lv); setTubes(makeLiquidTubes(lv.colors)); setHistory([]); setSelected(null) }
+  const onTube = (i) => {
+    if(selected===null){ if(tubes[i].length) setSelected(i); return }
+    if(selected===i){ setSelected(null); return }
+    const next = pourTubes(tubes, selected, i)
+    if(next){ setHistory(h=>[...h, tubes]); setTubes(next); setSelected(null) }
+    else setSelected(tubes[i].length ? i : null)
+  }
+  const undo = () => { if(!history.length) return; setTubes(history[history.length-1]); setHistory(h=>h.slice(0,-1)); setSelected(null) }
+  if(!level){
+    return <LevelPicker levels={LIQUID_LEVELS} onPick={start} intro="🧪 Verse les liquides pour avoir une seule couleur par tube !" />
+  }
+  const won = tubes.length>0 && tubes.every(tubeDone)
+  return (
+    <div>
+      <p style={{color:'rgba(255,255,255,0.8)', fontSize:13, margin:'0 0 14px', textAlign:'center'}}>Touche un tube, puis le tube où verser</p>
+      <div style={{display:'flex', flexWrap:'wrap', gap:14, justifyContent:'center', paddingTop:16}}>
+        {tubes.map((t,i)=>(
+          <div key={i} onClick={()=>!won && onTube(i)} style={{
+            width:48, height:TUBE_CAP*34+10, boxSizing:'border-box', padding:3, cursor:'pointer',
+            borderStyle:'solid', borderWidth:'0 3px 3px 3px', borderColor: selected===i ? C.gold : 'rgba(255,255,255,0.7)',
+            borderRadius:'0 0 26px 26px', background:'rgba(255,255,255,0.08)',
+            display:'flex', flexDirection:'column-reverse', gap:2, overflow:'hidden',
+            transform: selected===i ? 'translateY(-16px)' : 'none', transition:'transform .15s' }}>
+            {t.map((c,k)=>(<div key={k} style={{ height:32, borderRadius: k===0 ? '0 0 20px 20px' : 4, background:LIQUID_COLORS[c] }} />))}
+          </div>
+        ))}
+      </div>
+      {won && <GameResultBanner text="🎉 Bravo !" sub={`Réussi en ${history.length} versements`} color={C.green} onReplay={()=>start(level)} />}
+      <div style={{display:'flex', gap:10, justifyContent:'center', marginTop:18, flexWrap:'wrap'}}>
+        <button onClick={undo} disabled={!history.length} style={{...btnStyle(), opacity:history.length?1:0.4}}>↩ Annuler</button>
+        <button onClick={()=>start(level)} style={btnStyle()}>🔄 Recommencer</button>
+        <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>Changer de niveau</button>
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
 // PAGE PRINCIPALE — grille de selection des jeux
 // ==================================================================
 const GAMES_LIST = [
@@ -728,6 +1221,11 @@ const GAMES_LIST = [
   { id:'snake', title:'Serpent', desc:'Jeu de reflexes classique', emoji:'🐍', component:SnakeGame },
   { id:'taquin', title:'Puzzle a glissiere', desc:'Remets les nombres en ordre', emoji:'🧩', component:SlidingPuzzle },
   { id:'sudoku', title:'Sudoku', desc:'3 niveaux de difficulte', emoji:'🔢', component:SudokuGame },
+  { id:'coloriage', title:'Coloriage magique', desc:'Colorie de beaux dessins', emoji:'🎨', component:ColoringGame, age:'Dès 3 ans' },
+  { id:'briques', title:'Range les briques', desc:'Chaque brique dans sa boîte', emoji:'🧱', component:BrickSortGame, age:'Dès 3 ans' },
+  { id:'garage', title:'Le garage', desc:'Gare chaque voiture à sa place', emoji:'🚗', component:GarageGame, age:'Dès 3 ans' },
+  { id:'puzzle-dessins', title:'Puzzle en dessins', desc:'Reconstitue le dessin', emoji:'🖼️', component:PictureJigsaw, age:'Dès 3 ans' },
+  { id:'liquides', title:'Tri des couleurs', desc:'Verse les liquides par couleur', emoji:'🧪', component:WaterSortGame, age:'Dès 5 ans' },
 ]
 
 export default function GamesPage({pubsTop, pubsMid}){
@@ -760,6 +1258,7 @@ export default function GamesPage({pubsTop, pubsMid}){
             <div style={{fontSize:38, marginBottom:8}}>{g.emoji}</div>
             <div style={{color:'white', fontWeight:800, fontSize:14}}>{g.title}</div>
             <div style={{color:'rgba(255,255,255,0.6)', fontSize:11, marginTop:4}}>{g.desc}</div>
+            {g.age && <div style={{display:'inline-block', marginTop:8, background:C.green, color:'#0f2040', fontSize:10, fontWeight:900, borderRadius:10, padding:'2px 8px'}}>{g.age}</div>}
           </div>
         ))}
       </div>

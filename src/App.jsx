@@ -143,12 +143,67 @@ const makeGapFn = (seedSuffix) => {
   return (occIdx) => 3 + (hashSeed(seedSuffix+':gap:'+occIdx) >>> 0) % 3
 }
 
+// ---- Choix ALEATOIRE (mais deterministe) du jingle a diffuser ----
+// Les jingles qui ont le meme message avec une musique de fond differente sont regroupes en
+// "familles" d'apres leur titre : on ignore le mot "Jingle" au debut, le texte entre parentheses
+// et le numero a la fin ("Vous ecoutez Rius (Douce)" et "Vous ecoutez Rius (Rythme and Blues)2"
+// forment donc une seule famille). A chaque passage, on tire une FAMILLE : toutes les familles
+// passent une fois avant qu'une revienne, et jamais la meme deux fois de suite. Puis on alterne
+// entre les variantes de cette famille, pour que chaque musique de fond passe a tour de role.
+// Tout depend uniquement du jour, de la source et du numero de passage : c'est identique pour
+// tous les auditeurs (la diffusion reste synchronisee), mais l'ordre change chaque jour.
+const jingleFamilyKey = (j) => {
+  let s = String((j && (j.title || j.original_filename)) || '')
+  s = s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+  s = s.replace(/\([^)]*\)/g,' ')
+  s = s.replace(/^\s*jingle\s*[-:_.]*\s*/,'')
+  s = s.replace(/[\s\-_.]*\d+\s*$/,'')
+  s = s.replace(/[\s\-_.]+/g,' ').trim()
+  return s || ('id:'+(j && j.id))
+}
+const jingleFamiliesCache = new WeakMap()
+const getJingleFamilies = (jingles) => {
+  let fams = jingleFamiliesCache.get(jingles)
+  if(!fams){
+    const sorted = [...jingles].sort((a,b)=> String(a.id).localeCompare(String(b.id), undefined, { numeric:true }))
+    const map = new Map()
+    sorted.forEach(j=>{ const k = jingleFamilyKey(j); if(!map.has(k)) map.set(k, []); map.get(k).push(j) })
+    fams = [...map.entries()].sort((a,b)=> a[0]<b[0] ? -1 : a[0]>b[0] ? 1 : 0).map(([key, items])=>({ key, items }))
+    jingleFamiliesCache.set(jingles, fams)
+  }
+  return fams
+}
+const pickJingle = (jingles, occIdx, boundary, seedSuffix, lapCache) => {
+  const fams = getJingleFamilies(jingles)
+  const F = fams.length
+  const n = Math.max(0, occIdx|0)
+  const lap = Math.floor(n / F)
+  const pos = n % F
+  const dayKey = utcDateKey(boundary)+':'+seedSuffix
+  const orderOf = (l) => {
+    const ck = 'jf:'+l
+    let o = lapCache && lapCache.get(ck)
+    if(!o){
+      o = seededShuffle(fams.map((_,i)=>i), dayKey+':jfam:'+l)
+      if(l > 0 && F > 1){
+        // a la jonction de deux tours, on evite de rejouer l'une des 2 dernieres familles du tour precedent
+        const avoid = orderOf(l-1).slice(-Math.min(2, F-1))
+        for(let k=0; k<F && avoid.includes(o[0]); k++){ o.push(o.shift()) }
+      }
+      if(lapCache) lapCache.set(ck, o)
+    }
+    return o
+  }
+  const fam = fams[orderOf(lap)[pos]]
+  const start = hashSeed(dayKey+':jvar:'+fam.key) >>> 0
+  return fam.items[(start + lap) % fam.items.length]
+}
+
 // Un "pas" de la sequence : soit la piste suivante de la playlist, soit (si le seuil de
 // cadence est atteint) le jingle qui doit s'intercaler avant de continuer.
 const stepAt = (state, pool, boundary, seedSuffix, jingles, gapFn, lapCache) => {
   if(state.pendingJingle && jingles.length){
-    const jIdx = ((state.jingleOccIdx % jingles.length)+jingles.length)%jingles.length
-    const jingle = jingles[jIdx]
+    const jingle = pickJingle(jingles, state.jingleOccIdx, boundary, seedSuffix, lapCache)
     return { item: jingle, isJingle:true, duration: durOf(jingle), next: { trackPtr: state.trackPtr, tracksSinceJingle:0, jingleOccIdx: state.jingleOccIdx+1, pendingJingle:false } }
   }
   const track = trackAtPtr(pool, boundary, seedSuffix, state.trackPtr, lapCache)
