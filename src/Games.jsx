@@ -1210,6 +1210,790 @@ function WaterSortGame(){
 }
 
 // ==================================================================
+// OUTILS COMMUNS (clavier + glissement du doigt)
+// ==================================================================
+function useKeyDown(handler, active=true){
+  const ref = useRef(handler)
+  ref.current = handler
+  useEffect(()=>{
+    if(!active) return
+    const f = (e) => ref.current(e)
+    window.addEventListener('keydown', f)
+    return () => window.removeEventListener('keydown', f)
+  }, [active])
+}
+function useSwipe(onDir){
+  const st = useRef(null)
+  const cb = useRef(onDir)
+  cb.current = onDir
+  return {
+    onPointerDown: (e) => { st.current = { x:e.clientX, y:e.clientY } },
+    onPointerUp: (e) => {
+      const s = st.current; st.current = null
+      if(!s) return
+      const dx = e.clientX - s.x, dy = e.clientY - s.y
+      if(Math.max(Math.abs(dx), Math.abs(dy)) < 24) return
+      if(Math.abs(dx) > Math.abs(dy)) cb.current(dx > 0 ? 'right' : 'left')
+      else cb.current(dy > 0 ? 'down' : 'up')
+    },
+    style: { touchAction:'none' },
+  }
+}
+function DirPad({ onDir }){
+  const b = { ...btnStyle(), width:58, height:58, padding:0, fontSize:22, borderRadius:16 }
+  return (
+    <div style={{display:'grid', gridTemplateColumns:'repeat(3,58px)', gridTemplateRows:'repeat(2,58px)', gap:6, justifyContent:'center', marginTop:14}}>
+      <div /><button style={b} onClick={()=>onDir('up')} aria-label="Haut">▲</button><div />
+      <button style={b} onClick={()=>onDir('left')} aria-label="Gauche">◀</button>
+      <button style={b} onClick={()=>onDir('down')} aria-label="Bas">▼</button>
+      <button style={b} onClick={()=>onDir('right')} aria-label="Droite">▶</button>
+    </div>
+  )
+}
+const DIR_KEYS = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right', w:'up', s:'down', a:'left', d:'right', z:'up', q:'left' }
+
+// ==================================================================
+// 13) LES OMBRES / 14) FORMES RIGOLOTES — chaque image glisse sur son ombre (ou dans son trou)
+// ==================================================================
+const ANIMAL_EMOJIS = ['🐶','🐱','🐭','🐰','🦊','🐻','🐼','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐘','🦒','🐢','🐟','🦆','🐴','🐑']
+const MATCH_LEVELS = [
+  { label:'Petit', emoji:'🐣', n:3 },
+  { label:'Moyen', emoji:'🐥', n:4 },
+  { label:'Grand', emoji:'🐔', n:6 },
+]
+function ShapeSvg({ kind, color, size=64, hole=false }){
+  const p = {
+    fill: hole ? 'rgba(0,0,0,0.45)' : color,
+    stroke: hole ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.35)',
+    strokeWidth: hole ? 2.5 : 2, strokeLinejoin:'round', strokeDasharray: hole ? '5 4' : undefined,
+  }
+  let body
+  if(kind==='cercle') body = <circle cx="32" cy="32" r="26" {...p} />
+  else if(kind==='carre') body = <rect x="8" y="8" width="48" height="48" rx="5" {...p} />
+  else if(kind==='triangle') body = <polygon points="32,6 58,56 6,56" {...p} />
+  else if(kind==='etoile') body = <polygon points="32,5 39,24 59,25 43,38 49,58 32,46 15,58 21,38 5,25 25,24" {...p} />
+  else if(kind==='coeur') body = <path d="M32 56 C8 38 4 22 14 14 C22 8 30 12 32 20 C34 12 42 8 50 14 C60 22 56 38 32 56 Z" {...p} />
+  else if(kind==='rectangle') body = <rect x="4" y="18" width="56" height="28" rx="4" {...p} />
+  else body = <polygon points="32,4 58,32 32,60 6,32" {...p} />
+  return <svg viewBox="0 0 64 64" width={size} height={size} style={{display:'block'}}>{body}</svg>
+}
+const SHAPE_KINDS = [
+  { id:'cercle', color:'#e53935' }, { id:'carre', color:'#1e88e5' }, { id:'triangle', color:'#43a047' },
+  { id:'etoile', color:'#fdd835' }, { id:'coeur', color:'#ec407a' }, { id:'losange', color:'#8e24aa' }, { id:'rectangle', color:'#fb8c00' },
+]
+function DropMatchGame({ intro, hint, levels, makeItems }){
+  const [level, setLevel] = useState(null)
+  const [items, setItems] = useState([])
+  const [slots, setSlots] = useState([])
+  const [tray, setTray] = useState([])
+  const [placed, setPlaced] = useState({})
+  const [selected, setSelected] = useState(null)
+  const [shake, setShake] = useState(null)
+  const SLOT = 88, ITEM = 68
+
+  const start = (lv) => {
+    const list = makeItems(lv)
+    setItems(list); setSlots(shuffleArr(list.map(i=>i.id))); setTray(shuffleArr(list.map(i=>i.id)))
+    setPlaced({}); setSelected(null); setShake(null); setLevel(lv)
+  }
+  const byId = (id) => items.find(i=>i.id===id)
+  const tryPlace = (itemId, slotId) => {
+    if(!slotId) return
+    if(itemId === slotId){ setPlaced(p=>({ ...p, [itemId]:true })); setSelected(null) }
+    else { setShake(itemId); setTimeout(()=>setShake(null), 500) }
+  }
+  const { drag, begin } = useDragDrop({
+    onDrop: (id, target) => tryPlace(id, target && target.startsWith('slot:') ? target.slice(5) : null),
+    onTap: (id) => setSelected(s => s===id ? null : id),
+  })
+  if(!level) return (<div><KidStyles /><LevelPicker levels={levels} onPick={start} intro={intro} /></div>)
+
+  const remaining = tray.filter(id=>!placed[id])
+  const won = items.length>0 && remaining.length===0
+  return (
+    <div style={{userSelect:'none', WebkitUserSelect:'none'}}>
+      <KidStyles />
+      <p style={{color:'rgba(255,255,255,0.8)', fontSize:13, margin:'0 0 12px', textAlign:'center'}}>{hint}</p>
+      <div style={{display:'flex', flexWrap:'wrap', gap:12, justifyContent:'center', padding:'14px 8px', background:'rgba(0,0,0,0.15)', borderRadius:14}}>
+        {slots.map(id=>{
+          const it = byId(id)
+          return (
+            <div key={id} data-drop={'slot:'+id} onClick={()=>{ if(selected) tryPlace(selected, id) }}
+              style={{ width:SLOT, height:SLOT, borderRadius:16, background:'rgba(255,255,255,0.14)', border:'2px dashed rgba(255,255,255,0.4)',
+                display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
+              <div className={placed[id] ? 'riusPop' : ''} style={{pointerEvents:'none'}}>{placed[id] ? it.node(ITEM) : it.hole(ITEM)}</div>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{display:'flex', flexWrap:'wrap', gap:12, justifyContent:'center', marginTop:16, minHeight:ITEM+16}}>
+        {remaining.map(id=>{
+          const it = byId(id)
+          return (
+            <div key={id} className={shake===id ? 'riusShake' : ''} onPointerDown={e=>begin(e, id)}
+              style={{ touchAction:'none', cursor:'grab', padding:6, borderRadius:14, opacity: drag && drag.id===id ? 0.25 : 1,
+                outline: selected===id ? '3px solid '+C.gold : 'none', background: selected===id ? 'rgba(255,204,0,0.2)' : 'transparent' }}>
+              {it.node(ITEM)}
+            </div>
+          )
+        })}
+      </div>
+      <DragGhost drag={drag}>{drag && byId(drag.id) ? byId(drag.id).node(ITEM) : null}</DragGhost>
+      {won && <GameResultBanner text="🎉 Bravo !" sub="Tout est à sa place" color={C.green} onReplay={()=>start(level)} />}
+      <div style={{textAlign:'center', marginTop:12}}>
+        <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white', padding:'8px 16px', fontSize:12}}>↩ Changer de niveau</button>
+      </div>
+    </div>
+  )
+}
+function ShadowGame(){
+  return <DropMatchGame levels={MATCH_LEVELS} intro="🦊 Glisse chaque animal sur son ombre !" hint="Glisse (ou touche) l'animal, puis son ombre"
+    makeItems={(lv)=> shuffleArr(ANIMAL_EMOJIS).slice(0, lv.n).map(e=>({
+      id:e,
+      node:(s)=> <span style={{fontSize:s*0.85, lineHeight:1, display:'block'}}>{e}</span>,
+      hole:(s)=> <span style={{fontSize:s*0.85, lineHeight:1, display:'block', filter:'brightness(0)', opacity:0.5}}>{e}</span>,
+    }))} />
+}
+function ShapesGame(){
+  return <DropMatchGame levels={MATCH_LEVELS} intro="🔺 Glisse chaque forme dans son trou !" hint="Glisse (ou touche) la forme, puis son trou"
+    makeItems={(lv)=> shuffleArr(SHAPE_KINDS).slice(0, lv.n).map(s=>({
+      id:s.id,
+      node:(sz)=> <ShapeSvg kind={s.id} color={s.color} size={sz} />,
+      hole:(sz)=> <ShapeSvg kind={s.id} hole size={sz} />,
+    }))} />
+}
+
+// ==================================================================
+// 15) TRIE LES IMAGES — animaux, fruits, legumes, vehicules : chaque image dans son panier
+// ==================================================================
+const SORT_CATS = [
+  { id:'animaux', label:'🐾', color:'#fb8c00', items:['🐶','🐱','🐮','🐷','🐸','🐔','🐘','🦒'] },
+  { id:'fruits', label:'🍎', color:'#e53935', items:['🍎','🍌','🍇','🍓','🍊','🍉','🍍','🍐'] },
+  { id:'vehicules', label:'🚗', color:'#1e88e5', items:['🚗','🚌','✈️','🚲','🚂','🚁','🚢','🛵'] },
+  { id:'legumes', label:'🥕', color:'#43a047', items:['🥕','🌽','🍅','🥦','🍆','🥔','🧅','🌶️'] },
+]
+const SORT_IMG_LEVELS = [
+  { label:'Petit', emoji:'🐣', cats:2, per:2 },
+  { label:'Moyen', emoji:'🐥', cats:3, per:3 },
+  { label:'Grand', emoji:'🐔', cats:4, per:3 },
+]
+function CategorySortGame(){
+  const [level, setLevel] = useState(null)
+  const [cats, setCats] = useState([])
+  const [items, setItems] = useState([])
+  const [placed, setPlaced] = useState({})
+  const [selected, setSelected] = useState(null)
+  const [shake, setShake] = useState(null)
+  const start = (lv) => {
+    const cs = shuffleArr(SORT_CATS).slice(0, lv.cats)
+    const list = []
+    cs.forEach(c=> shuffleArr(c.items).slice(0, lv.per).forEach(e=> list.push({ id:c.id+':'+e, cat:c.id, emoji:e })))
+    setCats(cs); setItems(shuffleArr(list)); setPlaced({}); setSelected(null); setShake(null); setLevel(lv)
+  }
+  const tryPlace = (itemId, catId) => {
+    const it = items.find(x=>x.id===itemId)
+    if(!it || !catId) return
+    if(it.cat === catId){ setPlaced(p=>({ ...p, [itemId]:true })); setSelected(null) }
+    else { setShake(itemId); setTimeout(()=>setShake(null), 500) }
+  }
+  const { drag, begin } = useDragDrop({
+    onDrop: (id, target) => tryPlace(id, target && target.startsWith('cat:') ? target.slice(4) : null),
+    onTap: (id) => setSelected(s => s===id ? null : id),
+  })
+  if(!level) return (<div><KidStyles /><LevelPicker levels={SORT_IMG_LEVELS} onPick={start} intro="🧺 Range chaque image dans le bon panier !" /></div>)
+  const remaining = items.filter(i=>!placed[i.id])
+  const won = items.length>0 && remaining.length===0
+  const dragged = drag ? items.find(x=>x.id===drag.id) : null
+  return (
+    <div style={{userSelect:'none', WebkitUserSelect:'none'}}>
+      <KidStyles />
+      <p style={{color:'rgba(255,255,255,0.8)', fontSize:13, margin:'0 0 10px', textAlign:'center'}}>Glisse (ou touche) l'image, puis son panier</p>
+      <div style={{display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center', minHeight:76, padding:'10px 6px', background:'rgba(0,0,0,0.15)', borderRadius:14}}>
+        {remaining.map(it=>(
+          <div key={it.id} className={shake===it.id ? 'riusShake' : ''} onPointerDown={e=>begin(e, it.id)}
+            style={{ touchAction:'none', cursor:'grab', padding:4, borderRadius:12, fontSize:52, lineHeight:1, opacity: drag && drag.id===it.id ? 0.25 : 1,
+              outline: selected===it.id ? '3px solid '+C.gold : 'none', background: selected===it.id ? 'rgba(255,204,0,0.2)' : 'transparent' }}>{it.emoji}</div>
+        ))}
+        {won && <div style={{color:C.green, fontWeight:900, fontSize:16, alignSelf:'center'}}>Tout est rangé !</div>}
+      </div>
+      <div style={{display:'flex', flexWrap:'wrap', gap:12, justifyContent:'center', marginTop:16}}>
+        {cats.map(c=>{
+          const inside = items.filter(i=>i.cat===c.id && placed[i.id])
+          return (
+            <div key={c.id} data-drop={'cat:'+c.id} onClick={()=>{ if(selected) tryPlace(selected, c.id) }}
+              style={{ width:128, minHeight:120, borderRadius:'8px 8px 20px 20px', background:c.color+'40', borderStyle:'solid', borderColor:c.color, borderWidth:'8px 3px 3px 3px',
+                padding:6, boxSizing:'border-box', display:'flex', flexWrap:'wrap', gap:2, alignContent:'flex-start', justifyContent:'center', position:'relative', cursor:'pointer' }}>
+              <div style={{width:'100%', textAlign:'center', fontSize:30, pointerEvents:'none'}}>{c.label}</div>
+              {inside.map(it=>(<span key={it.id} className="riusPop" style={{fontSize:26, lineHeight:1, pointerEvents:'none'}}>{it.emoji}</span>))}
+            </div>
+          )
+        })}
+      </div>
+      <DragGhost drag={drag}>{dragged ? <span style={{fontSize:52, lineHeight:1}}>{dragged.emoji}</span> : null}</DragGhost>
+      {won && <GameResultBanner text="🎉 Bravo !" sub="Tout est bien rangé" color={C.green} onReplay={()=>start(level)} />}
+      <div style={{textAlign:'center', marginTop:12}}>
+        <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white', padding:'8px 16px', fontSize:12}}>↩ Changer de niveau</button>
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
+// 16) BULLES MAGIQUES — on eclate les bulles qui montent
+// ==================================================================
+const BUBBLE_COLORS = ['#ff6f91','#ffc75f','#7bdff2','#b2f7a2','#c9a7ff','#ff9671']
+function BubblesGame(){
+  const GOAL = 15
+  const [bubbles, setBubbles] = useState([])
+  const [score, setScore] = useState(0)
+  const [running, setRunning] = useState(false)
+  const idRef = useRef(0)
+  const popped = useRef(new Set())
+  useEffect(()=>{
+    if(!running) return
+    const t = setInterval(()=>{
+      setBubbles(b => b.length >= 9 ? b : [...b, { id:++idRef.current, x:4+Math.random()*78, size:56+Math.random()*34, color:BUBBLE_COLORS[Math.floor(Math.random()*BUBBLE_COLORS.length)], dur:5+Math.random()*3 }])
+    }, 600)
+    return () => clearInterval(t)
+  }, [running])
+  const pop = (id) => {
+    if(popped.current.has(id) || !running) return
+    popped.current.add(id)
+    setBubbles(b=>b.map(x=>x.id===id ? { ...x, popped:true } : x))
+    setScore(s=>{ const n = s+1; if(n>=GOAL) setRunning(false); return n })
+    setTimeout(()=>setBubbles(b=>b.filter(x=>x.id!==id)), 260)
+  }
+  const gone = (id) => setBubbles(b=>b.filter(x=>x.id!==id))
+  const restart = () => { popped.current = new Set(); setBubbles([]); setScore(0); setRunning(true) }
+  const won = score >= GOAL
+  return (
+    <div style={{userSelect:'none', WebkitUserSelect:'none'}}>
+      <style>{`
+        @keyframes riusRise{from{transform:translateY(0)}to{transform:translateY(-520px)}}
+        @keyframes riusBurst{from{transform:scale(1);opacity:1}to{transform:scale(1.7);opacity:0}}
+      `}</style>
+      <KidStyles />
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, color:'white', fontWeight:800, fontSize:14}}>
+        <span>🎈 Éclatées : {score} / {GOAL}</span>
+        {!running && !won && <button onClick={restart} style={btnStyle()}>▶ Jouer</button>}
+      </div>
+      <div style={{position:'relative', height:420, overflow:'hidden', borderRadius:16, background:'linear-gradient(#4fb8ff,#c2f0ff)', boxShadow:'0 4px 14px rgba(0,0,0,0.3)', touchAction:'manipulation'}}>
+        {!running && !won && <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', color:'#0f2040', fontWeight:900, fontSize:18, textAlign:'center', padding:20}}>Touche les bulles pour les éclater !</div>}
+        {bubbles.map(b=>(
+          <div key={b.id} data-bubble="1" onPointerDown={()=>pop(b.id)} onAnimationEnd={(e)=>{ if(e.animationName==='riusRise') gone(b.id) }}
+            style={{ position:'absolute', bottom:-110, left:b.x+'%', width:b.size, height:b.size, cursor:'pointer', animation:`riusRise ${b.dur}s linear forwards` }}>
+            <div style={{ width:'100%', height:'100%', borderRadius:'50%', background:`radial-gradient(circle at 30% 28%, #ffffffcc 0 12%, ${b.color}aa 40%, ${b.color} 100%)`,
+              border:'2px solid rgba(255,255,255,0.8)', animation: b.popped ? 'riusBurst .26s ease-out forwards' : 'none' }} />
+          </div>
+        ))}
+      </div>
+      {won && <GameResultBanner text="🎉 Bravo !" sub={`${GOAL} bulles éclatées`} color={C.green} onReplay={restart} />}
+    </div>
+  )
+}
+
+// ==================================================================
+// 17) LABYRINTHE — guider la souris jusqu'au fromage
+// ==================================================================
+const MAZE_LEVELS = [
+  { label:'Petit', emoji:'🐣', n:6 },
+  { label:'Moyen', emoji:'🐥', n:9 },
+  { label:'Grand', emoji:'🐔', n:12 },
+]
+function makeMaze(n){
+  const cells = Array.from({length:n*n}, ()=>({ n:true, e:true, s:true, w:true }))
+  const seen = new Set([0]); const stack = [0]
+  const dirs = [['n',0,-1,'s'],['e',1,0,'w'],['s',0,1,'n'],['w',-1,0,'e']]
+  while(stack.length){
+    const cur = stack[stack.length-1]; const cx = cur % n, cy = Math.floor(cur / n)
+    const opts = shuffleArr(dirs).filter(([d,dx,dy])=>{ const nx=cx+dx, ny=cy+dy; return nx>=0 && ny>=0 && nx<n && ny<n && !seen.has(ny*n+nx) })
+    if(!opts.length){ stack.pop(); continue }
+    const [d,dx,dy,opp] = opts[0]; const ni = (cy+dy)*n + (cx+dx)
+    cells[cur][d] = false; cells[ni][opp] = false; seen.add(ni); stack.push(ni)
+  }
+  return cells
+}
+function MazeGame(){
+  const [level, setLevel] = useState(null)
+  const [cells, setCells] = useState([])
+  const [pos, setPos] = useState({ x:0, y:0 })
+  const [moves, setMoves] = useState(0)
+  const start = (lv) => { setLevel(lv); setCells(makeMaze(lv.n)); setPos({ x:0, y:0 }); setMoves(0) }
+  const n = level ? level.n : 0
+  const won = !!level && pos.x===n-1 && pos.y===n-1
+  const move = (dir) => {
+    if(!level || won) return
+    const L = { up:'n', down:'s', left:'w', right:'e' }[dir]
+    if(!L) return
+    const cell = cells[pos.y*n + pos.x]
+    if(!cell || cell[L]) return
+    const d = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] }[dir]
+    setPos({ x:pos.x+d[0], y:pos.y+d[1] }); setMoves(m=>m+1)
+  }
+  useKeyDown((e)=>{ const d = DIR_KEYS[e.key]; if(d){ e.preventDefault(); move(d) } }, !!level)
+  const swipe = useSwipe(move)
+  if(!level) return <LevelPicker levels={MAZE_LEVELS} onPick={start} intro="🐭 Guide la souris jusqu'au fromage !" />
+  const S = 300, cs = S / n
+  const lines = []
+  cells.forEach((c,i)=>{
+    const x = (i % n) * cs, y = Math.floor(i / n) * cs
+    if(c.n) lines.push(<line key={i+'n'} x1={x} y1={y} x2={x+cs} y2={y} />)
+    if(c.w) lines.push(<line key={i+'w'} x1={x} y1={y} x2={x} y2={y+cs} />)
+    if(i % n === n-1 && c.e) lines.push(<line key={i+'e'} x1={x+cs} y1={y} x2={x+cs} y2={y+cs} />)
+    if(Math.floor(i / n) === n-1 && c.s) lines.push(<line key={i+'s'} x1={x} y1={y+cs} x2={x+cs} y2={y+cs} />)
+  })
+  const emo = (cx, cy, e) => <text x={cx*cs + cs/2} y={cy*cs + cs/2 + 1} textAnchor="middle" dominantBaseline="central" fontSize={cs*0.68}>{e}</text>
+  return (
+    <div style={{userSelect:'none', WebkitUserSelect:'none', textAlign:'center'}}>
+      <p style={{color:'rgba(255,255,255,0.8)', fontSize:13, margin:'0 0 10px'}}>Utilise les flèches (ou glisse le doigt sur le labyrinthe)</p>
+      <div {...swipe} style={{ ...swipe.style, maxWidth:340, margin:'0 auto', background:'#fff8e1', borderRadius:12, padding:6, boxShadow:'0 4px 14px rgba(0,0,0,0.3)' }}>
+        <svg viewBox={`-3 -3 ${S+6} ${S+6}`} width="100%" style={{display:'block'}}>
+          <rect x={(n-1)*cs} y={(n-1)*cs} width={cs} height={cs} fill="#c8f7c5" />
+          <g stroke="#3b4a7a" strokeWidth="3" strokeLinecap="round">{lines}</g>
+          {emo(n-1, n-1, '🧀')}
+          {emo(pos.x, pos.y, '🐭')}
+        </svg>
+      </div>
+      <DirPad onDir={move} />
+      <div style={{color:'rgba(255,255,255,0.7)', fontSize:12, marginTop:10}}>Pas : {moves}</div>
+      {won && <GameResultBanner text="🎉 Bravo !" sub={`Fromage trouvé en ${moves} pas`} color={C.green} onReplay={()=>start(level)} />}
+      <div style={{marginTop:10}}>
+        <button onClick={()=>start(level)} style={btnStyle()}>🔄 Nouveau labyrinthe</button>{' '}
+        <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>Changer de niveau</button>
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
+// 18) COMBIEN Y EN A-T-IL ? — compter les objets et toucher le bon nombre
+// ==================================================================
+const COUNT_LEVELS = [
+  { label:'Petit', emoji:'🐣', max:5 },
+  { label:'Moyen', emoji:'🐥', max:8 },
+  { label:'Grand', emoji:'🐔', max:12 },
+]
+const COUNT_OBJECTS = ['🍎','🐟','⭐','🎈','🚗','🐥','🌸','🍪','🐞','⚽']
+const ROUNDS = 5
+function makeCountRound(lv){
+  const n = 1 + Math.floor(Math.random()*lv.max)
+  const others = shuffleArr(Array.from({length:lv.max}, (_,i)=>i+1).filter(v=>v!==n)).slice(0, 2)
+  return { n, emoji:COUNT_OBJECTS[Math.floor(Math.random()*COUNT_OBJECTS.length)], choices: shuffleArr([n, ...others]) }
+}
+function CountingGame(){
+  const [level, setLevel] = useState(null)
+  const [round, setRound] = useState(0)
+  const [q, setQ] = useState(null)
+  const [score, setScore] = useState(0)
+  const [tries, setTries] = useState(0)
+  const [shake, setShake] = useState(null)
+  const [locked, setLocked] = useState(false)
+  const start = (lv) => { setLevel(lv); setRound(0); setScore(0); setTries(0); setLocked(false); setQ(makeCountRound(lv)) }
+  const answer = (v) => {
+    if(locked) return
+    if(v === q.n){
+      setLocked(true)
+      if(tries === 0) setScore(s=>s+1)
+      setTimeout(()=>{ setRound(r=>r+1); setTries(0); setLocked(false); setQ(makeCountRound(level)) }, 600)
+    } else { setTries(t=>t+1); setShake(v); setTimeout(()=>setShake(null), 500) }
+  }
+  if(!level) return (<div><KidStyles /><LevelPicker levels={COUNT_LEVELS} onPick={start} intro="🧮 Compte les images, puis touche le bon nombre !" /></div>)
+  if(round >= ROUNDS) return (
+    <div><KidStyles /><GameResultBanner text="🎉 Bravo !" sub={`${score} / ${ROUNDS} du premier coup`} color={C.green} onReplay={()=>start(level)} />
+      <div style={{textAlign:'center', marginTop:12}}><button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>Changer de niveau</button></div></div>
+  )
+  return (
+    <div style={{textAlign:'center'}}>
+      <KidStyles />
+      <div style={{color:'rgba(255,255,255,0.75)', fontSize:12, marginBottom:8}}>Question {round+1} / {ROUNDS}</div>
+      <div key={round} className="riusPop" style={{display:'flex', flexWrap:'wrap', gap:6, justifyContent:'center', alignContent:'center', minHeight:150, padding:14, background:'rgba(255,255,255,0.12)', borderRadius:16, maxWidth:420, margin:'0 auto'}}>
+        {Array.from({length:q.n}, (_,i)=>(<span key={i} style={{fontSize:44, lineHeight:1}}>{q.emoji}</span>))}
+      </div>
+      <div style={{display:'flex', gap:14, justifyContent:'center', marginTop:20}}>
+        {q.choices.map(v=>(
+          <button key={v} onClick={()=>answer(v)} className={shake===v ? 'riusShake' : ''}
+            style={{ ...btnStyle(), width:76, height:76, fontSize:34, borderRadius:20, padding:0, background: locked && v===q.n ? C.green : C.gold }}>{v}</button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
+// 19) TROUVE L'INTRUS — une image est differente des autres
+// ==================================================================
+const ODD_EASY = [['🍎','🐶'],['🚗','🍌'],['🐱','⚽'],['🌸','🚲'],['🐟','🍇'],['⭐','🐔']]
+const ODD_HARD = [['🍎','🍅'],['🐶','🐺'],['🐱','🐯'],['🌞','🌕'],['⚽','🏀'],['🚗','🚕'],['🐥','🐤'],['🍊','🥭'],['🐻','🐼'],['🍓','🍒']]
+const ODD_LEVELS = [
+  { label:'Petit', emoji:'🐣', cells:6, pairs:ODD_EASY, cols:3 },
+  { label:'Moyen', emoji:'🐥', cells:9, pairs:ODD_HARD, cols:3 },
+  { label:'Grand', emoji:'🐔', cells:12, pairs:ODD_HARD, cols:4 },
+]
+function makeOddRound(lv){
+  const pair = lv.pairs[Math.floor(Math.random()*lv.pairs.length)]
+  const flip = Math.random() < 0.5
+  const [main, odd] = flip ? [pair[1], pair[0]] : pair
+  const oddAt = Math.floor(Math.random()*lv.cells)
+  return { grid: Array.from({length:lv.cells}, (_,i)=> i===oddAt ? odd : main), oddAt }
+}
+function OddOneOutGame(){
+  const [level, setLevel] = useState(null)
+  const [round, setRound] = useState(0)
+  const [q, setQ] = useState(null)
+  const [score, setScore] = useState(0)
+  const [tries, setTries] = useState(0)
+  const [shake, setShake] = useState(null)
+  const [locked, setLocked] = useState(false)
+  const start = (lv) => { setLevel(lv); setRound(0); setScore(0); setTries(0); setLocked(false); setQ(makeOddRound(lv)) }
+  const pick = (i) => {
+    if(locked) return
+    if(i === q.oddAt){
+      setLocked(true)
+      if(tries === 0) setScore(s=>s+1)
+      setTimeout(()=>{ setRound(r=>r+1); setTries(0); setLocked(false); setQ(makeOddRound(level)) }, 600)
+    } else { setTries(t=>t+1); setShake(i); setTimeout(()=>setShake(null), 500) }
+  }
+  if(!level) return (<div><KidStyles /><LevelPicker levels={ODD_LEVELS} onPick={start} intro="🕵️ Une image est différente : touche-la !" /></div>)
+  if(round >= ROUNDS) return (
+    <div><KidStyles /><GameResultBanner text="🎉 Bravo !" sub={`${score} / ${ROUNDS} du premier coup`} color={C.green} onReplay={()=>start(level)} />
+      <div style={{textAlign:'center', marginTop:12}}><button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>Changer de niveau</button></div></div>
+  )
+  return (
+    <div style={{textAlign:'center'}}>
+      <KidStyles />
+      <div style={{color:'rgba(255,255,255,0.75)', fontSize:12, marginBottom:8}}>Question {round+1} / {ROUNDS}</div>
+      <div key={round} className="riusPop" style={{display:'grid', gridTemplateColumns:`repeat(${level.cols}, 76px)`, gap:10, justifyContent:'center', padding:14, background:'rgba(255,255,255,0.12)', borderRadius:16, width:'fit-content', margin:'0 auto'}}>
+        {q.grid.map((e,i)=>(
+          <button key={i} data-odd={i===q.oddAt ? '1' : undefined} onClick={()=>pick(i)} className={shake===i ? 'riusShake' : ''}
+            style={{ width:76, height:76, fontSize:42, lineHeight:1, borderRadius:16, border:'2px solid rgba(255,255,255,0.3)', background: locked && i===q.oddAt ? C.green : 'rgba(255,255,255,0.9)', cursor:'pointer', padding:0 }}>{e}</button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
+// 20) COURSE DE VOITURES — on change de voie pour eviter les cones et prendre les etoiles
+// ==================================================================
+const RACE_W = 320, RACE_H = 480, ROAD_L = 20, ROAD_R = 300, CAR_Y = 400
+const laneX = (i) => ROAD_L + (ROAD_R-ROAD_L)/3*(i+0.5)
+function roundRectPath(ctx, x, y, w, h, r){ ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h) }
+function drawTopCar(ctx, cx, cy, color){
+  const w = 36, h = 64, l = cx-w/2, t = cy-h/2
+  ctx.fillStyle = '#263238'
+  ;[[l-3, t+h*0.14],[l+w-3, t+h*0.14],[l-3, t+h*0.66],[l+w-3, t+h*0.66]].forEach(([x,y])=>ctx.fillRect(x, y, 6, h*0.2))
+  ctx.fillStyle = color; roundRectPath(ctx, l, t, w, h, 10); ctx.fill()
+  ctx.fillStyle = '#cfe9ff'; ctx.fillRect(l+w*0.15, t+h*0.22, w*0.7, h*0.17); ctx.fillRect(l+w*0.15, t+h*0.64, w*0.7, h*0.13)
+  ctx.fillStyle = 'rgba(0,0,0,0.14)'; ctx.fillRect(l+w*0.15, t+h*0.42, w*0.7, h*0.2)
+}
+function drawCone(ctx, cx, cy){
+  ctx.fillStyle = '#37474f'; ctx.fillRect(cx-19, cy+16, 38, 6)
+  ctx.fillStyle = '#ff7043'; ctx.beginPath(); ctx.moveTo(cx, cy-22); ctx.lineTo(cx+16, cy+17); ctx.lineTo(cx-16, cy+17); ctx.closePath(); ctx.fill()
+  ctx.fillStyle = '#fff'; ctx.fillRect(cx-10, cy-1, 20, 7)
+}
+function drawStarShape(ctx, cx, cy, r){
+  ctx.fillStyle = '#ffd93b'; ctx.strokeStyle = '#e0a800'; ctx.lineWidth = 2; ctx.beginPath()
+  for(let i=0;i<10;i++){ const a = -Math.PI/2 + i*Math.PI/5; const rr = i%2 ? r*0.45 : r; ctx.lineTo(cx+Math.cos(a)*rr, cy+Math.sin(a)*rr) }
+  ctx.closePath(); ctx.fill(); ctx.stroke()
+}
+function CarRaceGame(){
+  const canvasRef = useRef(null)
+  const g = useRef(null)
+  const phaseRef = useRef('ready')
+  const [phase, setPhase] = useState('ready')
+  const [hud, setHud] = useState({ stars:0, lives:3 })
+  const fresh = () => ({ lane:1, x:laneX(1), objs:[], speed:3.4, spawn:40, road:0, stars:0, lives:3, inv:0, id:0 })
+  if(!g.current) g.current = fresh()
+
+  const draw = () => {
+    const c = canvasRef.current; if(!c) return
+    const ctx = c.getContext('2d'), s = g.current
+    ctx.fillStyle = '#6bc46d'; ctx.fillRect(0, 0, RACE_W, RACE_H)
+    ctx.fillStyle = '#4e5560'; ctx.fillRect(ROAD_L, 0, ROAD_R-ROAD_L, RACE_H)
+    ctx.fillStyle = '#fff'; ctx.fillRect(ROAD_L-3, 0, 4, RACE_H); ctx.fillRect(ROAD_R-1, 0, 4, RACE_H)
+    ctx.fillStyle = 'rgba(255,255,255,0.85)'
+    for(let k=1;k<3;k++){ const x = ROAD_L + (ROAD_R-ROAD_L)/3*k - 2; for(let y=-48+s.road; y<RACE_H; y+=48) ctx.fillRect(x, y, 4, 26) }
+    s.objs.forEach(o=>{
+      const ox = laneX(o.lane)
+      if(o.type==='cone') drawCone(ctx, ox, o.y)
+      else if(o.type==='star') drawStarShape(ctx, ox, o.y, 20)
+      else drawTopCar(ctx, ox, o.y, o.color)
+    })
+    if(!(s.inv > 0 && Math.floor(s.inv/6)%2===1)) drawTopCar(ctx, s.x, CAR_Y, '#e53935')
+  }
+  const step = (dt) => {
+    const s = g.current; let changed = false
+    s.road = (s.road + s.speed*dt) % 48
+    s.x += (laneX(s.lane) - s.x) * Math.min(1, 0.22*dt)
+    s.spawn -= dt
+    if(s.spawn <= 0){
+      if(s.objs.some(o=>o.y < 120)){ s.spawn = 6 }
+      else {
+        const r = Math.random()
+        s.objs.push({ id:++s.id, lane:Math.floor(Math.random()*3), y:-50, type: r<0.42 ? 'star' : r<0.72 ? 'cone' : 'car', color:['#1e88e5','#fdd835','#43a047','#8e24aa'][Math.floor(Math.random()*4)] })
+        s.spawn = Math.max(34, 62 - s.stars*1.2) + Math.random()*20
+      }
+    }
+    s.inv = Math.max(0, s.inv - dt)
+    s.objs.forEach(o=>{
+      o.y += (s.speed - (o.type==='car' ? 1.2 : 0)) * dt
+      if(o.hit) return
+      if(Math.abs(laneX(o.lane) - s.x) < 28 && Math.abs(o.y - CAR_Y) < 42){
+        o.hit = true
+        if(o.type==='star'){ s.stars++; changed = true }
+        else if(s.inv <= 0){ s.lives--; s.inv = 90; changed = true }
+      }
+    })
+    s.objs = s.objs.filter(o=>!o.hit && o.y < RACE_H+60)
+    s.speed = 3.4 + Math.min(3.2, s.stars*0.14)
+    if(changed) setHud({ stars:s.stars, lives:s.lives })
+    if(s.lives <= 0){ phaseRef.current = 'over'; setPhase('over') }
+  }
+  useEffect(()=>{ draw() }, [phase])
+  useEffect(()=>{
+    if(phase !== 'play') return
+    let raf, last = null
+    const loop = (t) => {
+      if(last === null) last = t
+      const dt = Math.min(2.5, (t-last)/16.667); last = t
+      step(dt); draw()
+      if(phaseRef.current === 'play') raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [phase])
+  const go = (dir) => { const s = g.current; if(phaseRef.current!=='play') return; s.lane = Math.max(0, Math.min(2, s.lane + (dir==='left' ? -1 : 1))) }
+  useKeyDown((e)=>{ const d = DIR_KEYS[e.key]; if(d==='left' || d==='right'){ e.preventDefault(); go(d) } }, true)
+  const startGame = () => { g.current = fresh(); setHud({ stars:0, lives:3 }); phaseRef.current = 'play'; setPhase('play') }
+  const onCanvas = (e) => {
+    if(phaseRef.current !== 'play'){ return }
+    const r = e.currentTarget.getBoundingClientRect()
+    go(e.clientX - r.left < r.width/2 ? 'left' : 'right')
+  }
+  return (
+    <div style={{textAlign:'center', userSelect:'none', WebkitUserSelect:'none'}}>
+      <div style={{display:'flex', justifyContent:'space-between', maxWidth:360, margin:'0 auto 8px', color:'white', fontWeight:800, fontSize:15}}>
+        <span>{'❤️'.repeat(Math.max(0, hud.lives))}{'🖤'.repeat(Math.max(0, 3-hud.lives))}</span><span>⭐ {hud.stars}</span>
+      </div>
+      <div style={{position:'relative', maxWidth:360, margin:'0 auto'}}>
+        <canvas ref={canvasRef} width={RACE_W} height={RACE_H} onPointerDown={onCanvas}
+          style={{width:'100%', height:'auto', display:'block', borderRadius:14, boxShadow:'0 4px 14px rgba(0,0,0,0.35)', touchAction:'manipulation'}} />
+        {phase==='ready' && (
+          <div style={{position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'rgba(15,32,64,0.55)', borderRadius:14, padding:20, gap:14}}>
+            <div style={{color:'white', fontWeight:800, fontSize:15}}>Touche à gauche ou à droite pour changer de voie.<br />Prends les ⭐ et évite les 🚧 et les voitures !</div>
+            <button onClick={startGame} style={{...btnStyle(), fontSize:18, padding:'14px 30px'}}>▶ Démarrer</button>
+          </div>
+        )}
+      </div>
+      <div style={{display:'flex', gap:14, justifyContent:'center', marginTop:12}}>
+        <button onClick={()=>go('left')} style={{...btnStyle(), width:110, height:56, fontSize:24}} aria-label="Gauche">◀</button>
+        <button onClick={()=>go('right')} style={{...btnStyle(), width:110, height:56, fontSize:24}} aria-label="Droite">▶</button>
+      </div>
+      {phase==='over' && <GameResultBanner text="🏁 Bien joué !" sub={`${hud.stars} étoile${hud.stars>1?'s':''} ramassée${hud.stars>1?'s':''}`} color={C.green} onReplay={startGame} />}
+    </div>
+  )
+}
+
+// ==================================================================
+// 21) ATTRAPE LES FRUITS — on deplace le panier (doigt, souris ou fleches) pendant 30 secondes
+// ==================================================================
+const FR_W = 320, FR_H = 420, FR_TIME = 30
+const FRUIT_LIST = ['🍎','🍌','🍇','🍓','🍊','🍉','🍐','🍒']
+function CatchFruitsGame(){
+  const canvasRef = useRef(null)
+  const g = useRef(null)
+  const phaseRef = useRef('ready')
+  const [phase, setPhase] = useState('ready')
+  const [hud, setHud] = useState({ score:0, left:FR_TIME })
+  const fresh = () => ({ x:FR_W/2, target:FR_W/2, fruits:[], score:0, left:FR_TIME, spawn:10 })
+  if(!g.current) g.current = fresh()
+  const draw = () => {
+    const c = canvasRef.current; if(!c) return
+    const ctx = c.getContext('2d'), s = g.current
+    const grd = ctx.createLinearGradient(0, 0, 0, FR_H); grd.addColorStop(0, '#7fd3ff'); grd.addColorStop(1, '#d9f6ff')
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, FR_W, FR_H)
+    ctx.fillStyle = '#7ed957'; ctx.fillRect(0, FR_H-16, FR_W, 16)
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '34px serif'
+    s.fruits.forEach(f=>ctx.fillText(f.e, f.x, f.y))
+    ctx.font = '58px serif'; ctx.fillText('🧺', s.x, FR_H-44)
+  }
+  const step = (dt) => {
+    const s = g.current
+    s.left = Math.max(0, s.left - dt/60)
+    s.x += (s.target - s.x) * Math.min(1, 0.3*dt)
+    s.spawn -= dt
+    if(s.spawn <= 0){ s.fruits.push({ e:FRUIT_LIST[Math.floor(Math.random()*FRUIT_LIST.length)], x:24+Math.random()*(FR_W-48), y:-20, v:2.1+Math.random()*1.4 }); s.spawn = 26 + Math.random()*22 }
+    let changed = false
+    s.fruits.forEach(f=>{
+      f.y += f.v*dt
+      if(!f.done && f.y > FR_H-78 && f.y < FR_H-22 && Math.abs(f.x - s.x) < 44){ f.done = true; s.score++; changed = true }
+    })
+    s.fruits = s.fruits.filter(f=>!f.done && f.y < FR_H+30)
+    const secs = Math.ceil(s.left)
+    if(changed || secs !== hud.left) setHud({ score:s.score, left:secs })
+    if(s.left <= 0){ phaseRef.current = 'over'; setPhase('over'); setHud({ score:s.score, left:0 }) }
+  }
+  useEffect(()=>{ draw() }, [phase])
+  useEffect(()=>{
+    if(phase !== 'play') return
+    let raf, last = null
+    const loop = (t) => {
+      if(last === null) last = t
+      const dt = Math.min(2.5, (t-last)/16.667); last = t
+      step(dt); draw()
+      if(phaseRef.current === 'play') raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [phase])
+  const setTarget = (clientX, el) => { const r = el.getBoundingClientRect(); g.current.target = Math.max(28, Math.min(FR_W-28, (clientX - r.left) * FR_W / r.width)) }
+  useKeyDown((e)=>{ const d = DIR_KEYS[e.key]; if(d==='left' || d==='right'){ e.preventDefault(); g.current.target = Math.max(28, Math.min(FR_W-28, g.current.target + (d==='left' ? -48 : 48))) } }, true)
+  const startGame = () => { g.current = fresh(); setHud({ score:0, left:FR_TIME }); phaseRef.current = 'play'; setPhase('play') }
+  return (
+    <div style={{textAlign:'center', userSelect:'none', WebkitUserSelect:'none'}}>
+      <div style={{display:'flex', justifyContent:'space-between', maxWidth:360, margin:'0 auto 8px', color:'white', fontWeight:800, fontSize:15}}>
+        <span>🍎 {hud.score}</span><span>⏱️ {hud.left} s</span>
+      </div>
+      <div style={{position:'relative', maxWidth:360, margin:'0 auto'}}>
+        <canvas ref={canvasRef} width={FR_W} height={FR_H}
+          onPointerDown={e=>{ if(phaseRef.current==='play') setTarget(e.clientX, e.currentTarget) }}
+          onPointerMove={e=>{ if(phaseRef.current==='play') setTarget(e.clientX, e.currentTarget) }}
+          style={{width:'100%', height:'auto', display:'block', borderRadius:14, boxShadow:'0 4px 14px rgba(0,0,0,0.35)', touchAction:'none'}} />
+        {phase==='ready' && (
+          <div style={{position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'rgba(15,32,64,0.5)', borderRadius:14, padding:20, gap:14}}>
+            <div style={{color:'white', fontWeight:800, fontSize:15}}>Glisse ton doigt pour déplacer le panier et attraper un maximum de fruits !</div>
+            <button onClick={startGame} style={{...btnStyle(), fontSize:18, padding:'14px 30px'}}>▶ Démarrer</button>
+          </div>
+        )}
+      </div>
+      {phase==='over' && <GameResultBanner text="🎉 Bravo !" sub={`${hud.score} fruit${hud.score>1?'s':''} attrapé${hud.score>1?'s':''}`} color={C.green} onReplay={startGame} />}
+    </div>
+  )
+}
+
+// ==================================================================
+// 22) 2048 — pour les plus grands : on fusionne les tuiles identiques (fleches ou glissement)
+// ==================================================================
+const T2048_COLORS = { 2:'#eee4da', 4:'#ede0c8', 8:'#f2b179', 16:'#f59563', 32:'#f67c5f', 64:'#f65e3b', 128:'#edcf72', 256:'#edcc61', 512:'#edc850', 1024:'#edc53f', 2048:'#edc22e' }
+function addTile2048(g){
+  const empt = []
+  g.forEach((r,y)=>r.forEach((v,x)=>{ if(!v) empt.push([x,y]) }))
+  if(!empt.length) return g
+  const [x,y] = empt[Math.floor(Math.random()*empt.length)]
+  const ng = g.map(r=>[...r]); ng[y][x] = Math.random() < 0.9 ? 2 : 4
+  return ng
+}
+function slideLeft2048(row){
+  const vals = row.filter(Boolean); const out = []; let score = 0
+  for(let i=0;i<vals.length;i++){
+    if(vals[i] === vals[i+1]){ out.push(vals[i]*2); score += vals[i]*2; i++ } else out.push(vals[i])
+  }
+  while(out.length < 4) out.push(0)
+  return { row:out, score }
+}
+function move2048(g, dir){
+  const ng = g.map(r=>[...r]); let total = 0, moved = false
+  const getLine = (i) => dir==='left' ? [...ng[i]] : dir==='right' ? [...ng[i]].reverse() : dir==='up' ? ng.map(r=>r[i]) : ng.map(r=>r[i]).reverse()
+  const setLine = (i, line) => {
+    const L = (dir==='right' || dir==='down') ? [...line].reverse() : line
+    if(dir==='left' || dir==='right') ng[i] = L
+    else L.forEach((v,y)=>{ ng[y][i] = v })
+  }
+  for(let i=0;i<4;i++){
+    const before = getLine(i); const { row, score } = slideLeft2048(before)
+    if(row.some((v,k)=>v !== before[k])) moved = true
+    total += score; setLine(i, row)
+  }
+  return { grid:ng, score:total, moved }
+}
+const canMove2048 = (g) => ['left','right','up','down'].some(d=>move2048(g, d).moved)
+const new2048 = () => addTile2048(addTile2048(Array.from({length:4}, ()=>Array(4).fill(0))))
+function Game2048(){
+  const [grid, setGrid] = useState(new2048)
+  const [score, setScore] = useState(0)
+  const [best, setBest] = useState(()=>{ try { return Number(localStorage.getItem('rius_2048_best')) || 0 } catch { return 0 } })
+  const over = !canMove2048(grid)
+  const reached = grid.some(r=>r.some(v=>v>=2048))
+  const play = (dir) => {
+    if(over) return
+    const r = move2048(grid, dir)
+    if(!r.moved) return
+    const ns = score + r.score
+    setGrid(addTile2048(r.grid)); setScore(ns)
+    if(ns > best){ setBest(ns); try { localStorage.setItem('rius_2048_best', String(ns)) } catch {} }
+  }
+  useKeyDown((e)=>{ const d = DIR_KEYS[e.key]; if(d && e.key.startsWith('Arrow')){ e.preventDefault(); play(d) } }, true)
+  const swipe = useSwipe(play)
+  const restart = () => { setGrid(new2048()); setScore(0) }
+  return (
+    <div style={{textAlign:'center', userSelect:'none', WebkitUserSelect:'none'}}>
+      <div style={{display:'flex', justifyContent:'center', gap:12, marginBottom:10, color:'white', fontWeight:800, fontSize:14}}>
+        <span style={{background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'6px 14px'}}>Score {score}</span>
+        <span style={{background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'6px 14px'}}>Meilleur {best}</span>
+      </div>
+      <div {...swipe} style={{ ...swipe.style, display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, maxWidth:340, margin:'0 auto', background:'#bbada0', padding:8, borderRadius:12 }}>
+        {grid.flat().map((v,i)=>(
+          <div key={i} data-tile={v} style={{ aspectRatio:'1', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900,
+            fontSize: v>=1024 ? 22 : v>=128 ? 26 : 30, background: v ? (T2048_COLORS[v] || '#3c3a32') : 'rgba(238,228,218,0.35)', color: v<=4 ? '#776e65' : '#fff' }}>{v || ''}</div>
+        ))}
+      </div>
+      <p style={{color:'rgba(255,255,255,0.7)', fontSize:12, margin:'10px 0 0'}}>Flèches du clavier ou glisse le doigt sur la grille</p>
+      {(over || reached) && <GameResultBanner text={reached ? '🎉 2048 atteint !' : 'Partie terminée'} sub={`Score : ${score}`} color={reached ? C.green : C.gold} onReplay={restart} />}
+      {!over && !reached && <div style={{marginTop:10}}><button onClick={restart} style={btnStyle()}>🔄 Nouvelle partie</button></div>}
+    </div>
+  )
+}
+
+// ==================================================================
+// 23) TABLEAU MAGIQUE — dessiner au doigt
+// ==================================================================
+const PAD_COLORS = ['#e53935','#fb8c00','#fdd835','#7ed957','#43a047','#26c6da','#1e88e5','#8e24aa','#ec407a','#8d6e63','#263238','#ffffff']
+function DrawingPad(){
+  const ref = useRef(null)
+  const drawing = useRef(false)
+  const last = useRef(null)
+  const [color, setColor] = useState(PAD_COLORS[0])
+  const [size, setSize] = useState(10)
+  const clear = () => { const c = ref.current; const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height) }
+  useEffect(()=>{ clear() }, [])
+  const pos = (e) => { const r = ref.current.getBoundingClientRect(); return { x:(e.clientX-r.left)*ref.current.width/r.width, y:(e.clientY-r.top)*ref.current.height/r.height } }
+  const down = (e) => {
+    drawing.current = true
+    const p = pos(e); last.current = p
+    const ctx = ref.current.getContext('2d'); ctx.fillStyle = color; ctx.beginPath(); ctx.arc(p.x, p.y, size/2, 0, Math.PI*2); ctx.fill()
+    try { ref.current.setPointerCapture(e.pointerId) } catch {}
+  }
+  const move = (e) => {
+    if(!drawing.current) return
+    const p = pos(e); const ctx = ref.current.getContext('2d')
+    ctx.strokeStyle = color; ctx.lineWidth = size; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    ctx.beginPath(); ctx.moveTo(last.current.x, last.current.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last.current = p
+  }
+  const up = () => { drawing.current = false }
+  const save = () => { const a = document.createElement('a'); a.href = ref.current.toDataURL('image/png'); a.download = 'mon-dessin-rius.png'; a.click() }
+  return (
+    <div style={{textAlign:'center', userSelect:'none', WebkitUserSelect:'none'}}>
+      <canvas ref={ref} width={320} height={320} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+        style={{width:'100%', maxWidth:400, height:'auto', display:'block', margin:'0 auto', background:'#fff', borderRadius:12, boxShadow:'0 4px 14px rgba(0,0,0,0.3)', touchAction:'none', cursor:'crosshair'}} />
+      <div style={{display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center', marginTop:12}}>
+        {PAD_COLORS.map(c=>(
+          <button key={c} onClick={()=>setColor(c)} aria-label={'Couleur '+c}
+            style={{ width:38, height:38, borderRadius:'50%', background:c, cursor:'pointer', padding:0, fontSize:16,
+              border: color===c ? '4px solid '+C.gold : '3px solid rgba(255,255,255,0.6)', transform: color===c ? 'scale(1.15)' : 'none' }}>{c==='#ffffff' ? '🧽' : ''}</button>
+        ))}
+      </div>
+      <div style={{display:'flex', gap:10, justifyContent:'center', alignItems:'center', marginTop:12, flexWrap:'wrap'}}>
+        {[[5,'Fin'],[10,'Moyen'],[20,'Gros']].map(([s,l])=>(
+          <button key={s} onClick={()=>setSize(s)} style={{...btnStyle(), padding:'8px 14px', fontSize:12, background: size===s ? C.gold : 'rgba(255,255,255,0.15)', color: size===s ? '#0f2040' : 'white'}}>{l}</button>
+        ))}
+        <button onClick={clear} style={btnStyle()}>🗑️ Effacer</button>
+        <button onClick={save} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>💾 Enregistrer</button>
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
 // PAGE PRINCIPALE — grille de selection des jeux
 // ==================================================================
 const GAMES_LIST = [
@@ -1226,10 +2010,28 @@ const GAMES_LIST = [
   { id:'garage', title:'Le garage', desc:'Gare chaque voiture à sa place', emoji:'🚗', component:GarageGame, age:'Dès 3 ans' },
   { id:'puzzle-dessins', title:'Puzzle en dessins', desc:'Reconstitue le dessin', emoji:'🖼️', component:PictureJigsaw, age:'Dès 3 ans' },
   { id:'liquides', title:'Tri des couleurs', desc:'Verse les liquides par couleur', emoji:'🧪', component:WaterSortGame, age:'Dès 5 ans' },
+  { id:'course', title:'Course de voitures', desc:'Évite les cônes, prends les étoiles', emoji:'🏎️', component:CarRaceGame, age:'Dès 4 ans' },
+  { id:'ombres', title:'Les ombres', desc:'Trouve l\'ombre de chaque animal', emoji:'🦊', component:ShadowGame, age:'Dès 3 ans' },
+  { id:'formes', title:'Formes rigolotes', desc:'Chaque forme dans son trou', emoji:'🔺', component:ShapesGame, age:'Dès 3 ans' },
+  { id:'trie-images', title:'Trie les images', desc:'Animaux, fruits, légumes, véhicules', emoji:'🧺', component:CategorySortGame, age:'Dès 3 ans' },
+  { id:'bulles', title:'Bulles magiques', desc:'Éclate les bulles qui montent', emoji:'🎈', component:BubblesGame, age:'Dès 3 ans' },
+  { id:'fruits', title:'Attrape les fruits', desc:'Rattrape-les dans ton panier', emoji:'🍓', component:CatchFruitsGame, age:'Dès 3 ans' },
+  { id:'dessin', title:'Tableau magique', desc:'Dessine avec tes doigts', emoji:'✏️', component:DrawingPad, age:'Dès 3 ans' },
+  { id:'combien', title:'Combien ?', desc:'Compte les images', emoji:'🧮', component:CountingGame, age:'Dès 4 ans' },
+  { id:'intrus', title:'Trouve l\'intrus', desc:'Une image est différente', emoji:'🕵️', component:OddOneOutGame, age:'Dès 4 ans' },
+  { id:'labyrinthe', title:'Labyrinthe', desc:'Guide la souris vers le fromage', emoji:'🐭', component:MazeGame, age:'Dès 5 ans' },
+  { id:'2048', title:'2048', desc:'Fusionne les tuiles identiques', emoji:'🔶', component:Game2048, age:'Dès 8 ans' },
 ]
 
 export default function GamesPage({pubsTop, pubsMid}){
   const [activeGame, setActiveGame] = useState(null)
+  const firstRender = useRef(true)
+  // A l'ouverture (ou a la fermeture) d'un jeu, on remonte en haut de la page : sinon, sur telephone,
+  // la page restait au niveau ou se trouvait le bouton du jeu (donc en bas, sur le pied de page).
+  useEffect(()=>{
+    if(firstRender.current){ firstRender.current = false; return }
+    window.scrollTo(0, 0)
+  }, [activeGame])
 
   if(activeGame){
     const game = GAMES_LIST.find(g=>g.id===activeGame)
