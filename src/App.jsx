@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import GamesPage from './Games'
 import { AdBanner } from './AdBanner'
 import Admin from './Admin'
+
+// La page Jeux est chargee a la demande : son code n'est telecharge que si le visiteur ouvre les jeux
+const GamesPage = React.lazy(() => import('./Games'))
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY
@@ -1903,7 +1905,7 @@ export default function App(){
           </div>
         </div></div>
       ): actif==='JEUX'?(
-        <div style={{background:'#2e4fb0',color:'white',minHeight:'100vh'}}><GamesPage pubsTop={pubsFor('jeux-top')} pubsMid={pubsFor('jeux-mid')} /></div>
+        <div style={{background:'#2e4fb0',color:'white',minHeight:'100vh'}}><React.Suspense fallback={<div style={{padding:'60px 20px', textAlign:'center', color:'white', fontWeight:800}}>Chargement des jeux…</div>}><GamesPage pubsTop={pubsFor('jeux-top')} pubsMid={pubsFor('jeux-mid')} /></React.Suspense></div>
       ): actif==='COMPTE'?(
         <div style={{background:'#2e4fb0',color:'white',minHeight:'100vh',padding:'20px 16px'}}>
           <div style={{maxWidth:640,margin:'0 auto'}}>

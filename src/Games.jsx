@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useReducer } from 'react'
 import { AdBanner } from './AdBanner'
 
 // ==================================================================
@@ -1994,6 +1994,439 @@ function DrawingPad(){
 }
 
 // ==================================================================
+// 24) ECRITURE MAGIQUE — une lettre ou un chiffre grise se colore au passage du doigt
+// ==================================================================
+const TRACE_SETS = [
+  { id:'chiffres', label:'Chiffres', emoji:'🔢', glyphs:'0123456789'.split('') },
+  { id:'majuscules', label:'Lettres A-Z', emoji:'🔤', glyphs:'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('') },
+  { id:'minuscules', label:'Lettres a-z', emoji:'🔡', glyphs:'abcdefghijklmnopqrstuvwxyz'.split('') },
+]
+const TRACE_SIZE = 320
+function drawTraceGlyph(ctx, g, fill){
+  const lower = /[a-z]/.test(g)
+  ctx.font = `900 ${lower ? 255 : 250}px "Arial Rounded MT Bold","Trebuchet MS",Arial,sans-serif`
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillStyle = fill; ctx.strokeStyle = fill; ctx.lineWidth = 8; ctx.lineJoin = 'round'
+  const y = TRACE_SIZE/2 + (lower ? (/[gjpqy]/.test(g) ? -22 : 14) : 10)
+  ctx.strokeText(g, TRACE_SIZE/2, y); ctx.fillText(g, TRACE_SIZE/2, y)
+}
+function TraceGame(){
+  const S = TRACE_SIZE
+  const [setId, setSetId] = useState('chiffres')
+  const [glyph, setGlyph] = useState(null)
+  const [progress, setProgress] = useState(0)
+  const [done, setDone] = useState(false)
+  const view = useRef(null), mask = useRef(null), paint = useRef(null), tmp = useRef(null)
+  const maskAlpha = useRef(null), total = useRef(1)
+  const drawing = useRef(false), last = useRef(null), hue = useRef(0), checkedAt = useRef(0), doneRef = useRef(false)
+  const set = TRACE_SETS.find(s=>s.id===setId)
+  const mk = () => { const c = document.createElement('canvas'); c.width = S; c.height = S; return c }
+
+  const paintView = () => {
+    const v = view.current; if(!v || !glyph || !tmp.current) return
+    const ctx = v.getContext('2d')
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.fillStyle = '#fffdf5'; ctx.fillRect(0, 0, S, S)
+    if(doneRef.current){
+      const grd = ctx.createLinearGradient(0, 0, S, S)
+      const cols = ['#e53935','#fb8c00','#fdd835','#43a047','#1e88e5','#8e24aa']
+      cols.forEach((c,i)=>grd.addColorStop(i/(cols.length-1), c))
+      drawTraceGlyph(ctx, glyph, grd); return
+    }
+    drawTraceGlyph(ctx, glyph, '#d5d9e2')
+    const t = tmp.current.getContext('2d')
+    t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, S, S); t.drawImage(paint.current, 0, 0)
+    t.globalCompositeOperation = 'destination-in'; t.drawImage(mask.current, 0, 0)
+    t.globalCompositeOperation = 'source-over'
+    ctx.drawImage(tmp.current, 0, 0)
+  }
+  useEffect(()=>{
+    if(!glyph) return
+    mask.current = mk(); paint.current = mk(); tmp.current = mk()
+    tmp.current.getContext('2d', { willReadFrequently:true })
+    const mc = mask.current.getContext('2d', { willReadFrequently:true })
+    drawTraceGlyph(mc, glyph, '#000')
+    const d = mc.getImageData(0, 0, S, S).data
+    const a = new Uint8Array(S*S); let tot = 0
+    for(let i=0;i<a.length;i++){ if(d[i*4+3] > 128){ a[i] = 1; tot++ } }
+    maskAlpha.current = a; total.current = Math.max(1, tot)
+    doneRef.current = false; drawing.current = false
+    paintView()
+  }, [glyph])
+
+  const coverage = () => {
+    const d = tmp.current.getContext('2d').getImageData(0, 0, S, S).data, m = maskAlpha.current
+    let cov = 0
+    for(let i=0;i<m.length;i++){ if(m[i] && d[i*4+3] > 128) cov++ }
+    return cov / total.current
+  }
+  const check = (force) => {
+    const now = performance.now()
+    if(!force && now - checkedAt.current < 120) return
+    checkedAt.current = now
+    const p = coverage(); setProgress(p)
+    if(p >= 0.85 && !doneRef.current){ doneRef.current = true; setDone(true); paintView() }
+  }
+  const pos = (e) => { const r = view.current.getBoundingClientRect(); return { x:(e.clientX-r.left)*S/r.width, y:(e.clientY-r.top)*S/r.height } }
+  const stroke = (a, b) => {
+    const c = paint.current.getContext('2d')
+    hue.current = (hue.current + Math.hypot(b.x-a.x, b.y-a.y)*1.1) % 360
+    c.strokeStyle = c.fillStyle = `hsl(${hue.current},90%,55%)`
+    c.lineWidth = 44; c.lineCap = 'round'
+    c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke()
+    c.beginPath(); c.arc(b.x, b.y, 22, 0, Math.PI*2); c.fill()
+    paintView()
+  }
+  const down = (e) => {
+    if(doneRef.current) return
+    drawing.current = true; last.current = pos(e); stroke(last.current, last.current)
+    try { view.current.setPointerCapture(e.pointerId) } catch {}
+  }
+  const move = (e) => { if(!drawing.current || doneRef.current) return; const p = pos(e); stroke(last.current, p); last.current = p; check(false) }
+  const up = () => { if(!drawing.current) return; drawing.current = false; check(true) }
+  const restart = () => {
+    paint.current.getContext('2d').clearRect(0, 0, S, S)
+    doneRef.current = false; setDone(false); setProgress(0); paintView()
+  }
+  const next = () => {
+    const i = set.glyphs.indexOf(glyph)
+    setGlyph(set.glyphs[(i+1) % set.glyphs.length]); setProgress(0); setDone(false)
+  }
+
+  if(!glyph){
+    return (
+      <div style={{textAlign:'center'}}>
+        <p style={{color:'rgba(255,255,255,0.85)', fontSize:14, margin:'0 0 12px'}}>✍️ Choisis, puis passe le doigt sur le chiffre ou la lettre pour la colorier !</p>
+        <div style={{display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap', marginBottom:16}}>
+          {TRACE_SETS.map(s=>(
+            <button key={s.id} onClick={()=>setSetId(s.id)} style={{...btnStyle(), padding:'10px 14px', background: setId===s.id ? C.gold : 'rgba(255,255,255,0.15)', color: setId===s.id ? '#0f2040' : 'white'}}>{s.emoji} {s.label}</button>
+          ))}
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(60px,1fr))', gap:10, maxWidth:460, margin:'0 auto'}}>
+          {set.glyphs.map(g=>(
+            <button key={g} onClick={()=>{ setGlyph(g); setProgress(0); setDone(false) }}
+              style={{ height:60, borderRadius:14, border:'2px solid rgba(255,255,255,0.35)', background:'rgba(255,255,255,0.92)', color:'#24417f', fontWeight:900, fontSize:30, cursor:'pointer', padding:0 }}>{g}</button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div style={{textAlign:'center', userSelect:'none', WebkitUserSelect:'none'}}>
+      <KidStyles />
+      <div style={{maxWidth:360, margin:'0 auto 10px', height:14, background:'rgba(255,255,255,0.2)', borderRadius:8, overflow:'hidden'}}>
+        <div style={{width:Math.min(100, Math.round(progress/0.85*100))+'%', height:'100%', background:'linear-gradient(90deg,#fb8c00,#fdd835,#7ed957)', transition:'width .15s'}} />
+      </div>
+      <canvas ref={view} width={S} height={S} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+        style={{width:'100%', maxWidth:360, height:'auto', display:'block', margin:'0 auto', borderRadius:16, boxShadow:'0 4px 14px rgba(0,0,0,0.3)', touchAction:'none', cursor:'crosshair'}} />
+      <p style={{color:'rgba(255,255,255,0.75)', fontSize:12, margin:'10px 0 0'}}>Passe ton doigt sur toute la forme grise</p>
+      {done && <GameResultBanner text="🎉 Bravo !" sub="Tout est colorié" color={C.green} onReplay={restart} />}
+      <div style={{display:'flex', gap:10, justifyContent:'center', marginTop:12, flexWrap:'wrap'}}>
+        {done && <button onClick={next} style={{...btnStyle(), background:C.green}}>Suivant ➜</button>}
+        {!done && <button onClick={restart} style={btnStyle()}>🔄 Recommencer</button>}
+        <button onClick={()=>setGlyph(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>↩ Autre caractère</button>
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
+// 25) TUILES PAR TROIS (facon mahjong) — on prend des tuiles sur les tas ; trois pareilles disparaissent
+// ==================================================================
+const TILE_EMOJIS = ['🍎','🍌','🍇','🍓','🍊','🍉','🐶','🐱','🐸','🐼','⭐','❤️','🚗','⚽']
+const TILE_LEVELS = [
+  { label:'Petit', emoji:'🐣', types:4, per:3, piles:4, tray:7, undo:99, shuffle:3 },
+  { label:'Moyen', emoji:'🐥', types:6, per:6, piles:6, tray:7, undo:5, shuffle:3 },
+  { label:'Grand', emoji:'🐔', types:8, per:6, piles:8, tray:7, undo:3, shuffle:2 },
+]
+const TILE_W = 54, TILE_H = 62, TILE_STEP = 8
+function makeTilePiles(lv){
+  const types = shuffleArr(TILE_EMOJIS).slice(0, lv.types)
+  const all = []
+  let id = 0
+  types.forEach(t=>{ for(let i=0;i<lv.per;i++) all.push({ id:'t'+(++id), t }) })
+  const sh = shuffleArr(all), size = all.length / lv.piles
+  return Array.from({length:lv.piles}, (_,i)=>sh.slice(i*size, (i+1)*size))
+}
+function TripleTilesGame(){
+  const [level, setLevel] = useState(null)
+  const [piles, setPiles] = useState([])
+  const [tray, setTray] = useState([])
+  const [hist, setHist] = useState([])
+  const [undoLeft, setUndoLeft] = useState(0)
+  const [shuffleLeft, setShuffleLeft] = useState(0)
+  const [locked, setLocked] = useState(false)
+  const [full, setFull] = useState(false)
+  const [won, setWon] = useState(false)
+  const alive = useRef(true)
+  useEffect(()=>{ alive.current = true; return ()=>{ alive.current = false } }, [])
+
+  const start = (lv) => {
+    setLevel(lv); setPiles(makeTilePiles(lv)); setTray([]); setHist([]); setUndoLeft(lv.undo); setShuffleLeft(lv.shuffle)
+    setLocked(false); setFull(false); setWon(false)
+  }
+  const checkEnd = (np, nt) => {
+    if(np.every(p=>p.length===0) && nt.length===0){ setWon(true); return }
+    if(nt.length >= level.tray) setFull(true)
+  }
+  const pick = (pi) => {
+    if(locked || full || won) return
+    const pile = piles[pi]; if(!pile || !pile.length) return
+    const tile = pile[pile.length-1]
+    const np = piles.map((p,i)=> i===pi ? p.slice(0,-1) : p)
+    let at = -1; tray.forEach((x,i)=>{ if(x.t===tile.t) at = i })
+    const nt = [...tray]; nt.splice(at>=0 ? at+1 : nt.length, 0, tile)
+    setPiles(np); setTray(nt); setHist(h=>[...h, { pile:pi, tile }])
+    if(nt.filter(x=>x.t===tile.t).length >= 3){
+      setLocked(true)
+      setTimeout(()=>{
+        if(!alive.current) return
+        const nt2 = nt.filter(x=>x.t!==tile.t)
+        setTray(nt2); setHist([]); setLocked(false); checkEnd(np, nt2)
+      }, 320)
+    } else checkEnd(np, nt)
+  }
+  const undo = () => {
+    if(locked || won || !hist.length || undoLeft<=0) return
+    const last = hist[hist.length-1]
+    setTray(t=>t.filter(x=>x.id!==last.tile.id))
+    setPiles(ps=>ps.map((p,i)=> i===last.pile ? [...p, last.tile] : p))
+    setHist(h=>h.slice(0,-1)); setUndoLeft(u=>u-1); setFull(false)
+  }
+  const reshuffle = () => {
+    if(locked || won || shuffleLeft<=0) return
+    const flat = shuffleArr(piles.flat().map(x=>x.t))
+    let k = 0
+    const np = piles.map(p=>p.map(x=>({ id:x.id, t:flat[k++] })))
+    setPiles(np); setHist([]); setShuffleLeft(s=>s-1)
+  }
+  if(!level) return (<div><KidStyles /><LevelPicker levels={TILE_LEVELS} onPick={start} intro="🀄 Prends les tuiles : trois pareilles disparaissent !" /></div>)
+
+  const pileH = TILE_H + ((level.per * level.types / level.piles) - 1) * TILE_STEP
+  const remaining = piles.reduce((a,p)=>a+p.length, 0)
+  return (
+    <div style={{userSelect:'none', WebkitUserSelect:'none'}}>
+      <style>{`@keyframes riusTileIn{from{transform:translateY(-10px);opacity:0}to{transform:none;opacity:1}}`}</style>
+      <KidStyles />
+      <p style={{color:'rgba(255,255,255,0.8)', fontSize:13, margin:'0 0 10px', textAlign:'center'}}>Touche une tuile du dessus. Trois pareilles = elles disparaissent !</p>
+      <div style={{display:'flex', flexWrap:'wrap', gap:'14px 10px', justifyContent:'center', padding:'12px 6px', background:'rgba(0,0,0,0.15)', borderRadius:14}}>
+        {piles.map((p,pi)=>(
+          <div key={pi} style={{ position:'relative', width:TILE_W, height:pileH }}>
+            {p.map((tile,i)=>{
+              const top = i===p.length-1
+              return (
+                <button key={tile.id} data-top={top ? '1' : undefined} data-type={tile.t} data-pile={pi} onClick={()=>top && pick(pi)} disabled={!top}
+                  style={{ position:'absolute', left:0, top: pileH - TILE_H - (p.length-1-i)*TILE_STEP, width:TILE_W, height:TILE_H, borderRadius:10, padding:0,
+                    fontSize:30, lineHeight:1, cursor: top ? 'pointer' : 'default', background: top ? '#fffdf0' : '#d9d3bd', border:'2px solid '+(top ? '#8a7a4a' : '#a89f7c'),
+                    boxShadow: top ? '0 3px 0 #8a7a4a' : 'none', opacity: top ? 1 : 0.85 }}>
+                  <span style={{opacity: top ? 1 : 0.35}}>{tile.t}</span>
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+      <div style={{display:'flex', gap:5, justifyContent:'center', marginTop:14, padding:8, background:'rgba(0,0,0,0.25)', borderRadius:14, border:'2px solid rgba(255,255,255,0.25)'}}>
+        {Array.from({length:level.tray}, (_,i)=>{
+          const t = tray[i]
+          return (
+            <div key={i} style={{ width:TILE_W-6, height:TILE_H-4, borderRadius:8, background:'rgba(255,255,255,0.1)', border:'1.5px dashed rgba(255,255,255,0.3)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {t && <div data-tray={t.t} className="riusPop" style={{fontSize:28, lineHeight:1, background:'#fffdf0', borderRadius:8, width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid #8a7a4a', boxSizing:'border-box'}}>{t.t}</div>}
+            </div>
+          )
+        })}
+      </div>
+      <div style={{color:'rgba(255,255,255,0.7)', fontSize:12, textAlign:'center', marginTop:8}}>Tuiles restantes : {remaining + tray.length}</div>
+      {full && !won && (
+        <div style={{margin:'12px auto 0', maxWidth:360, background:'rgba(0,0,0,0.3)', borderRadius:14, padding:14, textAlign:'center'}}>
+          <div style={{color:C.gold, fontWeight:900, fontSize:16}}>Le plateau est plein !</div>
+          <div style={{color:'rgba(255,255,255,0.8)', fontSize:12, margin:'4px 0 10px'}}>Reprends ta dernière tuile ou recommence.</div>
+        </div>
+      )}
+      {won && <GameResultBanner text="🎉 Bravo !" sub="Tous les tas sont vides" color={C.green} onReplay={()=>start(level)} />}
+      <div style={{display:'flex', gap:8, justifyContent:'center', marginTop:12, flexWrap:'wrap'}}>
+        <button onClick={undo} disabled={!hist.length || undoLeft<=0 || locked} style={{...btnStyle(), opacity: hist.length && undoLeft>0 && !locked ? 1 : 0.4}}>↩ Reprendre{level.undo<99 ? ` (${undoLeft})` : ''}</button>
+        <button onClick={reshuffle} disabled={shuffleLeft<=0 || locked} style={{...btnStyle(), opacity: shuffleLeft>0 && !locked ? 1 : 0.4}}>🔀 Mélanger ({shuffleLeft})</button>
+        <button onClick={()=>start(level)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>🔄 Recommencer</button>
+        <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>Niveau</button>
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
+// 26) FRUITS EN FOLIE (facon Candy Crush) — on echange deux fruits voisins pour en aligner trois ou plus
+// ==================================================================
+const CRUSH_KINDS = [
+  { e:'🍎', bg:'#ffcdd2' }, { e:'🍊', bg:'#ffe0b2' }, { e:'🍋', bg:'#fff59d' },
+  { e:'🍏', bg:'#c8e6c9' }, { e:'🍇', bg:'#e1bee7' }, { e:'🍓', bg:'#f8bbd0' },
+]
+const CRUSH_LEVELS = [
+  { label:'Petit', emoji:'🐣', n:6, kinds:4, moves:25, target:600 },
+  { label:'Moyen', emoji:'🐥', n:7, kinds:5, moves:22, target:1700 },
+  { label:'Grand', emoji:'🐔', n:8, kinds:6, moves:20, target:1800 },
+]
+function crushMatches(b, n){
+  const out = new Set()
+  for(let y=0;y<n;y++){
+    let run = 1
+    for(let x=1;x<=n;x++){
+      const same = x<n && b[y*n+x] && b[y*n+x-1] && b[y*n+x].k===b[y*n+x-1].k
+      if(same) run++
+      else { if(run>=3) for(let k=1;k<=run;k++) out.add(y*n+x-k); run = 1 }
+    }
+  }
+  for(let x=0;x<n;x++){
+    let run = 1
+    for(let y=1;y<=n;y++){
+      const same = y<n && b[y*n+x] && b[(y-1)*n+x] && b[y*n+x].k===b[(y-1)*n+x].k
+      if(same) run++
+      else { if(run>=3) for(let k=1;k<=run;k++) out.add((y-k)*n+x); run = 1 }
+    }
+  }
+  return out
+}
+function crushCollapse(b, n, kinds, nextId){
+  const out = Array(n*n).fill(null)
+  for(let x=0;x<n;x++){
+    let w = n-1
+    for(let y=n-1;y>=0;y--){ const t = b[y*n+x]; if(t){ out[w*n+x] = t; w-- } }
+    for(let y=w;y>=0;y--) out[y*n+x] = { id:nextId(), k:Math.floor(Math.random()*kinds), fresh:true }
+  }
+  return out
+}
+function crushSwapped(b, i, j){ const c = [...b]; const t = c[i]; c[i] = c[j]; c[j] = t; return c }
+function crushHasMove(b, n){
+  for(let y=0;y<n;y++) for(let x=0;x<n;x++){
+    const i = y*n+x
+    if(x<n-1 && crushMatches(crushSwapped(b, i, i+1), n).size) return true
+    if(y<n-1 && crushMatches(crushSwapped(b, i, i+n), n).size) return true
+  }
+  return false
+}
+function crushBoard(n, kinds, nextId){
+  for(let tries=0; tries<500; tries++){
+    const b = Array.from({length:n*n}, ()=>({ id:nextId(), k:Math.floor(Math.random()*kinds) }))
+    if(!crushMatches(b, n).size && crushHasMove(b, n)) return b
+  }
+  return Array.from({length:n*n}, (_,i)=>({ id:nextId(), k:(i + Math.floor(i/n)*2) % kinds }))
+}
+const sleepMs = (ms) => new Promise(r=>setTimeout(r, ms))
+function FruitCrushGame(){
+  const [level, setLevel] = useState(null)
+  const [, force] = useReducer(x=>x+1, 0)
+  const G = useRef({ board:[], score:0, moves:0, sel:null, clearing:new Set(), status:'play', msg:'' })
+  const busy = useRef(false), alive = useRef(true), idc = useRef(0), down = useRef(null), boardEl = useRef(null)
+  const [cw, setCw] = useState(340)
+  const upd = () => { if(alive.current) force() }
+  const nextId = () => ++idc.current
+  useEffect(()=>{ alive.current = true; return ()=>{ alive.current = false } }, [])
+  useEffect(()=>{
+    const measure = () => { if(boardEl.current) setCw(boardEl.current.clientWidth) }
+    measure(); window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [level])
+
+  const start = (lv) => {
+    G.current = { board:crushBoard(lv.n, lv.kinds, nextId), score:0, moves:lv.moves, sel:null, clearing:new Set(), status:'play', msg:'' }
+    busy.current = false; setLevel(lv); upd()
+  }
+  const trySwap = async (i, j) => {
+    const g = G.current, n = level.n
+    if(busy.current || g.status!=='play') return
+    busy.current = true; g.sel = null
+    g.board = crushSwapped(g.board, i, j); upd()
+    await sleepMs(210)
+    if(!alive.current) return
+    if(!crushMatches(g.board, n).size){
+      g.board = crushSwapped(g.board, i, j); upd()
+      await sleepMs(210); busy.current = false; return
+    }
+    g.moves--
+    let chain = 0
+    while(alive.current){
+      const m = crushMatches(g.board, n)
+      if(!m.size) break
+      chain++
+      g.clearing = new Set([...m].map(k=>g.board[k].id))
+      g.score += m.size * 10 * chain
+      g.msg = chain>1 ? `Enchaînement x${chain} !` : ''
+      upd(); await sleepMs(270)
+      g.board = g.board.map((t,k)=> m.has(k) ? null : t); g.clearing = new Set(); upd()
+      await sleepMs(50)
+      g.board = crushCollapse(g.board, n, level.kinds, nextId); upd()
+      await sleepMs(330)
+    }
+    if(!alive.current) return
+    g.msg = ''
+    if(g.score >= level.target) g.status = 'won'
+    else if(g.moves <= 0) g.status = 'lost'
+    else if(!crushHasMove(g.board, n)){ g.board = crushBoard(n, level.kinds, nextId); g.msg = 'Plus de coups possibles : on mélange !' }
+    busy.current = false; upd()
+  }
+  const cellOf = (el) => { const t = el && el.closest ? el.closest('[data-cell]') : null; return t ? Number(t.dataset.cell) : null }
+  const onDown = (e) => { down.current = { i:cellOf(e.target), x:e.clientX, y:e.clientY } }
+  const onUp = (e) => {
+    const d = down.current; down.current = null
+    if(!d || d.i===null || !level) return
+    const g = G.current, n = level.n
+    if(busy.current || g.status!=='play') return
+    const dx = e.clientX - d.x, dy = e.clientY - d.y
+    if(Math.max(Math.abs(dx), Math.abs(dy)) > 14){
+      const x = d.i % n, y = Math.floor(d.i / n)
+      let nx = x, ny = y
+      if(Math.abs(dx) > Math.abs(dy)) nx += dx > 0 ? 1 : -1; else ny += dy > 0 ? 1 : -1
+      if(nx>=0 && ny>=0 && nx<n && ny<n) trySwap(d.i, ny*n+nx)
+      return
+    }
+    if(g.sel === null){ g.sel = d.i; upd(); return }
+    if(g.sel === d.i){ g.sel = null; upd(); return }
+    const sx = g.sel % n, sy = Math.floor(g.sel / n), x = d.i % n, y = Math.floor(d.i / n)
+    if(Math.abs(sx-x) + Math.abs(sy-y) === 1) trySwap(g.sel, d.i)
+    else { g.sel = d.i; upd() }
+  }
+  if(!level) return (<div><KidStyles /><LevelPicker levels={CRUSH_LEVELS} onPick={start} intro="🍬 Échange deux fruits voisins pour en aligner trois ou plus !" /></div>)
+
+  const g = G.current, n = level.n, size = 100 / n
+  const pct = Math.min(100, Math.round(g.score / level.target * 100))
+  return (
+    <div style={{userSelect:'none', WebkitUserSelect:'none', textAlign:'center'}}>
+      <style>{`@keyframes riusClear{from{transform:scale(1);opacity:1}to{transform:scale(0.1);opacity:0}}`}</style>
+      <KidStyles />
+      <div style={{display:'flex', justifyContent:'space-between', maxWidth:360, margin:'0 auto 6px', color:'white', fontWeight:800, fontSize:14}}>
+        <span>⭐ {g.score} / {level.target}</span><span>👆 Coups : {g.moves}</span>
+      </div>
+      <div style={{maxWidth:360, margin:'0 auto 10px', height:10, background:'rgba(255,255,255,0.2)', borderRadius:6, overflow:'hidden'}}>
+        <div style={{width:pct+'%', height:'100%', background:'linear-gradient(90deg,#fb8c00,#fdd835,#7ed957)', transition:'width .3s'}} />
+      </div>
+      <div ref={boardEl} onPointerDown={onDown} onPointerUp={onUp}
+        style={{ position:'relative', width:'100%', maxWidth:360, aspectRatio:'1', margin:'0 auto', background:'rgba(0,0,0,0.25)', borderRadius:14, touchAction:'none', overflow:'hidden' }}>
+        {g.board.map((t,i)=>{
+          if(!t) return null
+          const x = i % n, y = Math.floor(i / n), kind = CRUSH_KINDS[t.k]
+          return (
+            <div key={t.id} data-cell={i} data-kind={kind.e} className={t.fresh ? 'riusPop' : ''}
+              style={{ position:'absolute', left:0, top:0, width:size+'%', height:size+'%', transform:`translate(${x*100}%, ${y*100}%)`, transition:'transform .22s ease', padding:'1.5%', boxSizing:'border-box' }}>
+              <div style={{ width:'100%', height:'100%', borderRadius:'22%', background:kind.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:Math.round(cw/n*0.6), lineHeight:1,
+                border: g.sel===i ? '3px solid '+C.gold : '2px solid rgba(255,255,255,0.5)', boxSizing:'border-box', transform: g.sel===i ? 'scale(1.1)' : 'none', transition:'transform .12s',
+                animation: g.clearing.has(t.id) ? 'riusClear .27s forwards' : 'none' }}>{kind.e}</div>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{height:22, marginTop:8, color:C.gold, fontWeight:800, fontSize:14}}>{g.msg}</div>
+      <p style={{color:'rgba(255,255,255,0.7)', fontSize:12, margin:'0 0 8px'}}>Touche deux fruits voisins, ou glisse un fruit vers son voisin</p>
+      {g.status==='won' && <GameResultBanner text="🎉 Bravo !" sub={`Objectif atteint : ${g.score} points en ${level.moves - g.moves} coups`} color={C.green} onReplay={()=>start(level)} />}
+      {g.status==='lost' && <GameResultBanner text="Presque !" sub={`${g.score} points sur ${level.target}. Essaie encore !`} color={C.gold} onReplay={()=>start(level)} />}
+      <div style={{display:'flex', gap:8, justifyContent:'center', marginTop:8}}>
+        <button onClick={()=>start(level)} style={btnStyle()}>🔄 Recommencer</button>
+        <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>Changer de niveau</button>
+      </div>
+    </div>
+  )
+}
+
+// ==================================================================
 // PAGE PRINCIPALE — grille de selection des jeux
 // ==================================================================
 const GAMES_LIST = [
@@ -2021,6 +2454,9 @@ const GAMES_LIST = [
   { id:'intrus', title:'Trouve l\'intrus', desc:'Une image est différente', emoji:'🕵️', component:OddOneOutGame, age:'Dès 4 ans' },
   { id:'labyrinthe', title:'Labyrinthe', desc:'Guide la souris vers le fromage', emoji:'🐭', component:MazeGame, age:'Dès 5 ans' },
   { id:'2048', title:'2048', desc:'Fusionne les tuiles identiques', emoji:'🔶', component:Game2048, age:'Dès 8 ans' },
+  { id:'ecriture', title:'Écriture magique', desc:'Colorie les chiffres et les lettres', emoji:'✍️', component:TraceGame, age:'Dès 3 ans' },
+  { id:'tuiles', title:'Tuiles par trois', desc:'Trois pareilles disparaissent', emoji:'🀄', component:TripleTilesGame, age:'Dès 5 ans' },
+  { id:'fruits-folie', title:'Fruits en folie', desc:'Aligne 3 fruits identiques', emoji:'🍬', component:FruitCrushGame, age:'Dès 6 ans' },
 ]
 
 export default function GamesPage({pubsTop, pubsMid}){
