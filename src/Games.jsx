@@ -819,6 +819,26 @@ function CarSvg({ color, size=84 }){
 }
 
 // ==================================================================
+// PASSAGE AUTOMATIQUE AU NIVEAU SUPERIEUR : des qu'un niveau est reussi, le suivant demarre tout seul
+// (le bouton "Rejouer" du bandeau permet de rester sur le meme niveau)
+// ==================================================================
+function nextLevelOf(levels, level){
+  if(!level) return null
+  const i = levels.findIndex(l=>l.label === level.label)
+  return i >= 0 && i < levels.length-1 ? levels[i+1] : null
+}
+function useAutoNext(won, next, go, delay=2600){
+  const cb = useRef(go)
+  cb.current = go
+  useEffect(()=>{
+    if(!won || !next) return
+    const t = setTimeout(()=>cb.current(next), delay)
+    return () => clearTimeout(t)
+  }, [won, next])
+}
+const NEXT_HINT = ' — niveau suivant dans un instant…'
+
+// ==================================================================
 // 8) RANGE LES BRIQUES / 9) LE GARAGE — meme mecanique : glisser chaque objet vers sa couleur
 // ==================================================================
 const SORT_LEVELS = [
@@ -851,6 +871,9 @@ function SortGame({ kind }){
   })
   const visual = (color, size) => isCar ? <CarSvg color={kidHex(color)} size={size} /> : <BrickSvg color={kidHex(color)} size={size} />
 
+  const wonNow = !!level && items.length>0 && items.every(i=>placed[i.id])
+  const nxt = wonNow ? nextLevelOf(SORT_LEVELS, level) : null
+  useAutoNext(wonNow, nxt, start)
   if(!level){
     return (<div><KidStyles /><LevelPicker levels={SORT_LEVELS} onPick={start}
       intro={isCar ? 'Glisse chaque voiture sur la place de la même couleur !' : 'Glisse chaque brique dans la boîte de la même couleur !'} /></div>)
@@ -891,7 +914,7 @@ function SortGame({ kind }){
         })}
       </div>
       <DragGhost drag={drag}>{drag && (()=>{ const it = items.find(x=>x.id===drag.id); return it ? visual(it.color, drag.w-8) : null })()}</DragGhost>
-      {won && <GameResultBanner text="🎉 Bravo !" sub="Tout est bien rangé" color={C.green} onReplay={()=>start(level)} />}
+      {won && <GameResultBanner text="🎉 Bravo !" sub={"Tout est bien rangé" + (nxt ? NEXT_HINT : '')} color={C.green} onReplay={()=>start(level)} />}
       <div style={{textAlign:'center', marginTop:12}}>
         <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white', padding:'8px 16px', fontSize:12}}>↩ Changer de niveau</button>
       </div>
@@ -1054,8 +1077,8 @@ function PictureJigsaw(){
   const vw = 300 / lv.cols, vh = 300 / lv.rows
   const total = lv.cols * lv.rows
 
-  const startWith = (d) => {
-    setDrawing(d); setTray(shuffleArr(Array.from({length:total}, (_,i)=>i))); setPlaced({}); setSelected(null); setShake(null)
+  const startWith = (d, l=lv) => {
+    setLv(l); setDrawing(d); setTray(shuffleArr(Array.from({length:l.cols*l.rows}, (_,i)=>i))); setPlaced({}); setSelected(null); setShake(null)
   }
   const tryPlace = (pieceId, slot) => {
     if(slot === null || slot === undefined) return
@@ -1071,6 +1094,9 @@ function PictureJigsaw(){
     return <DrawingSvg shapes={drawing.shapes} viewBox={`${c*vw} ${r*vh} ${vw} ${vh}`} width={w} height={h} />
   }
 
+  const wonNow = !!drawing && tray.length>0 && tray.every(id=>placed[id])
+  const nxtLv = wonNow ? nextLevelOf(JIGSAW_LEVELS, lv) : null
+  useAutoNext(wonNow, nxtLv, (nl)=>{ const di = DRAWINGS.findIndex(d=>d.id===drawing.id); startWith(DRAWINGS[(di+1) % DRAWINGS.length], nl) })
   if(!drawing){
     return (
       <div style={{textAlign:'center'}}>
@@ -1119,7 +1145,7 @@ function PictureJigsaw(){
         ))}
       </div>
       <DragGhost drag={drag}>{drag && <div style={{width:'100%', height:'100%', borderRadius:8, overflow:'hidden', border:'2px solid #fff', boxSizing:'border-box'}}>{pieceView(drag.id, cw-4, ch-4)}</div>}</DragGhost>
-      {won && <GameResultBanner text="🎉 Bravo !" sub="Le dessin est complet" color={C.green} onReplay={()=>startWith(drawing)} />}
+      {won && <GameResultBanner text="🎉 Bravo !" sub={"Le dessin est complet" + (nxtLv ? NEXT_HINT : '')} color={C.green} onReplay={()=>startWith(drawing)} />}
       <div style={{textAlign:'center', marginTop:12}}>
         <button onClick={()=>setDrawing(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white', padding:'8px 16px', fontSize:12}}>↩ Autre dessin</button>
       </div>
@@ -1180,6 +1206,9 @@ function WaterSortGame(){
     else setSelected(tubes[i].length ? i : null)
   }
   const undo = () => { if(!history.length) return; setTubes(history[history.length-1]); setHistory(h=>h.slice(0,-1)); setSelected(null) }
+  const wonNow = !!level && tubes.length>0 && tubes.every(tubeDone)
+  const nxt = wonNow ? nextLevelOf(LIQUID_LEVELS, level) : null
+  useAutoNext(wonNow, nxt, start)
   if(!level){
     return <LevelPicker levels={LIQUID_LEVELS} onPick={start} intro="🧪 Verse les liquides pour avoir une seule couleur par tube !" />
   }
@@ -1199,7 +1228,7 @@ function WaterSortGame(){
           </div>
         ))}
       </div>
-      {won && <GameResultBanner text="🎉 Bravo !" sub={`Réussi en ${history.length} versements`} color={C.green} onReplay={()=>start(level)} />}
+      {won && <GameResultBanner text="🎉 Bravo !" sub={`Réussi en ${history.length} versements` + (nxt ? NEXT_HINT : '')} color={C.green} onReplay={()=>start(level)} />}
       <div style={{display:'flex', gap:10, justifyContent:'center', marginTop:18, flexWrap:'wrap'}}>
         <button onClick={undo} disabled={!history.length} style={{...btnStyle(), opacity:history.length?1:0.4}}>↩ Annuler</button>
         <button onClick={()=>start(level)} style={btnStyle()}>🔄 Recommencer</button>
@@ -1306,6 +1335,9 @@ function DropMatchGame({ intro, hint, levels, makeItems }){
     onDrop: (id, target) => tryPlace(id, target && target.startsWith('slot:') ? target.slice(5) : null),
     onTap: (id) => setSelected(s => s===id ? null : id),
   })
+  const wonNow = !!level && items.length>0 && tray.every(id=>placed[id])
+  const nxt = wonNow ? nextLevelOf(levels, level) : null
+  useAutoNext(wonNow, nxt, start)
   if(!level) return (<div><KidStyles /><LevelPicker levels={levels} onPick={start} intro={intro} /></div>)
 
   const remaining = tray.filter(id=>!placed[id])
@@ -1339,7 +1371,7 @@ function DropMatchGame({ intro, hint, levels, makeItems }){
         })}
       </div>
       <DragGhost drag={drag}>{drag && byId(drag.id) ? byId(drag.id).node(ITEM) : null}</DragGhost>
-      {won && <GameResultBanner text="🎉 Bravo !" sub="Tout est à sa place" color={C.green} onReplay={()=>start(level)} />}
+      {won && <GameResultBanner text="🎉 Bravo !" sub={"Tout est à sa place" + (nxt ? NEXT_HINT : '')} color={C.green} onReplay={()=>start(level)} />}
       <div style={{textAlign:'center', marginTop:12}}>
         <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white', padding:'8px 16px', fontSize:12}}>↩ Changer de niveau</button>
       </div>
@@ -1400,6 +1432,9 @@ function CategorySortGame(){
     onDrop: (id, target) => tryPlace(id, target && target.startsWith('cat:') ? target.slice(4) : null),
     onTap: (id) => setSelected(s => s===id ? null : id),
   })
+  const wonNow = !!level && items.length>0 && items.every(i=>placed[i.id])
+  const nxt = wonNow ? nextLevelOf(SORT_IMG_LEVELS, level) : null
+  useAutoNext(wonNow, nxt, start)
   if(!level) return (<div><KidStyles /><LevelPicker levels={SORT_IMG_LEVELS} onPick={start} intro="🧺 Range chaque image dans le bon panier !" /></div>)
   const remaining = items.filter(i=>!placed[i.id])
   const won = items.length>0 && remaining.length===0
@@ -1430,7 +1465,7 @@ function CategorySortGame(){
         })}
       </div>
       <DragGhost drag={drag}>{dragged ? <span style={{fontSize:52, lineHeight:1}}>{dragged.emoji}</span> : null}</DragGhost>
-      {won && <GameResultBanner text="🎉 Bravo !" sub="Tout est bien rangé" color={C.green} onReplay={()=>start(level)} />}
+      {won && <GameResultBanner text="🎉 Bravo !" sub={"Tout est bien rangé" + (nxt ? NEXT_HINT : '')} color={C.green} onReplay={()=>start(level)} />}
       <div style={{textAlign:'center', marginTop:12}}>
         <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white', padding:'8px 16px', fontSize:12}}>↩ Changer de niveau</button>
       </div>
@@ -1532,6 +1567,8 @@ function MazeGame(){
   }
   useKeyDown((e)=>{ const d = DIR_KEYS[e.key]; if(d){ e.preventDefault(); move(d) } }, !!level)
   const swipe = useSwipe(move)
+  const nxt = won ? nextLevelOf(MAZE_LEVELS, level) : null
+  useAutoNext(won, nxt, start)
   if(!level) return <LevelPicker levels={MAZE_LEVELS} onPick={start} intro="🐭 Guide la souris jusqu'au fromage !" />
   const S = 300, cs = S / n
   const lines = []
@@ -1556,7 +1593,7 @@ function MazeGame(){
       </div>
       <DirPad onDir={move} />
       <div style={{color:'rgba(255,255,255,0.7)', fontSize:12, marginTop:10}}>Pas : {moves}</div>
-      {won && <GameResultBanner text="🎉 Bravo !" sub={`Fromage trouvé en ${moves} pas`} color={C.green} onReplay={()=>start(level)} />}
+      {won && <GameResultBanner text="🎉 Bravo !" sub={`Fromage trouvé en ${moves} pas` + (nxt ? NEXT_HINT : '')} color={C.green} onReplay={()=>start(level)} />}
       <div style={{marginTop:10}}>
         <button onClick={()=>start(level)} style={btnStyle()}>🔄 Nouveau labyrinthe</button>{' '}
         <button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>Changer de niveau</button>
@@ -1597,9 +1634,12 @@ function CountingGame(){
       setTimeout(()=>{ setRound(r=>r+1); setTries(0); setLocked(false); setQ(makeCountRound(level)) }, 600)
     } else { setTries(t=>t+1); setShake(v); setTimeout(()=>setShake(null), 500) }
   }
+  const doneNow = !!level && round >= ROUNDS
+  const nxt = doneNow ? nextLevelOf(COUNT_LEVELS, level) : null
+  useAutoNext(doneNow, nxt, start)
   if(!level) return (<div><KidStyles /><LevelPicker levels={COUNT_LEVELS} onPick={start} intro="🧮 Compte les images, puis touche le bon nombre !" /></div>)
   if(round >= ROUNDS) return (
-    <div><KidStyles /><GameResultBanner text="🎉 Bravo !" sub={`${score} / ${ROUNDS} du premier coup`} color={C.green} onReplay={()=>start(level)} />
+    <div><KidStyles /><GameResultBanner text="🎉 Bravo !" sub={`${score} / ${ROUNDS} du premier coup` + (nxt ? NEXT_HINT : '')} color={C.green} onReplay={()=>start(level)} />
       <div style={{textAlign:'center', marginTop:12}}><button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>Changer de niveau</button></div></div>
   )
   return (
@@ -1653,9 +1693,12 @@ function OddOneOutGame(){
       setTimeout(()=>{ setRound(r=>r+1); setTries(0); setLocked(false); setQ(makeOddRound(level)) }, 600)
     } else { setTries(t=>t+1); setShake(i); setTimeout(()=>setShake(null), 500) }
   }
+  const doneNow = !!level && round >= ROUNDS
+  const nxt = doneNow ? nextLevelOf(ODD_LEVELS, level) : null
+  useAutoNext(doneNow, nxt, start)
   if(!level) return (<div><KidStyles /><LevelPicker levels={ODD_LEVELS} onPick={start} intro="🕵️ Une image est différente : touche-la !" /></div>)
   if(round >= ROUNDS) return (
-    <div><KidStyles /><GameResultBanner text="🎉 Bravo !" sub={`${score} / ${ROUNDS} du premier coup`} color={C.green} onReplay={()=>start(level)} />
+    <div><KidStyles /><GameResultBanner text="🎉 Bravo !" sub={`${score} / ${ROUNDS} du premier coup` + (nxt ? NEXT_HINT : '')} color={C.green} onReplay={()=>start(level)} />
       <div style={{textAlign:'center', marginTop:12}}><button onClick={()=>setLevel(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>Changer de niveau</button></div></div>
   )
   return (
@@ -1994,36 +2037,293 @@ function DrawingPad(){
 }
 
 // ==================================================================
-// 24) ECRITURE MAGIQUE — une lettre ou un chiffre grise se colore au passage du doigt
+// TRACES : ordre et sens des traits (chiffres, majuscules, minuscules, cursive)
 // ==================================================================
-const TRACE_SETS = [
-  { id:'chiffres', label:'Chiffres', emoji:'🔢', glyphs:'0123456789'.split('') },
-  { id:'majuscules', label:'Lettres A-Z', emoji:'🔤', glyphs:'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('') },
-  { id:'minuscules', label:'Lettres a-z', emoji:'🔡', glyphs:'abcdefghijklmnopqrstuvwxyz'.split('') },
-]
-const TRACE_SIZE = 320
-function drawTraceGlyph(ctx, g, fill){
-  const lower = /[a-z]/.test(g)
-  ctx.font = `900 ${lower ? 255 : 250}px "Arial Rounded MT Bold","Trebuchet MS",Arial,sans-serif`
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-  ctx.fillStyle = fill; ctx.strokeStyle = fill; ctx.lineWidth = 8; ctx.lineJoin = 'round'
-  const y = TRACE_SIZE/2 + (lower ? (/[gjpqy]/.test(g) ? -22 : 14) : 10)
-  ctx.strokeText(g, TRACE_SIZE/2, y); ctx.fillText(g, TRACE_SIZE/2, y)
+// ===== Coeur du tracé guidé : lecture des chemins, échantillonnage, mise à l'échelle =====
+// Mini-langage : M x y | L x y | C x1 y1 x2 y2 x y | Q x1 y1 x y | E cx cy rx ry a0 a1 (arc d'ellipse, angles en degres :
+// 0 = est, 90 = sud, 180 = ouest, 270 = nord ; un angle qui diminue tourne dans le sens inverse des aiguilles d'une montre)
+function samplePath(d){
+  const toks = d.trim().split(/([MLCQE])/).filter(s=>s.trim()!=='')
+  const pts = []; let cx = 0, cy = 0
+  const push = (x,y) => { pts.push([x,y]); cx = x; cy = y }
+  for(let i=0;i<toks.length;i+=2){
+    const cmd = toks[i].trim()
+    const n = toks[i+1].trim().split(/[\s,]+/).map(Number)
+    if(cmd==='M'){ push(n[0], n[1]) }
+    else if(cmd==='L'){
+      for(let k=0;k<n.length;k+=2){ const x0=cx,y0=cy,x1=n[k],y1=n[k+1]; const steps=Math.max(1,Math.ceil(Math.hypot(x1-x0,y1-y0)/2)); for(let s=1;s<=steps;s++) push(x0+(x1-x0)*s/steps, y0+(y1-y0)*s/steps) }
+    } else if(cmd==='C'){
+      for(let k=0;k<n.length;k+=6){ const x0=cx,y0=cy; for(let s=1;s<=28;s++){ const t=s/28,u=1-t; push(u*u*u*x0+3*u*u*t*n[k]+3*u*t*t*n[k+2]+t*t*t*n[k+4], u*u*u*y0+3*u*u*t*n[k+1]+3*u*t*t*n[k+3]+t*t*t*n[k+5]) } }
+    } else if(cmd==='Q'){
+      for(let k=0;k<n.length;k+=4){ const x0=cx,y0=cy; for(let s=1;s<=20;s++){ const t=s/20,u=1-t; push(u*u*x0+2*u*t*n[k]+t*t*n[k+2], u*u*y0+2*u*t*n[k+1]+t*t*n[k+3]) } }
+    } else if(cmd==='E'){
+      const [ex,ey,rx,ry,a0,a1] = n; const sx = ex+rx*Math.cos(a0*Math.PI/180), sy = ey+ry*Math.sin(a0*Math.PI/180)
+      if(pts.length && Math.hypot(sx-cx,sy-cy)>0.5){ const steps=Math.max(1,Math.ceil(Math.hypot(sx-cx,sy-cy)/2)); const x0=cx,y0=cy; for(let s=1;s<=steps;s++) push(x0+(sx-x0)*s/steps, y0+(sy-y0)*s/steps) } else if(!pts.length) push(sx,sy)
+      const steps = Math.max(4, Math.ceil(Math.abs(a1-a0)/5))
+      for(let s=1;s<=steps;s++){ const a=(a0+(a1-a0)*s/steps)*Math.PI/180; push(ex+rx*Math.cos(a), ey+ry*Math.sin(a)) }
+    }
+  }
+  return pts
 }
-function TraceGame(){
+// Ré-échantillonne une polyligne tous les `gap` pixels
+function resample(pts, gap){
+  if(pts.length < 2) return pts.slice()
+  const out = [pts[0]]; let prev = pts[0], acc = 0
+  for(let i=1;i<pts.length;i++){
+    let [x,y] = pts[i]
+    let dx = x-prev[0], dy = y-prev[1], d = Math.hypot(dx,dy)
+    while(acc + d >= gap){
+      const t = (gap-acc)/d; const nx = prev[0]+dx*t, ny = prev[1]+dy*t
+      out.push([nx,ny]); prev = [nx,ny]; dx = x-prev[0]; dy = y-prev[1]; d = Math.hypot(dx,dy); acc = 0
+    }
+    acc += d; prev = [x,y]
+  }
+  const last = pts[pts.length-1], lo = out[out.length-1]
+  if(Math.hypot(last[0]-lo[0], last[1]-lo[1]) > gap*0.4) out.push(last)
+  return out
+}
+// Construit les traits d'un caractere dans un carre de `size` pixels (echelle automatique, centre)
+function buildGlyphStrokes(defs, size, slant=0, pad=46){
+  const raw = defs.map(d=>samplePath(d).map(([x,y])=>[x + slant*(100-y), y]))
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9
+  raw.forEach(p=>p.forEach(([x,y])=>{ x0=Math.min(x0,x); x1=Math.max(x1,x); y0=Math.min(y0,y); y1=Math.max(y1,y) }))
+  const w = Math.max(1,x1-x0), h = Math.max(1,y1-y0), avail = size - pad*2
+  const sc = Math.min(avail/w, avail/h), ox = (size - w*sc)/2 - x0*sc, oy = (size - h*sc)/2 - y0*sc
+  return raw.map(p=>resample(p.map(([x,y])=>[x*sc+ox, y*sc+oy]), 4))
+}
+
+// ===== Definitions des traits (ordre et sens du tracé) — unités de dessin ~ 0..100 =====
+const DIGIT_STROKES = {
+  '0':['E 50 50 32 50 270 -90'],
+  '1':['M 26 24 L 52 0 L 52 100'],
+  '2':['M 14 28 C 18 8 34 0 50 0 C 70 0 82 12 82 30 C 82 52 45 75 12 100 L 88 100'],
+  '3':['M 14 12 C 24 3 38 0 50 0 C 70 0 80 12 80 27 C 80 42 66 50 46 50 C 68 50 84 60 84 76 C 84 92 68 100 48 100 C 32 100 18 96 10 86'],
+  '4':['M 66 0 L 8 70 L 92 70','M 66 0 L 66 100'],
+  '5':['M 78 0 L 24 0 L 18 48 C 30 40 42 38 52 38 C 74 38 86 52 86 70 C 86 88 70 100 48 100 C 32 100 18 96 10 86'],
+  '6':['M 72 6 C 50 12 22 34 18 62 C 14 88 28 100 50 100 C 72 100 84 86 84 68 C 84 52 70 40 50 40 C 34 40 22 48 18 62'],
+  '7':['M 10 0 L 88 0 L 40 100'],
+  '8':['M 50 0 C 16 0 16 48 50 50 C 84 52 84 100 50 100 C 16 100 16 52 50 50 C 84 48 84 0 50 0'],
+  '9':['M 80 30 C 80 12 68 0 50 0 C 28 0 16 14 16 32 C 16 48 30 60 50 60 C 68 60 80 48 80 30 L 80 50 C 78 78 60 96 32 100'],
+}
+const CAP_STROKES = {
+  A:['M 8 100 L 47 0 L 86 100','M 24 66 L 70 66'],
+  B:['M 12 0 L 12 100','M 12 0 L 50 0 C 82 0 82 48 50 48 L 12 48','M 12 48 L 54 48 C 92 48 92 100 54 100 L 12 100'],
+  C:['E 52 50 42 50 -40 -320'],
+  D:['M 12 0 L 12 100','M 12 0 L 40 0 C 100 0 100 100 40 100 L 12 100'],
+  E:['M 12 0 L 12 100','M 12 0 L 80 0','M 12 50 L 68 50','M 12 100 L 80 100'],
+  F:['M 12 0 L 12 100','M 12 0 L 80 0','M 12 50 L 66 50'],
+  G:['E 52 50 42 50 -40 -345 L 92 58 L 54 58'],
+  H:['M 12 0 L 12 100','M 78 0 L 78 100','M 12 50 L 78 50'],
+  I:['M 50 0 L 50 100'],
+  J:['M 62 0 L 62 72 C 62 96 48 100 36 100 C 24 100 14 94 10 80'],
+  K:['M 14 0 L 14 100','M 80 0 L 16 58','M 32 42 L 86 100'],
+  L:['M 14 0 L 14 100 L 80 100'],
+  M:['M 10 100 L 10 0 L 50 70 L 90 0 L 90 100'],
+  N:['M 12 100 L 12 0 L 82 100 L 82 0'],
+  O:['E 50 50 42 50 270 -90'],
+  P:['M 12 0 L 12 100','M 12 0 L 48 0 C 86 0 86 58 48 58 L 12 58'],
+  Q:['E 48 48 40 48 270 -90','M 56 68 L 90 100'],
+  R:['M 12 0 L 12 100','M 12 0 L 48 0 C 86 0 86 56 48 56 L 12 56','M 46 56 L 84 100'],
+  S:['M 82 14 C 74 4 62 0 48 0 C 26 0 14 12 14 26 C 14 42 30 48 48 52 C 68 56 84 62 84 76 C 84 92 68 100 48 100 C 32 100 20 94 12 84'],
+  T:['M 6 0 L 94 0','M 50 0 L 50 100'],
+  U:['M 12 0 L 12 65 C 12 90 28 100 48 100 C 68 100 84 90 84 65 L 84 0'],
+  V:['M 6 0 L 46 100 L 86 0'],
+  W:['M 4 0 L 26 100 L 50 30 L 74 100 L 96 0'],
+  X:['M 10 0 L 84 100','M 84 0 L 10 100'],
+  Y:['M 8 0 L 48 52','M 88 0 L 48 52 L 48 100'],
+  Z:['M 10 0 L 84 0 L 10 100 L 86 100'],
+}
+const LOW_STROKES = {
+  a:['E 48 69 31 31 -30 -390','M 79 38 L 79 100'],
+  b:['M 20 0 L 20 100','E 50 69 31 31 200 520'],
+  c:['E 54 69 31 31 -45 -315'],
+  d:['E 48 69 31 31 -30 -390','M 79 0 L 79 100'],
+  e:['M 18 69 L 80 69 C 80 48 66 38 48 38 C 30 38 18 50 18 69 C 18 88 30 100 50 100 C 62 100 72 95 80 86'],
+  f:['M 72 12 C 60 0 38 0 38 22 L 38 100','M 14 40 L 68 40'],
+  g:['E 48 69 31 31 -30 -390','M 79 38 L 79 118 C 79 145 60 152 40 148 C 30 146 22 142 16 136'],
+  h:['M 20 0 L 20 100','M 20 58 C 26 44 36 38 48 38 C 66 38 76 48 76 64 L 76 100'],
+  i:['M 50 38 L 50 100','M 50 8 L 50 14'],
+  j:['M 50 38 L 50 122 C 50 146 38 152 22 148','M 50 8 L 50 14'],
+  k:['M 20 0 L 20 100','M 72 38 L 20 74','M 38 62 L 76 100'],
+  l:['M 50 0 L 50 100'],
+  m:['M 14 38 L 14 100','M 14 58 C 20 44 30 38 42 38 C 56 38 62 48 62 62 L 62 100','M 62 62 C 66 48 76 38 88 38 C 102 38 108 48 108 62 L 108 100'],
+  n:['M 20 38 L 20 100','M 20 58 C 26 44 36 38 48 38 C 66 38 76 48 76 64 L 76 100'],
+  o:['E 50 69 32 31 270 -90'],
+  p:['M 20 38 L 20 148','E 50 69 31 31 200 520'],
+  q:['E 48 69 31 31 -30 -390','M 79 38 L 79 148'],
+  r:['M 20 38 L 20 100','M 20 62 C 24 46 34 38 50 38 C 58 38 64 40 68 44'],
+  s:['M 74 48 C 66 40 56 38 46 38 C 30 38 22 46 22 54 C 22 68 40 70 52 74 C 68 78 76 84 76 90 C 76 98 64 102 48 102 C 36 102 26 98 20 92'],
+  t:['M 40 10 L 40 84 C 40 96 46 100 60 100 C 66 100 70 98 74 96','M 14 38 L 68 38'],
+  u:['M 20 38 L 20 72 C 20 92 32 100 48 100 C 64 100 76 92 76 72','M 76 38 L 76 100'],
+  v:['M 10 38 L 46 100 L 82 38'],
+  w:['M 6 38 L 28 100 L 50 50 L 72 100 L 94 38'],
+  x:['M 12 38 L 76 100','M 76 38 L 12 100'],
+  y:['M 12 38 L 44 100','M 78 38 L 40 118 C 32 136 24 148 10 150'],
+  z:['M 14 38 L 76 38 L 14 100 L 78 100'],
+}
+
+const CURSIVE_STROKES = {
+  a:['E 40 71 26 29 -35 -395 L 66 42 L 66 100 C 72 100 80 96 88 84'],
+  b:['M 2 100 C 14 92 26 50 30 14 C 32 -2 14 -4 16 14 C 18 44 24 84 28 100 C 40 108 70 102 70 76 C 70 52 44 44 30 62'],
+  c:['E 50 71 26 29 -40 -320 C 74 94 80 92 86 86'],
+  d:['E 40 71 26 29 -35 -395 L 66 40 L 72 0 L 72 100 C 78 100 86 96 94 84'],
+  e:['M 6 96 C 16 76 34 50 48 46 C 62 42 62 62 40 66 C 24 70 20 88 34 98 C 46 106 62 100 76 88'],
+  f:['M 6 100 C 20 70 38 30 46 8 C 50 -6 30 -8 32 12 C 36 44 46 96 48 124 C 50 150 30 158 16 148 C 6 140 10 126 26 122 C 44 118 56 108 68 100'],
+  g:['E 40 71 26 29 -35 -395 L 66 42 L 66 120 C 66 146 40 152 26 144 C 14 136 20 122 34 122 C 50 122 62 116 76 106'],
+  h:['M 4 100 C 14 92 26 50 30 14 C 32 -2 14 -4 16 14 C 18 44 24 84 26 100 L 30 66 C 36 46 56 42 60 60 L 62 96 C 66 102 74 100 82 88'],
+  i:['M 4 100 L 24 44 L 28 96 C 32 102 40 100 48 88','M 26 20 L 26 26'],
+  j:['M 4 100 L 24 44 L 26 120 C 26 144 10 152 2 144 C -4 136 8 126 22 130','M 26 20 L 26 26'],
+  k:['M 4 100 C 14 92 26 50 30 14 C 32 -2 14 -4 16 14 C 18 44 24 84 26 100 L 28 70 C 44 76 56 60 46 54 C 38 50 30 60 34 72 C 40 88 56 96 74 84'],
+  l:['M 4 100 C 14 92 26 50 30 14 C 32 -2 14 -4 16 14 C 18 44 24 84 26 100 C 30 104 38 102 46 90'],
+  m:['M 4 100 L 22 44 L 26 100 L 30 64 C 36 46 52 44 56 62 L 58 100 L 62 64 C 68 46 84 44 88 62 L 90 96 C 94 102 102 100 110 88'],
+  n:['M 4 100 L 22 44 L 26 100 L 30 64 C 36 46 54 44 60 62 L 62 96 C 66 102 74 100 82 88'],
+  o:['E 42 71 28 29 270 -90 C 56 40 64 42 78 46'],
+  p:['M 4 100 L 22 44 L 26 148 L 24 90 C 34 46 74 40 72 70 C 70 96 40 104 26 84'],
+  q:['E 40 71 26 29 -35 -395 L 66 42 L 66 148 C 66 152 76 152 84 140'],
+  r:['M 4 100 L 22 44 L 26 100 L 30 62 C 36 44 56 40 68 50'],
+  s:['M 4 96 C 14 80 30 52 44 44 C 56 38 60 50 44 60 C 30 70 30 86 46 92 C 58 96 66 92 74 84'],
+  t:['M 4 100 L 26 22 L 32 96 C 34 102 42 102 52 90','M 8 44 L 50 44'],
+  u:['M 4 100 L 20 44 L 26 88 C 28 98 36 102 44 92 L 58 44 L 64 96 C 68 102 76 100 84 88'],
+  v:['M 4 100 L 20 44 L 34 96 L 56 46 C 66 42 74 44 82 48'],
+  w:['M 4 100 L 18 44 L 30 96 L 44 44 L 56 96 L 76 46 C 86 42 94 44 100 48'],
+  x:['M 12 44 C 40 60 60 88 80 100','M 76 44 C 60 62 34 84 10 100'],
+  y:['M 4 100 L 20 44 L 30 92 C 34 100 42 100 50 86 L 62 44 L 62 122 C 62 146 46 152 34 146 C 22 140 26 126 42 126 C 56 126 66 120 78 108'],
+  z:['M 6 50 C 30 44 56 44 76 46 L 10 98 C 30 108 60 104 84 90'],
+}
+
+// ==================================================================
+// 24) ECRITURE MAGIQUE — on suit le sens du trace (chiffres, majuscules, minuscules, cursive) ou on colorie librement
+// ==================================================================
+const TRACE_SIZE = 320
+const TRACE_SETS = [
+  { id:'chiffres', label:'Chiffres', emoji:'🔢', glyphs:'0123456789'.split(''), defs:DIGIT_STROKES, slant:0 },
+  { id:'majuscules', label:'Majuscules', emoji:'🔤', glyphs:'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), defs:CAP_STROKES, slant:0 },
+  { id:'minuscules', label:'Minuscules', emoji:'🔡', glyphs:'abcdefghijklmnopqrstuvwxyz'.split(''), defs:LOW_STROKES, slant:0 },
+  { id:'cursive', label:'Cursive', emoji:'✒️', glyphs:'abcdefghijklmnopqrstuvwxyz'.split(''), defs:CURSIVE_STROKES, slant:0.22, cursive:true },
+]
+const CURSIVE_FONT = '"Segoe Script","Brush Script MT","Lucida Handwriting","Apple Chancery",cursive'
+
+// ---- Mode "sens du trace" : on suit les traits dans l'ordre et dans le bon sens ----
+function TraceGuided({ setInfo, glyph, onDone }){
   const S = TRACE_SIZE
-  const [setId, setSetId] = useState('chiffres')
-  const [glyph, setGlyph] = useState(null)
+  const cv = useRef(null)
+  const st = useRef(null)
+  const [finished, setFinished] = useState(false)
+  const [doneN, setDoneN] = useState(0)
+  const [hint, setHint] = useState(false)
+  const defs = setInfo.defs[glyph] || []
+  const total = defs.length
+
+  const draw = () => {
+    const c = cv.current, s = st.current; if(!c || !s) return
+    const ctx = c.getContext('2d'); ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    ctx.fillStyle = '#fffdf5'; ctx.fillRect(0, 0, S, S)
+    const isDot = (pts) => pts.length <= 6
+    const centre = (pts) => pts[Math.floor(pts.length/2)]
+    s.strokes.forEach(pts=>{
+      ctx.fillStyle = ctx.strokeStyle = '#dfe3ec'; ctx.lineWidth = 40
+      if(isDot(pts)){ const [x,y] = centre(pts); ctx.beginPath(); ctx.arc(x, y, 22, 0, Math.PI*2); ctx.fill(); return }
+      ctx.beginPath(); pts.forEach(([x,y],i)=>i ? ctx.lineTo(x,y) : ctx.moveTo(x,y)); ctx.stroke()
+    })
+    s.strokes.forEach((pts,si)=>{
+      if(isDot(pts)){ if(s.done[si]){ const [x,y] = centre(pts); ctx.fillStyle = `hsl(${(si*60)%360},85%,55%)`; ctx.beginPath(); ctx.arc(x, y, 22, 0, Math.PI*2); ctx.fill() } return }
+      const upto = s.done[si] ? pts.length-1 : s.prog[si]
+      ctx.lineWidth = 40
+      for(let k=1;k<=upto;k++){
+        ctx.strokeStyle = `hsl(${(si*60+k*2.2)%360},85%,55%)`
+        ctx.beginPath(); ctx.moveTo(pts[k-1][0], pts[k-1][1]); ctx.lineTo(pts[k][0], pts[k][1]); ctx.stroke()
+      }
+    })
+    if(s.cur < s.strokes.length){
+      const pts = s.strokes[s.cur], pr = s.prog[s.cur]
+      if(!isDot(pts)){
+        ctx.fillStyle = '#8f9bb5'
+        for(let k=Math.max(pr+7, 9); k<pts.length-3; k+=13){
+          const a = Math.atan2(pts[k+2][1]-pts[k-2][1], pts[k+2][0]-pts[k-2][0]), [x,y] = pts[k]
+          ctx.beginPath(); ctx.moveTo(x+8*Math.cos(a), y+8*Math.sin(a)); ctx.lineTo(x+7*Math.cos(a+2.35), y+7*Math.sin(a+2.35)); ctx.lineTo(x+7*Math.cos(a-2.35), y+7*Math.sin(a-2.35)); ctx.closePath(); ctx.fill()
+        }
+      }
+      const [hx,hy] = isDot(pts) ? centre(pts) : (pr>0 ? pts[pr] : pts[0])
+      ctx.fillStyle = 'rgba(46,204,113,0.3)'; ctx.beginPath(); ctx.arc(hx, hy, 27, 0, Math.PI*2); ctx.fill()
+      ctx.fillStyle = '#2ecc71'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(hx, hy, 16, 0, Math.PI*2); ctx.fill(); ctx.stroke()
+      if(pr===0){ ctx.fillStyle = '#fff'; ctx.font = '900 17px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(isDot(pts) ? '•' : String(s.cur+1), hx, hy+1) }
+    }
+    if(s.strokes.length > 1) s.strokes.forEach((pts,si)=>{
+      if(si <= s.cur) return
+      const [x,y] = isDot(pts) ? centre(pts) : pts[0]
+      ctx.fillStyle = '#b8c0d4'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI*2); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#fff'; ctx.font = '900 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(si+1), x, y+1)
+    })
+  }
+  useEffect(()=>{
+    st.current = { strokes:buildGlyphStrokes(defs, S, setInfo.slant || 0, 50), prog:defs.map(()=>0), done:defs.map(()=>false), cur:0, active:false }
+    draw()
+  }, [])
+
+  const pos = (e) => { const r = cv.current.getBoundingClientRect(); return [(e.clientX-r.left)*S/r.width, (e.clientY-r.top)*S/r.height] }
+  const dist = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1])
+  const completeStroke = () => {
+    const s = st.current
+    s.done[s.cur] = true; s.prog[s.cur] = s.strokes[s.cur].length-1; s.active = false; s.cur++
+    setDoneN(n=>n+1)
+    draw()
+    if(s.cur >= s.strokes.length){ setFinished(true); if(onDone) onDone() }
+  }
+  const advance = (p) => {
+    const s = st.current, pts = s.strokes[s.cur]; if(!pts) return
+    let best = s.prog[s.cur]
+    const maxJ = Math.min(pts.length-1, best+24)
+    for(let j=best;j<=maxJ;j++){ if(dist(p, pts[j]) < 38) best = j }
+    if(best > s.prog[s.cur]){ s.prog[s.cur] = best; draw() }
+    if(s.prog[s.cur] >= pts.length-3) completeStroke()
+  }
+  const down = (e) => {
+    const s = st.current; if(!s || s.cur >= s.strokes.length) return
+    const p = pos(e), pts = s.strokes[s.cur], pr = s.prog[s.cur]
+    const head = pts.length <= 6 ? pts[Math.floor(pts.length/2)] : (pr>0 ? pts[pr] : pts[0])
+    if(dist(p, head) > (pr>0 ? 64 : 54)){ setHint(true); setTimeout(()=>setHint(false), 2200); return }
+    if(pts.length <= 6){ completeStroke(); return }
+    s.active = true
+    try { cv.current.setPointerCapture(e.pointerId) } catch {}
+    advance(p)
+  }
+  const move = (e) => { const s = st.current; if(!s || !s.active) return; advance(pos(e)) }
+  const up = () => { if(st.current) st.current.active = false }
+  const restart = () => {
+    const s = st.current; s.prog = s.prog.map(()=>0); s.done = s.done.map(()=>false); s.cur = 0; s.active = false
+    setFinished(false); setDoneN(0); draw()
+  }
+  return (
+    <div style={{textAlign:'center'}}>
+      <canvas ref={cv} width={S} height={S} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+        style={{width:'100%', maxWidth:360, height:'auto', display:'block', margin:'0 auto', borderRadius:16, boxShadow:'0 4px 14px rgba(0,0,0,0.3)', touchAction:'none', cursor:'crosshair'}} />
+      <div style={{color:'rgba(255,255,255,0.85)', fontSize:13, margin:'10px 0 0', minHeight:20}}>
+        {hint ? '👉 Pose ton doigt sur le point vert pour commencer' : (total>1 ? 'Trait ' + Math.min(doneN+1, total) + ' sur ' + total : 'Suis les flèches avec ton doigt')}
+      </div>
+      {!finished && <div style={{marginTop:8}}><button onClick={restart} style={btnStyle()}>🔄 Recommencer</button></div>}
+    </div>
+  )
+}
+
+// ---- Mode libre : on colorie toute la forme grise, sans imposer l'ordre ----
+function TraceFree({ glyph, cursive, onDone }){
+  const S = TRACE_SIZE
   const [progress, setProgress] = useState(0)
   const [done, setDone] = useState(false)
   const view = useRef(null), mask = useRef(null), paint = useRef(null), tmp = useRef(null)
   const maskAlpha = useRef(null), total = useRef(1)
   const drawing = useRef(false), last = useRef(null), hue = useRef(0), checkedAt = useRef(0), doneRef = useRef(false)
-  const set = TRACE_SETS.find(s=>s.id===setId)
   const mk = () => { const c = document.createElement('canvas'); c.width = S; c.height = S; return c }
-
+  const glyphOut = (ctx, fill) => {
+    const lower = /[a-z]/.test(glyph)
+    ctx.font = cursive ? `700 ${lower ? 280 : 250}px ${CURSIVE_FONT}` : `900 ${lower ? 255 : 250}px "Arial Rounded MT Bold","Trebuchet MS",Arial,sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = fill; ctx.strokeStyle = fill; ctx.lineWidth = 8; ctx.lineJoin = 'round'
+    const y = S/2 + (lower ? (/[gjpqy]/.test(glyph) ? -22 : 14) : 10)
+    ctx.strokeText(glyph, S/2, y); ctx.fillText(glyph, S/2, y)
+  }
   const paintView = () => {
-    const v = view.current; if(!v || !glyph || !tmp.current) return
+    const v = view.current; if(!v || !tmp.current) return
     const ctx = v.getContext('2d')
     ctx.globalCompositeOperation = 'source-over'
     ctx.fillStyle = '#fffdf5'; ctx.fillRect(0, 0, S, S)
@@ -2031,9 +2331,9 @@ function TraceGame(){
       const grd = ctx.createLinearGradient(0, 0, S, S)
       const cols = ['#e53935','#fb8c00','#fdd835','#43a047','#1e88e5','#8e24aa']
       cols.forEach((c,i)=>grd.addColorStop(i/(cols.length-1), c))
-      drawTraceGlyph(ctx, glyph, grd); return
+      glyphOut(ctx, grd); return
     }
-    drawTraceGlyph(ctx, glyph, '#d5d9e2')
+    glyphOut(ctx, '#d5d9e2')
     const t = tmp.current.getContext('2d')
     t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, S, S); t.drawImage(paint.current, 0, 0)
     t.globalCompositeOperation = 'destination-in'; t.drawImage(mask.current, 0, 0)
@@ -2041,19 +2341,16 @@ function TraceGame(){
     ctx.drawImage(tmp.current, 0, 0)
   }
   useEffect(()=>{
-    if(!glyph) return
     mask.current = mk(); paint.current = mk(); tmp.current = mk()
     tmp.current.getContext('2d', { willReadFrequently:true })
     const mc = mask.current.getContext('2d', { willReadFrequently:true })
-    drawTraceGlyph(mc, glyph, '#000')
+    glyphOut(mc, '#000')
     const d = mc.getImageData(0, 0, S, S).data
     const a = new Uint8Array(S*S); let tot = 0
     for(let i=0;i<a.length;i++){ if(d[i*4+3] > 128){ a[i] = 1; tot++ } }
     maskAlpha.current = a; total.current = Math.max(1, tot)
-    doneRef.current = false; drawing.current = false
     paintView()
-  }, [glyph])
-
+  }, [])
   const coverage = () => {
     const d = tmp.current.getContext('2d').getImageData(0, 0, S, S).data, m = maskAlpha.current
     let cov = 0
@@ -2065,7 +2362,7 @@ function TraceGame(){
     if(!force && now - checkedAt.current < 120) return
     checkedAt.current = now
     const p = coverage(); setProgress(p)
-    if(p >= 0.85 && !doneRef.current){ doneRef.current = true; setDone(true); paintView() }
+    if(p >= 0.85 && !doneRef.current){ doneRef.current = true; setDone(true); paintView(); if(onDone) onDone() }
   }
   const pos = (e) => { const r = view.current.getBoundingClientRect(); return { x:(e.clientX-r.left)*S/r.width, y:(e.clientY-r.top)*S/r.height } }
   const stroke = (a, b) => {
@@ -2084,47 +2381,86 @@ function TraceGame(){
   }
   const move = (e) => { if(!drawing.current || doneRef.current) return; const p = pos(e); stroke(last.current, p); last.current = p; check(false) }
   const up = () => { if(!drawing.current) return; drawing.current = false; check(true) }
-  const restart = () => {
-    paint.current.getContext('2d').clearRect(0, 0, S, S)
-    doneRef.current = false; setDone(false); setProgress(0); paintView()
-  }
-  const next = () => {
-    const i = set.glyphs.indexOf(glyph)
-    setGlyph(set.glyphs[(i+1) % set.glyphs.length]); setProgress(0); setDone(false)
-  }
-
-  if(!glyph){
-    return (
-      <div style={{textAlign:'center'}}>
-        <p style={{color:'rgba(255,255,255,0.85)', fontSize:14, margin:'0 0 12px'}}>✍️ Choisis, puis passe le doigt sur le chiffre ou la lettre pour la colorier !</p>
-        <div style={{display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap', marginBottom:16}}>
-          {TRACE_SETS.map(s=>(
-            <button key={s.id} onClick={()=>setSetId(s.id)} style={{...btnStyle(), padding:'10px 14px', background: setId===s.id ? C.gold : 'rgba(255,255,255,0.15)', color: setId===s.id ? '#0f2040' : 'white'}}>{s.emoji} {s.label}</button>
-          ))}
-        </div>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(60px,1fr))', gap:10, maxWidth:460, margin:'0 auto'}}>
-          {set.glyphs.map(g=>(
-            <button key={g} onClick={()=>{ setGlyph(g); setProgress(0); setDone(false) }}
-              style={{ height:60, borderRadius:14, border:'2px solid rgba(255,255,255,0.35)', background:'rgba(255,255,255,0.92)', color:'#24417f', fontWeight:900, fontSize:30, cursor:'pointer', padding:0 }}>{g}</button>
-          ))}
-        </div>
-      </div>
-    )
-  }
+  const restart = () => { paint.current.getContext('2d').clearRect(0, 0, S, S); doneRef.current = false; setDone(false); setProgress(0); paintView() }
   return (
-    <div style={{textAlign:'center', userSelect:'none', WebkitUserSelect:'none'}}>
-      <KidStyles />
+    <div style={{textAlign:'center'}}>
       <div style={{maxWidth:360, margin:'0 auto 10px', height:14, background:'rgba(255,255,255,0.2)', borderRadius:8, overflow:'hidden'}}>
         <div style={{width:Math.min(100, Math.round(progress/0.85*100))+'%', height:'100%', background:'linear-gradient(90deg,#fb8c00,#fdd835,#7ed957)', transition:'width .15s'}} />
       </div>
       <canvas ref={view} width={S} height={S} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
         style={{width:'100%', maxWidth:360, height:'auto', display:'block', margin:'0 auto', borderRadius:16, boxShadow:'0 4px 14px rgba(0,0,0,0.3)', touchAction:'none', cursor:'crosshair'}} />
       <p style={{color:'rgba(255,255,255,0.75)', fontSize:12, margin:'10px 0 0'}}>Passe ton doigt sur toute la forme grise</p>
-      {done && <GameResultBanner text="🎉 Bravo !" sub="Tout est colorié" color={C.green} onReplay={restart} />}
+      {!done && <div style={{marginTop:8}}><button onClick={restart} style={btnStyle()}>🔄 Recommencer</button></div>}
+    </div>
+  )
+}
+
+// ---- Ecran principal : choix du mode / de la serie, puis enchainement automatique des caracteres ----
+function TraceGame(){
+  const [mode, setMode] = useState('guide')
+  const [setId, setSetId] = useState('chiffres')
+  const [cur, setCur] = useState(null)          // { setId, g } ou null (menu)
+  const [celebrate, setCelebrate] = useState(false)
+  const [runKey, setRunKey] = useState(0)
+  const [allDone, setAllDone] = useState(false)
+  const sets = mode==='guide' ? TRACE_SETS : TRACE_SETS.filter(s=>!s.cursive)
+  const set = sets.find(s=>s.id===setId) || sets[0]
+
+  const goNext = () => {
+    setCelebrate(false)
+    const si = sets.findIndex(s=>s.id===cur.setId), s = sets[si], gi = s.glyphs.indexOf(cur.g)
+    if(gi < s.glyphs.length-1) setCur({ setId:s.id, g:s.glyphs[gi+1] })
+    else if(si < sets.length-1) setCur({ setId:sets[si+1].id, g:sets[si+1].glyphs[0] })
+    else { setCur(null); setAllDone(true) }
+    setRunKey(k=>k+1)
+  }
+  const nextRef = useRef(goNext); nextRef.current = goNext
+  useEffect(()=>{
+    if(!celebrate) return
+    const t = setTimeout(()=>nextRef.current(), 1900)
+    return () => clearTimeout(t)
+  }, [celebrate])
+  const pick = (sid, g) => { setCur({ setId:sid, g }); setCelebrate(false); setAllDone(false); setRunKey(k=>k+1) }
+
+  if(!cur){
+    return (
+      <div style={{textAlign:'center'}}>
+        <KidStyles />
+        <p style={{color:'rgba(255,255,255,0.85)', fontSize:14, margin:'0 0 12px'}}>✍️ Apprends à écrire les chiffres et les lettres !</p>
+        <div style={{display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap', marginBottom:12}}>
+          {[['guide','🎯 Suivre le sens du tracé'],['libre','🎨 Colorier librement']].map(([m,l])=>(
+            <button key={m} onClick={()=>{ setMode(m); if(m==='libre' && setId==='cursive') setSetId('minuscules') }} style={{...btnStyle(), padding:'9px 14px', fontSize:12, background: mode===m ? C.gold : 'rgba(255,255,255,0.15)', color: mode===m ? '#0f2040' : 'white'}}>{l}</button>
+          ))}
+        </div>
+        <div style={{display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap', marginBottom:14}}>
+          {sets.map(s=>(
+            <button key={s.id} onClick={()=>setSetId(s.id)} style={{...btnStyle(), padding:'10px 14px', background: set.id===s.id ? C.gold : 'rgba(255,255,255,0.15)', color: set.id===s.id ? '#0f2040' : 'white'}}>{s.emoji} {s.label}</button>
+          ))}
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(60px,1fr))', gap:10, maxWidth:460, margin:'0 auto'}}>
+          {set.glyphs.map(g=>(
+            <button key={g} onClick={()=>pick(set.id, g)}
+              style={{ height:60, borderRadius:14, border:'2px solid rgba(255,255,255,0.35)', background:'rgba(255,255,255,0.92)', color:'#24417f', fontWeight:900, fontSize:set.cursive ? 34 : 30, cursor:'pointer', padding:0, fontFamily: set.cursive ? CURSIVE_FONT : 'inherit' }}>{g}</button>
+          ))}
+        </div>
+        <p style={{color:'rgba(255,255,255,0.6)', fontSize:11, margin:'14px 0 0'}}>Quand un caractère est réussi, le suivant arrive tout seul.</p>
+        {allDone && <GameResultBanner text="🏆 Bravo, champion !" sub="Tu as écrit tous les chiffres et toutes les lettres" color={C.green} onReplay={()=>pick(sets[0].id, sets[0].glyphs[0])} />}
+      </div>
+    )
+  }
+  const info = TRACE_SETS.find(s=>s.id===cur.setId)
+  const idx = info.glyphs.indexOf(cur.g)
+  return (
+    <div style={{textAlign:'center', userSelect:'none', WebkitUserSelect:'none'}}>
+      <KidStyles />
+      <div style={{color:'rgba(255,255,255,0.8)', fontSize:13, marginBottom:8}}>{info.emoji} {info.label} — {idx+1} / {info.glyphs.length}</div>
+      {mode==='guide'
+        ? <TraceGuided key={cur.setId+cur.g+runKey} setInfo={info} glyph={cur.g} onDone={()=>setCelebrate(true)} />
+        : <TraceFree key={cur.setId+cur.g+runKey} glyph={cur.g} cursive={!!info.cursive} onDone={()=>setCelebrate(true)} />}
+      {celebrate && <GameResultBanner text="🎉 Bravo !" sub="On passe à la suite…" color={C.green} onReplay={()=>{ setCelebrate(false); setRunKey(k=>k+1) }} />}
       <div style={{display:'flex', gap:10, justifyContent:'center', marginTop:12, flexWrap:'wrap'}}>
-        {done && <button onClick={next} style={{...btnStyle(), background:C.green}}>Suivant ➜</button>}
-        {!done && <button onClick={restart} style={btnStyle()}>🔄 Recommencer</button>}
-        <button onClick={()=>setGlyph(null)} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>↩ Autre caractère</button>
+        <button onClick={()=>{ setCelebrate(true); nextRef.current() }} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>Passer ➜</button>
+        <button onClick={()=>{ setCur(null); setCelebrate(false) }} style={{...btnStyle(), background:'rgba(255,255,255,0.15)', color:'white'}}>↩ Autre caractère</button>
       </div>
     </div>
   )
@@ -2200,6 +2536,8 @@ function TripleTilesGame(){
     const np = piles.map(p=>p.map(x=>({ id:x.id, t:flat[k++] })))
     setPiles(np); setHist([]); setShuffleLeft(s=>s-1)
   }
+  const nxt = won ? nextLevelOf(TILE_LEVELS, level) : null
+  useAutoNext(won, nxt, start)
   if(!level) return (<div><KidStyles /><LevelPicker levels={TILE_LEVELS} onPick={start} intro="🀄 Prends les tuiles : trois pareilles disparaissent !" /></div>)
 
   const pileH = TILE_H + ((level.per * level.types / level.piles) - 1) * TILE_STEP
@@ -2243,7 +2581,7 @@ function TripleTilesGame(){
           <div style={{color:'rgba(255,255,255,0.8)', fontSize:12, margin:'4px 0 10px'}}>Reprends ta dernière tuile ou recommence.</div>
         </div>
       )}
-      {won && <GameResultBanner text="🎉 Bravo !" sub="Tous les tas sont vides" color={C.green} onReplay={()=>start(level)} />}
+      {won && <GameResultBanner text="🎉 Bravo !" sub={"Tous les tas sont vides" + (nxt ? NEXT_HINT : '')} color={C.green} onReplay={()=>start(level)} />}
       <div style={{display:'flex', gap:8, justifyContent:'center', marginTop:12, flexWrap:'wrap'}}>
         <button onClick={undo} disabled={!hist.length || undoLeft<=0 || locked} style={{...btnStyle(), opacity: hist.length && undoLeft>0 && !locked ? 1 : 0.4}}>↩ Reprendre{level.undo<99 ? ` (${undoLeft})` : ''}</button>
         <button onClick={reshuffle} disabled={shuffleLeft<=0 || locked} style={{...btnStyle(), opacity: shuffleLeft>0 && !locked ? 1 : 0.4}}>🔀 Mélanger ({shuffleLeft})</button>
@@ -2256,35 +2594,90 @@ function TripleTilesGame(){
 
 // ==================================================================
 // 26) FRUITS EN FOLIE (facon Candy Crush) — on echange deux fruits voisins pour en aligner trois ou plus
+// Bonbons speciaux : 4 alignes = raye (vide sa ligne ou sa colonne) ; forme en L / T = bombe (explose 3x3) ;
+// 5 alignes = arc-en-ciel (echange-le avec un fruit : tous les fruits de cette couleur disparaissent)
+// Tuile : { id, k (couleur, -1 pour l'arc-en-ciel), sp ('h' | 'v' | 'wrap' | 'rainbow') }
 // ==================================================================
 const CRUSH_KINDS = [
   { e:'🍎', bg:'#ffcdd2' }, { e:'🍊', bg:'#ffe0b2' }, { e:'🍋', bg:'#fff59d' },
   { e:'🍏', bg:'#c8e6c9' }, { e:'🍇', bg:'#e1bee7' }, { e:'🍓', bg:'#f8bbd0' },
 ]
 const CRUSH_LEVELS = [
-  { label:'Petit', emoji:'🐣', n:6, kinds:4, moves:25, target:600 },
-  { label:'Moyen', emoji:'🐥', n:7, kinds:5, moves:22, target:1700 },
+  { label:'Petit', emoji:'🐣', n:6, kinds:4, moves:25, target:1200 },
+  { label:'Moyen', emoji:'🐥', n:7, kinds:5, moves:22, target:2000 },
   { label:'Grand', emoji:'🐔', n:8, kinds:6, moves:20, target:1800 },
 ]
-function crushMatches(b, n){
-  const out = new Set()
+const isRainbow = (t) => !!t && t.sp === 'rainbow'
+function crushRuns(b, n){
+  const H = [], V = []
   for(let y=0;y<n;y++){
-    let run = 1
+    let s = 0
     for(let x=1;x<=n;x++){
-      const same = x<n && b[y*n+x] && b[y*n+x-1] && b[y*n+x].k===b[y*n+x-1].k
-      if(same) run++
-      else { if(run>=3) for(let k=1;k<=run;k++) out.add(y*n+x-k); run = 1 }
+      const a = b[y*n+x-1], c = x<n ? b[y*n+x] : null
+      const same = c && a && a.k>=0 && a.k===c.k
+      if(!same){ if(x-s >= 3) H.push(Array.from({length:x-s}, (_,i)=>y*n+s+i)); s = x }
     }
   }
   for(let x=0;x<n;x++){
-    let run = 1
+    let s = 0
     for(let y=1;y<=n;y++){
-      const same = y<n && b[y*n+x] && b[(y-1)*n+x] && b[y*n+x].k===b[(y-1)*n+x].k
-      if(same) run++
-      else { if(run>=3) for(let k=1;k<=run;k++) out.add((y-k)*n+x); run = 1 }
+      const a = b[(y-1)*n+x], c = y<n ? b[y*n+x] : null
+      const same = c && a && a.k>=0 && a.k===c.k
+      if(!same){ if(y-s >= 3) V.push(Array.from({length:y-s}, (_,i)=>(s+i)*n+x)); s = y }
     }
   }
+  return { H, V }
+}
+function crushMatches(b, n){
+  const { H, V } = crushRuns(b, n), out = new Set()
+  ;[...H, ...V].forEach(r=>r.forEach(i=>out.add(i)))
   return out
+}
+// Effets des bonbons speciaux (en chaine) : ajoute a `cleared` toutes les cases touchees
+function crushExpand(b, n, cleared, exclude){
+  let fired = 0
+  const seen = new Set(), queue = [...cleared]
+  const add = (i) => { if(i<0 || i>=n*n || !b[i] || (exclude && exclude.has(i))) return; if(!cleared.has(i)){ cleared.add(i); queue.push(i) } }
+  while(queue.length){
+    const i = queue.pop(), t = b[i]
+    if(!t || !t.sp || t.sp==='rainbow' || seen.has(i)) continue
+    seen.add(i); fired++
+    const x = i % n, y = Math.floor(i / n)
+    if(t.sp==='h') for(let cx=0;cx<n;cx++) add(y*n+cx)
+    else if(t.sp==='v') for(let cy=0;cy<n;cy++) add(cy*n+x)
+    else if(t.sp==='wrap') for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const nx=x+dx, ny=y+dy; if(nx>=0 && ny>=0 && nx<n && ny<n) add(ny*n+nx) }
+  }
+  return fired
+}
+// Une etape : alignements a retirer + bonbons speciaux a creer (pref = cases echangees par le joueur)
+function crushStep(b, n, pref){
+  const { H, V } = crushRuns(b, n)
+  if(!H.length && !V.length) return null
+  const cleared = new Set(), spawn = new Map()
+  ;[...H, ...V].forEach(r=>r.forEach(i=>cleared.add(i)))
+  const put = (idx, sp) => { if(!spawn.has(idx)) spawn.set(idx, sp) }
+  const pos = (r) => { const p = (pref || []).find(i=>r.includes(i)); return p !== undefined ? p : r[Math.floor(r.length/2)] }
+  ;[...H, ...V].forEach(r=>{ if(r.length >= 5) put(pos(r), 'rainbow') })
+  H.forEach(h=>V.forEach(v=>{ const c = h.find(i=>v.includes(i)); if(c !== undefined) put(c, 'wrap') }))
+  H.forEach(r=>{ if(r.length === 4) put(pos(r), 'v') })
+  V.forEach(r=>{ if(r.length === 4) put(pos(r), 'h') })
+  spawn.forEach((_,i)=>cleared.delete(i))
+  const fired = crushExpand(b, n, cleared, spawn)
+  return { cleared, spawn, fired }
+}
+// Echange (deja effectue sur b) faisant intervenir un arc-en-ciel, ou deux bonbons speciaux
+function crushSpecialSwap(b, n, i, j){
+  const a = b[i], c = b[j]
+  if(!a || !c) return null
+  const rain = isRainbow(a) || isRainbow(c)
+  if(!rain && !(a.sp && c.sp)) return null
+  const cleared = new Set([i, j])
+  if(rain){
+    if(isRainbow(a) && isRainbow(c)) b.forEach((t,k)=>{ if(t) cleared.add(k) })
+    else { const other = isRainbow(a) ? c : a; b.forEach((t,k)=>{ if(t && t.k === other.k) cleared.add(k) }) }
+  }
+  const fired = crushExpand(b, n, cleared, null)
+  return { cleared, spawn:new Map(), fired: fired + (rain ? 1 : 0) }
 }
 function crushCollapse(b, n, kinds, nextId){
   const out = Array(n*n).fill(null)
@@ -2296,11 +2689,15 @@ function crushCollapse(b, n, kinds, nextId){
   return out
 }
 function crushSwapped(b, i, j){ const c = [...b]; const t = c[i]; c[i] = c[j]; c[j] = t; return c }
+function crushSwapValid(b, n, i, j){
+  const c = crushSwapped(b, i, j)
+  return !!(crushSpecialSwap(c, n, i, j) || crushMatches(c, n).size)
+}
 function crushHasMove(b, n){
   for(let y=0;y<n;y++) for(let x=0;x<n;x++){
     const i = y*n+x
-    if(x<n-1 && crushMatches(crushSwapped(b, i, i+1), n).size) return true
-    if(y<n-1 && crushMatches(crushSwapped(b, i, i+n), n).size) return true
+    if(x<n-1 && crushSwapValid(b, n, i, i+1)) return true
+    if(y<n-1 && crushSwapValid(b, n, i, i+n)) return true
   }
   return false
 }
@@ -2331,6 +2728,10 @@ function FruitCrushGame(){
     G.current = { board:crushBoard(lv.n, lv.kinds, nextId), score:0, moves:lv.moves, sel:null, clearing:new Set(), status:'play', msg:'' }
     busy.current = false; setLevel(lv); upd()
   }
+  const wonNow = !!level && G.current.status === 'won'
+  const nxt = wonNow ? nextLevelOf(CRUSH_LEVELS, level) : null
+  useAutoNext(wonNow, nxt, start)
+
   const trySwap = async (i, j) => {
     const g = G.current, n = level.n
     if(busy.current || g.status!=='play') return
@@ -2338,30 +2739,31 @@ function FruitCrushGame(){
     g.board = crushSwapped(g.board, i, j); upd()
     await sleepMs(210)
     if(!alive.current) return
-    if(!crushMatches(g.board, n).size){
+    let step = crushSpecialSwap(g.board, n, i, j) || crushStep(g.board, n, [i, j])
+    if(!step){
       g.board = crushSwapped(g.board, i, j); upd()
       await sleepMs(210); busy.current = false; return
     }
     g.moves--
     let chain = 0
-    while(alive.current){
-      const m = crushMatches(g.board, n)
-      if(!m.size) break
+    while(alive.current && step){
       chain++
-      g.clearing = new Set([...m].map(k=>g.board[k].id))
-      g.score += m.size * 10 * chain
-      g.msg = chain>1 ? `Enchaînement x${chain} !` : ''
+      g.clearing = new Set([...step.cleared].map(k=>g.board[k].id))
+      g.score += step.cleared.size * 10 * chain + step.fired * 30
+      g.msg = step.fired ? '💥 Bonbon spécial !' : (step.spawn.size ? '✨ Bonbon spécial créé !' : (chain>1 ? `Enchaînement x${chain} !` : ''))
       upd(); await sleepMs(270)
-      g.board = g.board.map((t,k)=> m.has(k) ? null : t); g.clearing = new Set(); upd()
+      g.board = g.board.map((t,k)=> step.cleared.has(k) ? null : (step.spawn.has(k) ? { ...t, sp:step.spawn.get(k), k: step.spawn.get(k)==='rainbow' ? -1 : t.k, fresh:false } : t))
+      g.clearing = new Set(); upd()
       await sleepMs(50)
       g.board = crushCollapse(g.board, n, level.kinds, nextId); upd()
       await sleepMs(330)
+      step = crushStep(g.board, n, [])
     }
     if(!alive.current) return
-    g.msg = ''
     if(g.score >= level.target) g.status = 'won'
     else if(g.moves <= 0) g.status = 'lost'
     else if(!crushHasMove(g.board, n)){ g.board = crushBoard(n, level.kinds, nextId); g.msg = 'Plus de coups possibles : on mélange !' }
+    else g.msg = ''
     busy.current = false; upd()
   }
   const cellOf = (el) => { const t = el && el.closest ? el.closest('[data-cell]') : null; return t ? Number(t.dataset.cell) : null }
@@ -2391,7 +2793,8 @@ function FruitCrushGame(){
   const pct = Math.min(100, Math.round(g.score / level.target * 100))
   return (
     <div style={{userSelect:'none', WebkitUserSelect:'none', textAlign:'center'}}>
-      <style>{`@keyframes riusClear{from{transform:scale(1);opacity:1}to{transform:scale(0.1);opacity:0}}`}</style>
+      <style>{`@keyframes riusClear{from{transform:scale(1);opacity:1}to{transform:scale(0.1);opacity:0}}
+        @keyframes riusGlow{0%,100%{box-shadow:0 0 6px 1px #ffd54f}50%{box-shadow:0 0 14px 4px #ffb300}}`}</style>
       <KidStyles />
       <div style={{display:'flex', justifyContent:'space-between', maxWidth:360, margin:'0 auto 6px', color:'white', fontWeight:800, fontSize:14}}>
         <span>⭐ {g.score} / {level.target}</span><span>👆 Coups : {g.moves}</span>
@@ -2403,20 +2806,30 @@ function FruitCrushGame(){
         style={{ position:'relative', width:'100%', maxWidth:360, aspectRatio:'1', margin:'0 auto', background:'rgba(0,0,0,0.25)', borderRadius:14, touchAction:'none', overflow:'hidden' }}>
         {g.board.map((t,i)=>{
           if(!t) return null
-          const x = i % n, y = Math.floor(i / n), kind = CRUSH_KINDS[t.k]
+          const x = i % n, y = Math.floor(i / n), kind = CRUSH_KINDS[t.k] || CRUSH_KINDS[0]
+          const sp = t.sp
+          const stripes = sp==='h' ? 'repeating-linear-gradient(0deg, rgba(255,255,255,0.85) 0 3px, transparent 3px 8px)' : sp==='v' ? 'repeating-linear-gradient(90deg, rgba(255,255,255,0.85) 0 3px, transparent 3px 8px)' : null
           return (
-            <div key={t.id} data-cell={i} data-kind={kind.e} className={t.fresh ? 'riusPop' : ''}
+            <div key={t.id} data-cell={i} data-kind={sp==='rainbow' ? '🌈' : kind.e} data-sp={sp || undefined} className={t.fresh ? 'riusPop' : ''}
               style={{ position:'absolute', left:0, top:0, width:size+'%', height:size+'%', transform:`translate(${x*100}%, ${y*100}%)`, transition:'transform .22s ease', padding:'1.5%', boxSizing:'border-box' }}>
-              <div style={{ width:'100%', height:'100%', borderRadius:'22%', background:kind.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:Math.round(cw/n*0.6), lineHeight:1,
-                border: g.sel===i ? '3px solid '+C.gold : '2px solid rgba(255,255,255,0.5)', boxSizing:'border-box', transform: g.sel===i ? 'scale(1.1)' : 'none', transition:'transform .12s',
-                animation: g.clearing.has(t.id) ? 'riusClear .27s forwards' : 'none' }}>{kind.e}</div>
+              <div style={{ position:'relative', width:'100%', height:'100%', borderRadius:'22%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:Math.round(cw/n*0.6), lineHeight:1,
+                background: sp==='rainbow' ? 'linear-gradient(135deg,#ff5252,#ffd740,#69f0ae,#40c4ff,#b388ff)' : kind.bg,
+                border: g.sel===i ? '3px solid '+C.gold : (sp ? '3px solid #ffb300' : '2px solid rgba(255,255,255,0.5)'), boxSizing:'border-box',
+                transform: g.sel===i ? 'scale(1.1)' : 'none', transition:'transform .12s',
+                animation: g.clearing.has(t.id) ? 'riusClear .27s forwards' : (sp ? 'riusGlow 1.4s ease-in-out infinite' : 'none') }}>
+                {sp==='rainbow' ? '🌈' : kind.e}
+                {stripes && <div style={{position:'absolute', inset:0, borderRadius:'20%', background:stripes, pointerEvents:'none'}} />}
+                {sp==='wrap' && <span style={{position:'absolute', top:'-4%', right:'2%', fontSize:Math.round(cw/n*0.32), pointerEvents:'none'}}>💥</span>}
+                {(sp==='h' || sp==='v') && <span style={{position:'absolute', bottom:'0%', right:'4%', fontSize:Math.round(cw/n*0.3), fontWeight:900, color:'#0f2040', pointerEvents:'none'}}>{sp==='h' ? '↔' : '↕'}</span>}
+              </div>
             </div>
           )
         })}
       </div>
       <div style={{height:22, marginTop:8, color:C.gold, fontWeight:800, fontSize:14}}>{g.msg}</div>
-      <p style={{color:'rgba(255,255,255,0.7)', fontSize:12, margin:'0 0 8px'}}>Touche deux fruits voisins, ou glisse un fruit vers son voisin</p>
-      {g.status==='won' && <GameResultBanner text="🎉 Bravo !" sub={`Objectif atteint : ${g.score} points en ${level.moves - g.moves} coups`} color={C.green} onReplay={()=>start(level)} />}
+      <p style={{color:'rgba(255,255,255,0.7)', fontSize:12, margin:'0 0 4px'}}>Touche deux fruits voisins, ou glisse un fruit vers son voisin</p>
+      <p style={{color:'rgba(255,255,255,0.55)', fontSize:11, margin:'0 0 8px'}}>4 alignés = rayé ↔↕ · forme en L ou T = bombe 💥 · 5 alignés = arc-en-ciel 🌈 (échange-le avec un fruit)</p>
+      {g.status==='won' && <GameResultBanner text="🎉 Bravo !" sub={`${g.score} points en ${level.moves - g.moves} coups` + (nxt ? ' — niveau suivant dans un instant…' : '')} color={C.green} onReplay={()=>start(level)} />}
       {g.status==='lost' && <GameResultBanner text="Presque !" sub={`${g.score} points sur ${level.target}. Essaie encore !`} color={C.gold} onReplay={()=>start(level)} />}
       <div style={{display:'flex', gap:8, justifyContent:'center', marginTop:8}}>
         <button onClick={()=>start(level)} style={btnStyle()}>🔄 Recommencer</button>
