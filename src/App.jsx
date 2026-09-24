@@ -676,8 +676,18 @@ function UneSidebarCarousel({ unes, goTo }){
   )
 }
 
+// Determine quelles instructions d'installation montrer quand le navigateur ne propose pas
+// de fenetre automatique (Chrome/Edge la proposent tout seuls ; Safari, sur iPhone/iPad comme
+// sur Mac, ne le fait jamais et a besoin d'instructions ecrites, differentes sur chaque appareil.
+const detectInstallPlatform = () => {
+  if(typeof window==='undefined') return 'other'
+  const ua = window.navigator.userAgent
+  if(/iphone|ipad|ipod/i.test(ua) && !window.MSStream) return 'ios'
+  if(/macintosh/i.test(ua) && /safari/i.test(ua) && !/chrome|chromium|crios|edg/i.test(ua)) return 'mac-safari'
+  return 'other'
+}
 function InstallButton(){
-  const [isIOS,setIsIOS] = useState(false)
+  const [platform,setPlatform] = useState('other')
   const [isStandalone,setIsStandalone] = useState(false)
   const [showHelp,setShowHelp] = useState(false)
   const deferredRef = useRef(null)
@@ -685,7 +695,7 @@ function InstallButton(){
     if(typeof window==='undefined') return
     const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone===true
     setIsStandalone(standalone)
-    setIsIOS(/iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream)
+    setPlatform(detectInstallPlatform())
     const h = (e) => { e.preventDefault(); deferredRef.current = e }
     window.addEventListener('beforeinstallprompt', h)
     return ()=>window.removeEventListener('beforeinstallprompt', h)
@@ -707,8 +717,10 @@ function InstallButton(){
         <div onClick={()=>setShowHelp(false)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
           <div onClick={e=>e.stopPropagation()} style={{background:'#0f2040',color:'white',borderRadius:14,padding:20,maxWidth:340,border:'2px solid #ffcc00'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}><img src="/logo.png" style={{width:38,height:38,borderRadius:'50%'}} alt="" /><div style={{fontWeight:900,fontSize:14}}>Installer Rius Multimédia</div></div>
-            {isIOS ? (
+            {platform==='ios' ? (
               <div style={{fontSize:12,lineHeight:1.7,background:'rgba(255,255,255,0.08)',borderRadius:10,padding:'10px 12px'}}>1. Appuie sur <b>Partager</b> ⬆️ en bas de Safari<br/>2. Choisis <b>"Sur l'écran d'accueil"</b> ➕</div>
+            ) : platform==='mac-safari' ? (
+              <div style={{fontSize:12,lineHeight:1.7,background:'rgba(255,255,255,0.08)',borderRadius:10,padding:'10px 12px'}}>1. Clique sur le menu <b>Fichier</b> de Safari (en haut de l'écran)<br/>2. Choisis <b>"Ajouter au Dock"</b></div>
             ) : (
               <div style={{fontSize:12,lineHeight:1.7,background:'rgba(255,255,255,0.08)',borderRadius:10,padding:'10px 12px'}}>1. Ouvre le menu <b>⋮</b> de ton navigateur (en haut à droite)<br/>2. Choisis <b>"Installer l'application"</b> ou <b>"Ajouter à l'écran d'accueil"</b></div>
             )}
@@ -722,24 +734,25 @@ function InstallButton(){
 
 function InstallBanner({deferredPrompt, setDeferredPrompt, T}){
   const [show,setShow]=useState(false)
-  const [isIOS,setIsIOS]=useState(false)
+  const [platform,setPlatform]=useState('other')
   useEffect(()=>{
     if(typeof window==='undefined') return
     const standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true
     if(standalone) return
-    const iOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream
-    if(iOS){ setIsIOS(true); const t=setTimeout(()=>setShow(true),5000); return()=>clearTimeout(t) }
+    const p = detectInstallPlatform()
+    setPlatform(p)
+    if(p==='ios' || p==='mac-safari'){ const t=setTimeout(()=>setShow(true),5000); return()=>clearTimeout(t) }
   },[])
   useEffect(()=>{ if(deferredPrompt){ const t=setTimeout(()=>setShow(true),5000); return()=>clearTimeout(t) } },[deferredPrompt])
   if(!show) return null
-  if(!isIOS && !deferredPrompt) return null
-  if(isIOS){
+  const needsManualHelp = platform==='ios' || platform==='mac-safari'
+  if(!needsManualHelp && !deferredPrompt) return null
+  if(needsManualHelp){
     return (
       <div style={{position:'fixed', bottom:16, left:12, right:12, background:'#0f2040', color:'white', padding:'14px', borderRadius:14, boxShadow:'0 10px 30px rgba(0,0,0,0.5)', zIndex:99999, border:'2px solid #ffcc00'}}>
         <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}><img src="/logo.png" style={{width:42,height:42,borderRadius:'50%'}} alt="" /><div style={{flex:1}}><div style={{fontWeight:900,fontSize:13}}>{T.installer}</div><div style={{fontSize:10,opacity:0.8}}>{T.installDesc}</div></div><button onClick={()=>setShow(false)} style={{background:'transparent',color:'white',border:0,fontSize:16,opacity:0.7,padding:'0 4px'}}>✕</button></div>
         <div style={{fontSize:11,lineHeight:1.6,background:'rgba(255,255,255,0.08)',borderRadius:10,padding:'10px 12px'}}>
-          1. Appuie sur <b>Partager</b> <span style={{display:'inline-block'}}>⬆️</span> en bas de Safari<br/>
-          2. Choisis <b>"Sur l'écran d'accueil"</b> ➕
+          {platform==='ios' ? (<>1. Appuie sur <b>Partager</b> <span style={{display:'inline-block'}}>⬆️</span> en bas de Safari<br/>2. Choisis <b>"Sur l'écran d'accueil"</b> ➕</>) : (<>1. Clique sur le menu <b>Fichier</b> de Safari (en haut de l'écran)<br/>2. Choisis <b>"Ajouter au Dock"</b></>)}
         </div>
       </div>
     )
