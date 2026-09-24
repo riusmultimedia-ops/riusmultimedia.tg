@@ -330,16 +330,19 @@ export default function Admin() {
   };
   const scrollElementIntoView = (el, extra=16, smooth=true) => {
     const top = el.getBoundingClientRect().top + window.scrollY - stickyHeaderHeight() - extra;
+    console.log('[RIUS-SCROLL] scrollElementIntoView -> window.scrollTo top=', Math.max(0, top), 'scrollY actuel=', window.scrollY);
     window.scrollTo({ top: Math.max(0, top), behavior: smooth? 'smooth' : 'auto' });
   };
   // Refait le calcul plusieurs fois de suite (image qui charge, liste qui se retrie...) : chaque
   // correction est quasi instantanee (pas de nouvelle animation), donc ca ne se voit pas si
   // l'element n'a pas bouge, et ca rattrape silencieusement les cas ou il a bouge.
   const settleScroll = (getEl, tries=10, delay=120) => {
+    console.log('[RIUS-SCROLL] settleScroll demarre');
     if(settleTimerRef.current) clearTimeout(settleTimerRef.current);
     let n = 0;
     const step = () => {
       const el = getEl();
+      console.log('[RIUS-SCROLL] tentative', n, 'element trouve =', !!el, el);
       if(el) scrollElementIntoView(el, 16, n===0);
       n++;
       if(n < tries) settleTimerRef.current = setTimeout(step, delay);
@@ -347,9 +350,11 @@ export default function Admin() {
     step();
   };
   const goToForm = (name) => {
+    console.log('[RIUS-SCROLL] goToForm appele avec', name, '| ref connue =', !!formRefsMap.current[name]);
     settleScroll(() => formRefsMap.current[name]);
   };
   const goToItem = (key) => {
+    console.log('[RIUS-SCROLL] goToItem appele avec', key, '| ref connue =', !!itemRefsMap.current[key]);
     setFlashKey(key);
     if(flashTimerRef.current) clearTimeout(flashTimerRef.current);
     settleScroll(() => itemRefsMap.current[key]);
