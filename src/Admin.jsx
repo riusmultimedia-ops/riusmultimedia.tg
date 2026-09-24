@@ -298,11 +298,16 @@ export default function Admin() {
 
   // ---- Aide a la modification : un clic sur "Modifier" va directement au formulaire ;
   // apres l'enregistrement, on revient sur la ligne modifiee et on la met en surbrillance
-  // quelques secondes, pour voir tout de suite que le changement est bien pris en compte. ----
+  // quelques secondes, pour voir tout de suite que le changement est bien pris en compte.
+  // Une image qui finit de charger (photo de piste, pochette...) ou la liste qui se remet a
+  // jour et se retrie juste apres l'enregistrement peuvent legerement deplacer l'element APRES
+  // notre premier calcul : on continue donc a corriger la position pendant un court instant,
+  // au lieu de ne viser qu'une seule fois. ----
   const formRefsMap = useRef({});
   const itemRefsMap = useRef({});
   const pendingScrollKeyRef = useRef(null);
   const flashTimerRef = useRef(null);
+  const settleTimerRef = useRef(null);
   const [flashKey, setFlashKey] = useState(null);
   const formRef = (name) => (el) => { if(el) formRefsMap.current[name] = el; };
   const itemRef = (key) => (el) => {
@@ -323,21 +328,32 @@ export default function Admin() {
     const h = document.querySelector('[data-rius-admin-header]');
     return h ? h.getBoundingClientRect().height : 0;
   };
-  const scrollElementIntoView = (el, extra=16) => {
+  const scrollElementIntoView = (el, extra=16, smooth=true) => {
     const top = el.getBoundingClientRect().top + window.scrollY - stickyHeaderHeight() - extra;
-    window.scrollTo({ top: Math.max(0, top), behavior:'smooth' });
+    window.scrollTo({ top: Math.max(0, top), behavior: smooth? 'smooth' : 'auto' });
+  };
+  // Refait le calcul plusieurs fois de suite (image qui charge, liste qui se retrie...) : chaque
+  // correction est quasi instantanee (pas de nouvelle animation), donc ca ne se voit pas si
+  // l'element n'a pas bouge, et ca rattrape silencieusement les cas ou il a bouge.
+  const settleScroll = (getEl, tries=10, delay=120) => {
+    if(settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    let n = 0;
+    const step = () => {
+      const el = getEl();
+      if(el) scrollElementIntoView(el, 16, n===0);
+      n++;
+      if(n < tries) settleTimerRef.current = setTimeout(step, delay);
+    };
+    step();
   };
   const goToForm = (name) => {
-    const el = formRefsMap.current[name];
-    if(el) scrollElementIntoView(el);
+    settleScroll(() => formRefsMap.current[name]);
   };
   const goToItem = (key) => {
     setFlashKey(key);
     if(flashTimerRef.current) clearTimeout(flashTimerRef.current);
-    const el = itemRefsMap.current[key];
-    if(el) scrollElementIntoView(el);
-    else pendingScrollKeyRef.current = key;
-    flashTimerRef.current = setTimeout(()=>setFlashKey(null), 2200);
+    settleScroll(() => itemRefsMap.current[key]);
+    flashTimerRef.current = setTimeout(()=>setFlashKey(null), 2600);
   };
   const flashStyle = (key) => flashKey===key
     ? { boxShadow:'0 0 0 3px #ffcc00, 0 0 22px 4px rgba(255,204,0,0.45)', transition:'box-shadow .4s ease' }
