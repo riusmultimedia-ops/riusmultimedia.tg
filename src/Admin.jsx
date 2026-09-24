@@ -295,6 +295,53 @@ export default function Admin() {
   const [editingEmId, setEditingEmId] = useState(null);
   const [search, setSearch] = useState('');
   const galleryInputRef = useRef(null);
+
+  // ---- Aide a la modification : un clic sur "Modifier" va directement au formulaire ;
+  // apres l'enregistrement, on revient sur la ligne modifiee et on la met en surbrillance
+  // quelques secondes, pour voir tout de suite que le changement est bien pris en compte. ----
+  const formRefsMap = useRef({});
+  const itemRefsMap = useRef({});
+  const pendingScrollKeyRef = useRef(null);
+  const flashTimerRef = useRef(null);
+  const [flashKey, setFlashKey] = useState(null);
+  const formRef = (name) => (el) => { if(el) formRefsMap.current[name] = el; };
+  const itemRef = (key) => (el) => {
+    if(el){
+      itemRefsMap.current[key] = el;
+      if(pendingScrollKeyRef.current === key){
+        pendingScrollKeyRef.current = null;
+        scrollElementIntoView(el);
+      }
+    } else {
+      delete itemRefsMap.current[key];
+    }
+  };
+  // L'en-tete du haut reste "colle" a l'ecran (position sticky) : un simple scrollIntoView
+  // amenerait le formulaire ou la ligne juste dessous, cache derriere. On calcule donc la bonne
+  // position en tenant compte de sa hauteur reelle, pour que ca s'arrete juste en dessous.
+  const stickyHeaderHeight = () => {
+    const h = document.querySelector('[data-rius-admin-header]');
+    return h ? h.getBoundingClientRect().height : 0;
+  };
+  const scrollElementIntoView = (el, extra=16) => {
+    const top = el.getBoundingClientRect().top + window.scrollY - stickyHeaderHeight() - extra;
+    window.scrollTo({ top: Math.max(0, top), behavior:'smooth' });
+  };
+  const goToForm = (name) => {
+    const el = formRefsMap.current[name];
+    if(el) scrollElementIntoView(el);
+  };
+  const goToItem = (key) => {
+    setFlashKey(key);
+    if(flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    const el = itemRefsMap.current[key];
+    if(el) scrollElementIntoView(el);
+    else pendingScrollKeyRef.current = key;
+    flashTimerRef.current = setTimeout(()=>setFlashKey(null), 2200);
+  };
+  const flashStyle = (key) => flashKey===key
+    ? { boxShadow:'0 0 0 3px #ffcc00, 0 0 22px 4px rgba(255,204,0,0.45)', transition:'box-shadow .4s ease' }
+    : { transition:'box-shadow .4s ease' };
   const blockFileRef = useRef({});
   const blockTextareaRef = useRef({});
   const wrapSelection = (blockId, marker) => {
@@ -567,15 +614,16 @@ export default function Admin() {
   },[showStats]);
   const resetFaqForm = () => { setNewFaqCategory(''); setNewFaqQuestion(''); setNewFaqAnswer(''); setEditingFaqId(null); };
   const handleAddFaq = async () => {
+    const wasEditingId = editingFaqId;
     if(!newFaqCategory.trim() || !newFaqQuestion.trim() || !newFaqAnswer.trim()) return alert('Categorie, question et reponse sont obligatoires');
     const payload = { category:newFaqCategory.trim(), question:newFaqQuestion.trim(), answer:newFaqAnswer.trim(), active: editingFaqId? undefined : true };
     if(editingFaqId) delete payload.active;
     const url = editingFaqId? `${supabaseUrl}/rest/v1/faq?id=eq.${editingFaqId}` : `${supabaseUrl}/rest/v1/faq`;
     const method = editingFaqId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ resetFaqForm(); fetchFaqs(); alert(editingFaqId? 'Question modifiee!' : 'Question ajoutee!'); } else alert(await res.text());
+    if(res.ok){ resetFaqForm(); fetchFaqs(); if(wasEditingId) goToItem('faq:'+wasEditingId); alert(editingFaqId? 'Question modifiee!' : 'Question ajoutee!'); } else alert(await res.text());
   };
-  const handleEditFaq = (f) => { setEditingFaqId(f.id); setNewFaqCategory(f.category||''); setNewFaqQuestion(f.question||''); setNewFaqAnswer(f.answer||''); window.scrollTo(0,0); };
+  const handleEditFaq = (f) => { setEditingFaqId(f.id); setNewFaqCategory(f.category||''); setNewFaqQuestion(f.question||''); setNewFaqAnswer(f.answer||''); goToForm('faq'); };
   const handleDeleteFaq = async (id) => { if(!confirm('Supprimer cette question?')) return; await fetch(`${supabaseUrl}/rest/v1/faq?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchFaqs(); };
   const handleToggleFaq = async (f) => { await fetch(`${supabaseUrl}/rest/v1/faq?id=eq.${f.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!f.active }) }); fetchFaqs(); };
   const fetchTvWatermark = () => {
@@ -623,10 +671,11 @@ export default function Admin() {
     const payload = { folder:newBlockFolder.trim(), start_time:newBlockStart, end_time:newBlockEnd, days:newBlockDays, active:true };
     const url = editingBlockId? `${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${editingBlockId}` : `${supabaseUrl}/rest/v1/radio_time_blocks`;
     const method = editingBlockId? 'PATCH' : 'POST';
+    const wasEditingBlockId = editingBlockId;
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ resetBlockForm(); fetchRadioTimeBlocks(); alert(editingBlockId? 'Plage horaire modifiee!' : 'Plage horaire ajoutee!'); } else alert(await res.text());
+    if(res.ok){ resetBlockForm(); fetchRadioTimeBlocks(); if(wasEditingBlockId) goToItem('radioBlock:'+wasEditingBlockId); alert(editingBlockId? 'Plage horaire modifiee!' : 'Plage horaire ajoutee!'); } else alert(await res.text());
   };
-  const handleEditTimeBlock = (b) => { setEditingBlockId(b.id); setNewBlockFolder(b.folder||''); setNewBlockStart(b.start_time||''); setNewBlockEnd(b.end_time||''); setNewBlockDays(b.days||[]); };
+  const handleEditTimeBlock = (b) => { setEditingBlockId(b.id); setNewBlockFolder(b.folder||''); setNewBlockStart(b.start_time||''); setNewBlockEnd(b.end_time||''); setNewBlockDays(b.days||[]); goToForm('radioBlock'); };
   const handleDeleteTimeBlock = async (id) => { if(!confirm('Supprimer cette plage horaire?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioTimeBlocks(); };
   const handleToggleTimeBlock = async (b) => { await fetch(`${supabaseUrl}/rest/v1/radio_time_blocks?id=eq.${b.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!b.active }) }); fetchRadioTimeBlocks(); };
   const toggleReassignSelect = (id) => setReassignSelectedIds(prev=>{ const next=new Set(prev); if(next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -727,10 +776,11 @@ export default function Admin() {
     const payload = { folder:newTvBlockFolder.trim(), start_time:newTvBlockStart, end_time:newTvBlockEnd, days:newTvBlockDays, active:true, external_url:newTvBlockExternalUrl.trim()||null };
     const url = editingTvBlockId? `${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${editingTvBlockId}` : `${supabaseUrl}/rest/v1/tv_time_blocks`;
     const method = editingTvBlockId? 'PATCH' : 'POST';
+    const wasEditingTvBlockId = editingTvBlockId;
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ resetTvBlockForm(); fetchTvTimeBlocks(); alert(editingTvBlockId? 'Plage horaire modifiee!' : 'Plage horaire ajoutee!'); } else alert(await res.text());
+    if(res.ok){ resetTvBlockForm(); fetchTvTimeBlocks(); if(wasEditingTvBlockId) goToItem('tvBlock:'+wasEditingTvBlockId); alert(editingTvBlockId? 'Plage horaire modifiee!' : 'Plage horaire ajoutee!'); } else alert(await res.text());
   };
-  const handleEditTvTimeBlock = (b) => { setEditingTvBlockId(b.id); setNewTvBlockFolder(b.folder||''); setNewTvBlockStart(b.start_time||''); setNewTvBlockEnd(b.end_time||''); setNewTvBlockDays(b.days||[]); setNewTvBlockExternalUrl(b.external_url||''); };
+  const handleEditTvTimeBlock = (b) => { setEditingTvBlockId(b.id); setNewTvBlockFolder(b.folder||''); setNewTvBlockStart(b.start_time||''); setNewTvBlockEnd(b.end_time||''); setNewTvBlockDays(b.days||[]); setNewTvBlockExternalUrl(b.external_url||''); goToForm('tvBlock'); };
   const handleDeleteTvTimeBlock = async (id) => { if(!confirm('Supprimer cette plage horaire?')) return; await fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchTvTimeBlocks(); };
   const handleToggleTvTimeBlock = async (b) => { await fetch(`${supabaseUrl}/rest/v1/tv_time_blocks?id=eq.${b.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!b.active }) }); fetchTvTimeBlocks(); };
 
@@ -743,10 +793,11 @@ export default function Admin() {
     const payload = { title:newProgTitle.trim(), description:newProgDesc.trim()||null, days:newProgDays, time:newProgTime, type:newProgType, active:true };
     const url = editingProgId? `${supabaseUrl}/rest/v1/programme_grid?id=eq.${editingProgId}` : `${supabaseUrl}/rest/v1/programme_grid`;
     const method = editingProgId? 'PATCH' : 'POST';
+    const wasEditingProgId = editingProgId;
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ resetProgForm(); fetchProgrammeGrid(); alert(editingProgId? 'Programme modifie!' : 'Programme ajoute!'); } else alert(await res.text());
+    if(res.ok){ resetProgForm(); fetchProgrammeGrid(); if(wasEditingProgId) goToItem('prog:'+wasEditingProgId); alert(editingProgId? 'Programme modifie!' : 'Programme ajoute!'); } else alert(await res.text());
   };
-  const handleEditProg = (p) => { setEditingProgId(p.id); setNewProgTitle(p.title||''); setNewProgDesc(p.description||''); setNewProgDays(p.days||[]); setNewProgTime(p.time||''); setNewProgType(p.type||'radio'); window.scrollTo(0,0); };
+  const handleEditProg = (p) => { setEditingProgId(p.id); setNewProgTitle(p.title||''); setNewProgDesc(p.description||''); setNewProgDays(p.days||[]); setNewProgTime(p.time||''); setNewProgType(p.type||'radio'); goToForm('prog'); };
   const handleDeleteProg = async (id) => { if(!confirm('Supprimer ce programme?')) return; await fetch(`${supabaseUrl}/rest/v1/programme_grid?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchProgrammeGrid(); };
   const handleToggleProg = async (p) => { await fetch(`${supabaseUrl}/rest/v1/programme_grid?id=eq.${p.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!p.active }) }); fetchProgrammeGrid(); };
 
@@ -790,10 +841,11 @@ export default function Admin() {
     if(editingEmId) delete payload.active;
     const url = editingEmId? `${supabaseUrl}/rest/v1/emissions?id=eq.${editingEmId}` : `${supabaseUrl}/rest/v1/emissions`;
     const method = editingEmId? 'PATCH' : 'POST';
+    const wasEditingEmId = editingEmId;
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ resetEmForm(); fetchEmissions(); alert(editingEmId? 'Emission modifiee!' : (canPublishTab('emissions')? 'Emission ajoutee!' : 'Emission soumise ! Elle sera publiee apres validation par un responsable.')); } else alert(await res.text());
+    if(res.ok){ resetEmForm(); fetchEmissions(); if(wasEditingEmId) goToItem('emission:'+wasEditingEmId); alert(editingEmId? 'Emission modifiee!' : (canPublishTab('emissions')? 'Emission ajoutee!' : 'Emission soumise ! Elle sera publiee apres validation par un responsable.')); } else alert(await res.text());
   };
-  const handleEditEmission = (e) => { setEditingEmId(e.id); setNewEmTitle(e.title||''); setNewEmDesc(e.description||''); setNewEmCategory(e.category||'radio'); setNewEmMediaType(e.media_type||'audio'); setNewEmMediaUrl(e.media_url||''); setNewEmImage(e.image||''); setNewEmDate(e.date_diffusion||new Date().toISOString().split('T')[0]); window.scrollTo(0,0); };
+  const handleEditEmission = (e) => { setEditingEmId(e.id); setNewEmTitle(e.title||''); setNewEmDesc(e.description||''); setNewEmCategory(e.category||'radio'); setNewEmMediaType(e.media_type||'audio'); setNewEmMediaUrl(e.media_url||''); setNewEmImage(e.image||''); setNewEmDate(e.date_diffusion||new Date().toISOString().split('T')[0]); goToForm('emission'); };
   const handleDeleteEmission = async (id) => { if(!confirm('Supprimer cette emission?')) return; await fetch(`${supabaseUrl}/rest/v1/emissions?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchEmissions(); };
   const handleToggleEmission = async (e) => { if(!canPublishTab('emissions')) return alert("Tu n'as pas les droits pour publier une emission."); await fetch(`${supabaseUrl}/rest/v1/emissions?id=eq.${e.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!e.active }) }); fetchEmissions(); };
 
@@ -1105,6 +1157,7 @@ export default function Admin() {
   };
 
   const handleAddEncadre = async () => {
+    const wasEditingId = editingEncadreId;
     if(!newEncadreTitle.trim() && !encadreMedia.some(m=> m.type==='text'? m.content?.trim() : m.url)) return alert('Ajoute au moins un titre ou un bloc de contenu');
     const payload = {
       title: newEncadreTitle.trim() || null,
@@ -1116,7 +1169,7 @@ export default function Admin() {
     const url = editingEncadreId? `${supabaseUrl}/rest/v1/encadres?id=eq.${editingEncadreId}` : `${supabaseUrl}/rest/v1/encadres`;
     const method = editingEncadreId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ resetEncadreForm(); fetchEncadres(); alert(editingEncadreId? 'Encadre modifie!' : 'Encadre ajoute!'); } else alert(await res.text());
+    if(res.ok){ resetEncadreForm(); fetchEncadres(); if(wasEditingId) goToItem('encadre:'+wasEditingId); alert(editingEncadreId? 'Encadre modifie!' : 'Encadre ajoute!'); } else alert(await res.text());
   };
 
   const handleEditEncadre = (enc) => {
@@ -1127,7 +1180,7 @@ export default function Admin() {
     let media = (enc.media||[]).map(m=>({id:uid(), ...m}));
     if(enc.content && !media.some(m=>m.type==='text')) media = [{id:uid(), type:'text', content:enc.content, position:'center'}, ...media];
     setEncadreMedia(media);
-    window.scrollTo(0,0);
+    goToForm('encadre');
   };
   const handleCancelEncadreEdit = () => resetEncadreForm();
   const handleDeleteEncadre = async (id) => { if(!confirm('Supprimer cet encadre?')) return; await fetch(`${supabaseUrl}/rest/v1/encadres?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchEncadres(); };
@@ -1374,7 +1427,7 @@ export default function Admin() {
           });
           if(res.ok) alert('Publie sans colonne blocks (ajoute colonne blocks jsonb dans Supabase).');
           else alert(txt)
-          if(res.ok){ afterPublish() }
+          if(res.ok){ afterPublish(form.id) }
           return
         } else {
           alert(txt)
@@ -1382,28 +1435,30 @@ export default function Admin() {
         }
       }
       alert(form.id?'Article modifie!':'Article publie!')
-      afterPublish()
+      afterPublish(form.id)
     }catch(e){ alert(e.message) }
   };
 
-  const afterPublish = () => {
+  const afterPublish = (savedId) => {
     setForm({ id:null, title:'', category:'ACCUEIL', image:'', translations:{}, gallery:[], status:'draft', author:'', chapeau:'', tags:[], slug:'' }); setSlugTouched(false); 
     setBlocks([{id:uid(), type:'text', content:''}])
     setGallery([]); setEditLang('fr'); setNewArticleWatermark(false); fetchArticles(); setShowArticles(true);
+    if(savedId) goToItem('article:'+savedId);
   }
 
   const [editingFlashId, setEditingFlashId] = useState(null);
   const handleAddFlash = async () => {
     if(!newFlash.trim()) return;
+    const wasEditingId = editingFlashId;
     const url = editingFlashId? `${supabaseUrl}/rest/v1/flash?id=eq.${editingFlashId}` : `${supabaseUrl}/rest/v1/flash`;
     const method = editingFlashId? 'PATCH' : 'POST';
     const res = await fetch(url, {
       method, headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
       body: JSON.stringify(editingFlashId? { text: newFlash.trim() } : { text: newFlash.trim(), active: canPublishTab('flash') })
     });
-    if(res.ok){ setNewFlash(''); setEditingFlashId(null); fetchFlashes(); if(!editingFlashId && !canPublishTab('flash')) alert('Flash soumis ! Il sera publie apres validation par la redaction.'); } else alert(await res.text());
+    if(res.ok){ setNewFlash(''); setEditingFlashId(null); fetchFlashes(); if(wasEditingId) goToItem('flash:'+wasEditingId); if(!editingFlashId && !canPublishTab('flash')) alert('Flash soumis ! Il sera publie apres validation par la redaction.'); } else alert(await res.text());
   };
-  const handleEditFlash = (f) => { setEditingFlashId(f.id); setNewFlash(f.text); };
+  const handleEditFlash = (f) => { setEditingFlashId(f.id); setNewFlash(f.text); goToForm('flash'); };
   const handleCancelFlashEdit = () => { setEditingFlashId(null); setNewFlash(''); };
   const handleDeleteFlash = async (id) => { if(!canDeleteTab('flash')) return alert("Tu n'as pas les droits pour supprimer un flash."); if(!confirm('Supprimer ce flash?')) return; await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchFlashes(); };
   const handleToggleFlash = async (f) => { if(!canPublishTab('flash')) return alert("Tu n'as pas les droits pour publier un flash."); await fetch(`${supabaseUrl}/rest/v1/flash?id=eq.${f.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!f.active }) }); fetchFlashes(); };
@@ -1411,15 +1466,16 @@ export default function Admin() {
   const [editingAnnonceId, setEditingAnnonceId] = useState(null);
   const handleAddAnnonce = async () => {
     if(!newAnnonce.trim()) return;
+    const wasEditingId = editingAnnonceId;
     const url = editingAnnonceId? `${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${editingAnnonceId}` : `${supabaseUrl}/rest/v1/annonces_blanches`;
     const method = editingAnnonceId? 'PATCH' : 'POST';
     const res = await fetch(url, {
       method, headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
       body: JSON.stringify(editingAnnonceId? { text: newAnnonce.trim() } : { text: newAnnonce.trim(), active: canPublishTab('annonces') })
     });
-    if(res.ok){ setNewAnnonce(''); setEditingAnnonceId(null); fetchAnnonces(); if(!editingAnnonceId && !canPublishTab('annonces')) alert('Annonce soumise ! Elle sera publiee apres validation par un responsable.'); } else alert(await res.text());
+    if(res.ok){ setNewAnnonce(''); setEditingAnnonceId(null); fetchAnnonces(); if(wasEditingId) goToItem('annonce:'+wasEditingId); if(!editingAnnonceId && !canPublishTab('annonces')) alert('Annonce soumise ! Elle sera publiee apres validation par un responsable.'); } else alert(await res.text());
   };
-  const handleEditAnnonce = (a) => { setEditingAnnonceId(a.id); setNewAnnonce(a.text); };
+  const handleEditAnnonce = (a) => { setEditingAnnonceId(a.id); setNewAnnonce(a.text); goToForm('annonce'); };
   const handleCancelAnnonceEdit = () => { setEditingAnnonceId(null); setNewAnnonce(''); };
   const handleDeleteAnnonce = async (id) => { if(!canDeleteTab('annonces')) return alert("Tu n'as pas les droits pour supprimer cette annonce."); if(!confirm('Supprimer cette annonce?')) return; await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchAnnonces(); };
   const handleToggleAnnonce = async (a) => { if(!canPublishTab('annonces')) return alert("Tu n'as pas les droits pour publier une annonce."); await fetch(`${supabaseUrl}/rest/v1/annonces_blanches?id=eq.${a.id}`, { method:'PATCH', headers:{ 'apikey': supabaseKey, 'Authorization': `Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!a.active }) }); fetchAnnonces(); };
@@ -1438,6 +1494,7 @@ export default function Admin() {
   const removeAdTime = (t) => setNewRadioAdTimes(newRadioAdTimes.filter(x=>x!==t))
 
   const handleAddRadioTrack = async () => {
+    const wasEditingId = editingRadioId;
     if(!newRadioAudio) return alert('Ajoute un fichier audio');
     if(!newRadioTitle.trim()) return alert('Mets un titre pour la piste');
     if(newRadioIsAd && newRadioAdTimes.length===0) return alert('Ajoute au moins une heure de diffusion pour cette pub');
@@ -1457,9 +1514,9 @@ export default function Admin() {
     const url = editingRadioId? `${supabaseUrl}/rest/v1/radio_playlist?id=eq.${editingRadioId}` : `${supabaseUrl}/rest/v1/radio_playlist`;
     const method = editingRadioId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setNewRadioIsHourly(false); setNewRadioHourlyHour(''); setNewRadioHourlyDays(['tous']); setNewRadioHourlyDate(''); setNewRadioDuration(null); setEditingRadioId(null); fetchRadioPlaylist(); alert(editingRadioId? 'Piste modifiee!' : (canPublishTab('radio')? 'Piste ajoutee a la radio!' : 'Piste soumise ! Elle sera diffusee apres validation par un responsable.')); } else alert(await res.text());
+    if(res.ok){ setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setNewRadioIsHourly(false); setNewRadioHourlyHour(''); setNewRadioHourlyDays(['tous']); setNewRadioHourlyDate(''); setNewRadioDuration(null); setEditingRadioId(null); fetchRadioPlaylist(); if(wasEditingId) goToItem('radio:'+wasEditingId); alert(editingRadioId? 'Piste modifiee!' : (canPublishTab('radio')? 'Piste ajoutee a la radio!' : 'Piste soumise ! Elle sera diffusee apres validation par un responsable.')); } else alert(await res.text());
   };
-  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioAudioFilename(t.original_filename||''); setNewRadioFolder(t.folder||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); setNewRadioIsHourly(!!t.is_hourly); setNewRadioHourlyHour(t.hourly_hour!=null? String(t.hourly_hour) : ''); setNewRadioHourlyDays(t.hourly_days&&t.hourly_days.length? t.hourly_days : ['tous']); setNewRadioHourlyDate(t.hourly_date||''); setNewRadioDuration(t.duration_seconds||null); window.scrollTo(0,0); };
+  const handleEditRadioTrack = (t) => { setEditingRadioId(t.id); setNewRadioTitle(t.title||''); setNewRadioAudio(t.url||''); setNewRadioAudioFilename(t.original_filename||''); setNewRadioFolder(t.folder||''); setNewRadioImage(t.image||''); setNewRadioIsJingle(!!t.is_jingle); setNewRadioIsAd(!!t.is_ad); setNewRadioAdTimes(t.ad_times||[]); setNewRadioIsHourly(!!t.is_hourly); setNewRadioHourlyHour(t.hourly_hour!=null? String(t.hourly_hour) : ''); setNewRadioHourlyDays(t.hourly_days&&t.hourly_days.length? t.hourly_days : ['tous']); setNewRadioHourlyDate(t.hourly_date||''); setNewRadioDuration(t.duration_seconds||null); goToForm('radio'); };
   const handleCancelRadioEdit = () => { setEditingRadioId(null); setNewRadioTitle(''); setNewRadioAudio(''); setNewRadioAudioFilename(''); setNewRadioFolder(''); setNewRadioImage(''); setNewRadioIsJingle(false); setNewRadioIsAd(false); setNewRadioAdTimes([]); setNewRadioIsHourly(false); setNewRadioHourlyHour(''); setNewRadioHourlyDays(['tous']); setNewRadioHourlyDate(''); setNewRadioDuration(null); };
   const handleDeleteRadioTrack = async (id) => { if(!canDeleteTab('radio')) return alert("Tu n'as pas les droits pour supprimer une programmation radio."); if(!confirm('Supprimer cette piste?')) return; await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchRadioPlaylist(); };
   const handleToggleRadioTrack = async (t) => { if(!canPublishTab('radio')) return alert("Tu n'as pas les droits pour diffuser une piste."); await fetch(`${supabaseUrl}/rest/v1/radio_playlist?id=eq.${t.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!t.active }) }); fetchRadioPlaylist(); };
@@ -1540,6 +1597,7 @@ export default function Admin() {
     alert(msg);
   };
   const handleAddVideoTrack = async () => {
+    const wasEditingId = editingVideoId;
     if(!newVideoUrl.trim()) return alert('Colle un lien YouTube');
     const id = getYtId(newVideoUrl.trim());
     if(!id) return alert('Lien YouTube invalide');
@@ -1564,9 +1622,9 @@ export default function Admin() {
     const url = editingVideoId? `${supabaseUrl}/rest/v1/video_playlist?id=eq.${editingVideoId}` : `${supabaseUrl}/rest/v1/video_playlist`;
     const method = editingVideoId? 'PATCH' : 'POST';
     const res = await fetch(url, { method, headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json', 'Prefer':'return=minimal' }, body: JSON.stringify(payload) });
-    if(res.ok){ setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setNewVideoFolder(''); setEditingVideoId(null); fetchVideoPlaylist(); alert(editingVideoId? 'Video modifiee!' : (canPublishTab('videotv')? 'Video ajoutee a la playlist TV!' : 'Video soumise ! Elle sera diffusee apres validation par un responsable.')); } else alert(await res.text());
+    if(res.ok){ setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setNewVideoFolder(''); setEditingVideoId(null); fetchVideoPlaylist(); if(wasEditingId) goToItem('video:'+wasEditingId); alert(editingVideoId? 'Video modifiee!' : (canPublishTab('videotv')? 'Video ajoutee a la playlist TV!' : 'Video soumise ! Elle sera diffusee apres validation par un responsable.')); } else alert(await res.text());
   };
-  const handleEditVideoTrack = (v) => { setEditingVideoId(v.id); setNewVideoTitle(v.title||''); setNewVideoUrl(v.url||''); setNewVideoIsJingle(!!v.is_jingle); setNewVideoIsAd(!!v.is_ad); setNewVideoAdTimes(v.ad_times||[]); setNewVideoFolder(v.folder||''); window.scrollTo(0,0); };
+  const handleEditVideoTrack = (v) => { setEditingVideoId(v.id); setNewVideoTitle(v.title||''); setNewVideoUrl(v.url||''); setNewVideoIsJingle(!!v.is_jingle); setNewVideoIsAd(!!v.is_ad); setNewVideoAdTimes(v.ad_times||[]); setNewVideoFolder(v.folder||''); goToForm('video'); };
   const handleCancelVideoEdit = () => { setEditingVideoId(null); setNewVideoTitle(''); setNewVideoUrl(''); setNewVideoIsJingle(false); setNewVideoIsAd(false); setNewVideoAdTimes([]); setNewVideoFolder(''); };
   const handleDeleteVideoTrack = async (id) => { if(!canDeleteTab('videotv')) return alert("Tu n'as pas les droits pour supprimer une programmation video."); if(!confirm('Supprimer cette video?')) return; await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${id}`, { method:'DELETE', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}` } }); fetchVideoPlaylist(); };
   const handleToggleVideoTrack = async (v) => { if(!canPublishTab('videotv')) return alert("Tu n'as pas les droits pour diffuser une video."); await fetch(`${supabaseUrl}/rest/v1/video_playlist?id=eq.${v.id}`, { method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':`Bearer ${accessTokenRef.current||supabaseKey}`, 'Content-Type':'application/json' }, body: JSON.stringify({ active:!v.active }) }); fetchVideoPlaylist(); };
@@ -1629,7 +1687,7 @@ export default function Admin() {
     <div style={{minHeight:'100vh', background:'#eef2ff', fontFamily:'Inter, Arial'}}>
       <style>{`* {box-sizing:border-box} input, select, textarea{outline:none} input:focus, select:focus, textarea:focus{border-color:#2e4fb0!important}`}</style>
 
-      <div style={{background:'#2e4fb0', color:'white', padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', position:'sticky', top:0, zIndex:10, borderBottom:'3px solid #ffcc00'}}>
+      <div data-rius-admin-header style={{background:'#2e4fb0', color:'white', padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', position:'sticky', top:0, zIndex:10, borderBottom:'3px solid #ffcc00'}}>
         <div style={{display:'flex', alignItems:'center', gap:10}}>
           <img src="/logo.png" style={{width:40, height:40, borderRadius:'50%'}} alt="" />
           <div>
@@ -1744,13 +1802,13 @@ export default function Admin() {
         ) : showFlash? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #ffcc00'}}>
             <h3 style={{marginTop:0, color:'#0f2040'}}>Bande noire - Infos Flash</h3>
-            <div style={{display:'flex', gap:6, marginBottom:14}}>
+            <div ref={formRef('flash')} style={{display:'flex', gap:6, marginBottom:14}}>
               <input placeholder="Ex: Togo : Ouverture du marche..." value={newFlash} onChange={e=>setNewFlash(e.target.value)} style={{flex:1,padding:11,borderRadius:10,border:'1px solid #c7d2fe'}} />
               <button onClick={handleAddFlash} style={{background:'#0f2040',color:'white',borderRadius:10,border:0,padding:'0 16px',fontWeight:800,cursor:'pointer'}}>{editingFlashId? 'Modifier':'Ajouter'}</button>
               {editingFlashId && <button onClick={handleCancelFlashEdit} style={{background:'#f1f5f9',color:'#0f2040',borderRadius:10,border:0,padding:'0 14px',fontWeight:700,cursor:'pointer'}}>Annuler</button>}
             </div>
             {flashes.map(f=>(
-              <div key={f.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
+              <div key={f.id} ref={itemRef('flash:'+f.id)} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, ...flashStyle('flash:'+f.id)}}>
                 <div style={{flex:1, fontSize:13}}>{f.text}</div>
                 <button onClick={()=>handleEditFlash(f)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 {canPublishTab('flash')? <button onClick={()=>handleToggleFlash(f)} style={{background: f.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{f.active?'ON':'OFF'}</button> : <span style={{background: f.active?'#dcfce7':'#fef3c7', color: f.active?'#16a34a':'#b45309', borderRadius:6, padding:'4px 8px', fontSize:10, fontWeight:800}}>{f.active?'Publie':'En attente'}</span>}
@@ -1761,13 +1819,13 @@ export default function Admin() {
         ) : showAnnonces? (
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #0f2040'}}>
             <h3 style={{marginTop:0, color:'#0f2040'}}>Bande blanche - Annonces defilantes</h3>
-            <div style={{display:'flex', gap:6, marginBottom:14}}>
+            <div ref={formRef('annonce')} style={{display:'flex', gap:6, marginBottom:14}}>
               <input placeholder="Ex: EN DIRECT 20h : Debat Politique" value={newAnnonce} onChange={e=>setNewAnnonce(e.target.value)} style={{flex:1,padding:11,borderRadius:10,border:'1px solid #c7d2fe'}} />
               <button onClick={handleAddAnnonce} style={{background:'#0f2040',color:'#ffcc00',borderRadius:10,border:0,padding:'0 16px',fontWeight:800,cursor:'pointer'}}>{editingAnnonceId? 'Modifier':'Ajouter'}</button>
               {editingAnnonceId && <button onClick={handleCancelAnnonceEdit} style={{background:'#f1f5f9',color:'#0f2040',borderRadius:10,border:0,padding:'0 14px',fontWeight:700,cursor:'pointer'}}>Annuler</button>}
             </div>
             {annonces.map(a=>(
-              <div key={a.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
+              <div key={a.id} ref={itemRef('annonce:'+a.id)} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, ...flashStyle('annonce:'+a.id)}}>
                 <div style={{flex:1, fontSize:13}}>{a.text}</div>
                 <button onClick={()=>handleEditAnnonce(a)} style={{background:'#dbeafe',color:'#2e4fb0',border:0,borderRadius:6,padding:'6px 10px',fontSize:11}}>Modifier</button>
                 {canPublishTab('annonces')? <button onClick={()=>handleToggleAnnonce(a)} style={{background: a.active?'#dcfce7':'#fee2e2', border:0, borderRadius:6, padding:'4px 8px', fontSize:10}}>{a.active?'ON':'OFF'}</button> : <span style={{background: a.active?'#dcfce7':'#fef3c7', color: a.active?'#16a34a':'#b45309', borderRadius:6, padding:'4px 8px', fontSize:10, fontWeight:800}}>{a.active?'Publie':'En attente'}</span>}
@@ -1833,7 +1891,7 @@ export default function Admin() {
               )}
             </div>
 
-            <div style={{border:'2px solid #7c3aed', padding:12, borderRadius:12, background:'#f5f3ff', marginBottom:16}}>
+            <div ref={formRef('radioBlock')} style={{border:'2px solid #7c3aed', padding:12, borderRadius:12, background:'#f5f3ff', marginBottom:16}}>
               <div style={{fontSize:12,fontWeight:900,color:'#7c3aed',marginBottom:8}}>PROGRAMMATION PAR GROUPE (ex: 05h-07h jouer "Slow")</div>
               <div style={{fontSize:10,color:'#64748b',marginBottom:10}}>Pendant cette plage, seules les pistes du groupe indique sont jouees. En dehors des plages programmees, les pistes sans groupe jouent normalement.</div>
               {(()=>{ const folderCounts={}; radioPlaylist.forEach(t=>{ if(t.folder){ if(!folderCounts[t.folder]) folderCounts[t.folder]={count:0, lastDate:null}; folderCounts[t.folder].count++; if(t.created_at && (!folderCounts[t.folder].lastDate || t.created_at>folderCounts[t.folder].lastDate)) folderCounts[t.folder].lastDate=t.created_at } }); const names=Object.keys(folderCounts); if(!names.length) return null; return (
@@ -1876,7 +1934,7 @@ export default function Admin() {
               {editingBlockId && <button onClick={resetBlockForm} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#7c3aed',fontWeight:700,borderRadius:8,border:'1px solid #7c3aed',cursor:'pointer'}}>Annuler la modification</button>}
               {radioTimeBlocks.length>0 && <div style={{marginTop:14}}>
                 {radioTimeBlocks.map(b=>(
-                  <div key={b.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap', opacity:b.active?1:0.6}}>
+                  <div key={b.id} ref={itemRef('radioBlock:'+b.id)} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap', opacity:b.active?1:0.6, ...flashStyle('radioBlock:'+b.id)}}>
                     <div style={{flex:1, minWidth:140}}>
                       <div style={{fontSize:12,fontWeight:700}}>{b.start_time} - {b.end_time} : "{b.folder}"</div>
                       <div style={{fontSize:10,color:'#64748b',marginTop:2}}>{(b.days||[]).join(', ')}</div>
@@ -1889,7 +1947,7 @@ export default function Admin() {
               </div>}
             </div>
 
-            <div style={{border:'2px dashed #86efac', padding:12, borderRadius:12, background:'#f0fdf4', marginBottom:12}}>
+            <div ref={formRef('radio')} style={{border:'2px dashed #86efac', padding:12, borderRadius:12, background:'#f0fdf4', marginBottom:12}}>
               <label style={{fontSize:10,fontWeight:800,color:'#16a34a'}}>TITRE DE LA PISTE *</label>
               <input placeholder="Ex: Emission Societe - 12 aout" value={newRadioTitle} onChange={e=>setNewRadioTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #bbf7d0',fontSize:12}} />
               <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,fontWeight:800,color:'#16a34a',marginBottom:10,cursor:'pointer'}}>
@@ -1970,7 +2028,7 @@ export default function Admin() {
               ) })()}
             </div>
             {radioPlaylist.filter(t=>matchesSearch(t, radioSearchQuery)).map((t,i)=>(
-              <div key={t.id} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6}}>
+              <div key={t.id} ref={itemRef('radio:'+t.id)} style={{border:'1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6, ...flashStyle('radio:'+t.id)}}>
                 <div style={{display:'flex', gap:10, alignItems:'center'}}>
                 <img src={t.image||'/logo.png'} style={{width:40,height:40,objectFit:'cover',borderRadius:6}} alt="" />
                 <div style={{flex:1, minWidth:0}}>
@@ -2072,7 +2130,7 @@ export default function Admin() {
               </div>
             )}
 
-            <div style={{border:'2px solid #7c3aed', padding:12, borderRadius:12, background:'#f5f3ff', marginBottom:16}}>
+            <div ref={formRef('tvBlock')} style={{border:'2px solid #7c3aed', padding:12, borderRadius:12, background:'#f5f3ff', marginBottom:16}}>
               <div style={{fontSize:12,fontWeight:900,color:'#7c3aed',marginBottom:8}}>PROGRAMMATION PAR GROUPE (ex: 18h-20h jouer "Reportages")</div>
               <div style={{fontSize:10,color:'#64748b',marginBottom:10}}>Attribue un groupe a une video dans le formulaire ci-dessous, puis programme ce groupe ici. Pendant cette plage, seules les videos du groupe indique sont jouees. En dehors, les videos sans groupe jouent normalement. Attention : contrairement a la radio, un changement de groupe peut couper une video en cours au moment de la bascule.</div>
               {(()=>{ const folderCounts={}; videoPlaylist.forEach(v=>{ if(v.folder){ if(!folderCounts[v.folder]) folderCounts[v.folder]={count:0, lastDate:null}; folderCounts[v.folder].count++; if(v.created_at && (!folderCounts[v.folder].lastDate || v.created_at>folderCounts[v.folder].lastDate)) folderCounts[v.folder].lastDate=v.created_at } }); const names=Object.keys(folderCounts); if(!names.length) return null; return (
@@ -2118,7 +2176,7 @@ export default function Admin() {
               {editingTvBlockId && <button onClick={resetTvBlockForm} style={{width:'100%',marginTop:8,padding:8,background:'transparent',color:'#7c3aed',fontWeight:700,borderRadius:8,border:'1px solid #7c3aed',cursor:'pointer'}}>Annuler la modification</button>}
               {tvTimeBlocks.length>0 && <div style={{marginTop:14}}>
                 {tvTimeBlocks.map(b=>(
-                  <div key={b.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap', opacity:b.active?1:0.6}}>
+                  <div key={b.id} ref={itemRef('tvBlock:'+b.id)} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap', opacity:b.active?1:0.6, ...flashStyle('tvBlock:'+b.id)}}>
                     <div style={{flex:1, minWidth:140}}>
                       <div style={{fontSize:12,fontWeight:700}}>{b.start_time} - {b.end_time} : "{b.folder}"{b.external_url && <span style={{marginLeft:6,background:'#fee2e2',color:'#dc2626',fontSize:9,fontWeight:900,padding:'2px 6px',borderRadius:8}}>🔗 CHAINE PARTENAIRE</span>}</div>
                       <div style={{fontSize:10,color:'#64748b',marginTop:2}}>{(b.days||[]).join(', ')}</div>
@@ -2131,7 +2189,7 @@ export default function Admin() {
               </div>}
             </div>
 
-            <div style={{border:'2px dashed #fca5a5', padding:12, borderRadius:12, background:'#fef2f2', marginBottom:12}}>
+            <div ref={formRef('video')} style={{border:'2px dashed #fca5a5', padding:12, borderRadius:12, background:'#fef2f2', marginBottom:12}}>
               <label style={{fontSize:10,fontWeight:800,color:'#dc2626'}}>TITRE DE LA VIDEO *</label>
               <input placeholder="Ex: Reportage Marche de Lome" value={newVideoTitle} onChange={e=>setNewVideoTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #fecaca',fontSize:12}} />
               <label style={{fontSize:10,fontWeight:800,color:'#dc2626'}}>LIEN YOUTUBE *</label>
@@ -2192,7 +2250,7 @@ export default function Admin() {
               )}
             </div>
             {videoPlaylist.filter(v=>matchesSearch(v, videoSearchQuery)).map((v,i)=>(
-              <div key={v.id} style={{border: blockedVideoIds.has(v.id)? '2px solid #dc2626' : '1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6}}>
+              <div key={v.id} ref={itemRef('video:'+v.id)} style={{border: blockedVideoIds.has(v.id)? '2px solid #dc2626' : '1px solid #e5e7eb', padding:8, borderRadius:10, marginBottom:6, ...flashStyle('video:'+v.id)}}>
                 <div style={{display:'flex', gap:10, alignItems:'center', flexWrap:'wrap'}}>
                 <img src={v.image} style={{width:60,height:36,objectFit:'cover',borderRadius:6}} alt="" />
                 <div style={{flex:1, minWidth:0}}>
@@ -2222,7 +2280,7 @@ export default function Admin() {
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #1d4ed8'}}>
             <h3 style={{marginTop:0, color:'#1d4ed8'}}>Grille des programmes</h3>
             <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Dis a tes auditeurs/spectateurs ce qui passe et a quelle heure. N'est pas liee aux fichiers audio/video eux-memes.</div>
-            <div style={{border:'2px dashed #93c5fd', padding:12, borderRadius:12, background:'#eff6ff', marginBottom:12}}>
+            <div ref={formRef('prog')} style={{border:'2px dashed #93c5fd', padding:12, borderRadius:12, background:'#eff6ff', marginBottom:12}}>
               <label style={{fontSize:10,fontWeight:800,color:'#1d4ed8'}}>TITRE *</label>
               <input placeholder="Ex: Debat Politique" value={newProgTitle} onChange={e=>setNewProgTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #bfdbfe',fontSize:12}} />
               <label style={{fontSize:10,fontWeight:800,color:'#1d4ed8'}}>DESCRIPTION (optionnel)</label>
@@ -2246,7 +2304,7 @@ export default function Admin() {
               {editingProgId && <button onClick={resetProgForm} style={{width:'100%',marginTop:8,padding:10,background:'transparent',color:'#1d4ed8',fontWeight:700,borderRadius:10,border:'1px solid #1d4ed8',cursor:'pointer'}}>Annuler la modification</button>}
             </div>
             {programmeGrid.map(p=>(
-              <div key={p.id} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap', opacity:p.active?1:0.6}}>
+              <div key={p.id} ref={itemRef('prog:'+p.id)} style={{border:'1px solid #e5e7eb', padding:10, borderRadius:10, display:'flex', gap:10, alignItems:'center', marginBottom:6, flexWrap:'wrap', opacity:p.active?1:0.6, ...flashStyle('prog:'+p.id)}}>
                 <span style={{background: p.type==='tv'?'#fee2e2':'#dcfce7', color: p.type==='tv'?'#dc2626':'#16a34a', fontSize:9, fontWeight:900, padding:'3px 8px', borderRadius:10}}>{p.type==='tv'?'📺 TV':'📻 RADIO'}</span>
                 <div style={{flex:1, minWidth:140}}>
                   <div style={{fontSize:12,fontWeight:700}}>{p.time} - {p.title}</div>
@@ -2263,7 +2321,7 @@ export default function Admin() {
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #0d9488'}}>
             <h3 style={{marginTop:0, color:'#0d9488'}}>Emissions passees (archive)</h3>
             <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Contenu consultable a tout moment, separe de la playlist en boucle Radio/TV.</div>
-            <div style={{border:'2px dashed #5eead4', padding:12, borderRadius:12, background:'#f0fdfa', marginBottom:12}}>
+            <div ref={formRef('emission')} style={{border:'2px dashed #5eead4', padding:12, borderRadius:12, background:'#f0fdfa', marginBottom:12}}>
               <label style={{fontSize:10,fontWeight:800,color:'#0d9488'}}>TITRE *</label>
               <input placeholder="Ex: Emission Societe du 12 aout" value={newEmTitle} onChange={e=>setNewEmTitle(e.target.value)} style={{width:'100%',padding:10,marginTop:4,marginBottom:10,borderRadius:8,border:'1px solid #99f6e4',fontSize:12}} />
               <label style={{fontSize:10,fontWeight:800,color:'#0d9488'}}>DESCRIPTION (optionnel)</label>
@@ -2300,7 +2358,7 @@ export default function Admin() {
             </div>
             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:10}}>
               {emissions.map(e=>(
-                <div key={e.id} style={{border:'1px solid #e5e7eb', borderRadius:10, overflow:'hidden', background: e.active? 'white':'#f1f5f9', opacity: e.active?1:0.6}}>
+                <div key={e.id} ref={itemRef('emission:'+e.id)} style={{border:'1px solid #e5e7eb', borderRadius:10, overflow:'hidden', background: e.active? 'white':'#f1f5f9', opacity: e.active?1:0.6, ...flashStyle('emission:'+e.id)}}>
                   <div style={{position:'relative', aspectRatio:'16/9', background:'#f5f5f5'}}>
                     {e.image && <img src={e.image} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />}
                     <span style={{position:'absolute',top:6,left:6,background: e.category==='tv'?'#fee2e2':'#dcfce7', color: e.category==='tv'?'#dc2626':'#16a34a', fontSize:9, fontWeight:900, padding:'3px 8px', borderRadius:10}}>{e.category==='tv'?'📺 TV':'📻 RADIO'}</span>
@@ -2373,7 +2431,7 @@ export default function Admin() {
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #a855f7'}}>
             <h3 style={{marginTop:0, color:'#7e22ce', display:'flex', alignItems:'center', gap:8}}>ESPACE BUSINESS - Encadres publicitaires <span style={{background:'#7e22ce',color:'white',padding:'2px 8px',borderRadius:10,fontSize:10}}>{encadres.length} encadres</span></h3>
             <div style={{fontSize:11, color:'#64748b', marginBottom:12}}>Chaque encadre peut contenir un titre, un texte, et autant d'images/sons/videos que tu veux, chacun positionnable (gauche, droite, haut, bas, centre).</div>
-            <div style={{border:'3px solid #a855f7', padding:14, borderRadius:12, background:'#faf5ff', marginBottom:16}}>
+            <div ref={formRef('encadre')} style={{border:'3px solid #a855f7', padding:14, borderRadius:12, background:'#faf5ff', marginBottom:16}}>
               <div style={{fontSize:12,fontWeight:900, marginBottom:10, color:'#7e22ce'}}>{editingEncadreId? 'MODIFIER L\'ENCADRE' : 'AJOUTER UN NOUVEL ENCADRE'}</div>
               <div style={{display:'grid', gap:10}}>
                 <div><label style={{fontSize:10,fontWeight:800}}>NOM DE L'ANNONCEUR (optionnel)</label><input placeholder="Ex: Boutique Kekeli" value={newEncadreAdvertiser} onChange={e=>setNewEncadreAdvertiser(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #e9d5ff',marginTop:4}} /></div>
@@ -2459,7 +2517,7 @@ export default function Admin() {
             </div>
 
             {encadres.map(enc=>(
-              <div key={enc.id} style={{border:'1px solid #e9d5ff', padding:10, borderRadius:12, marginBottom:8, background: enc.active? 'white':'#f8fafc', opacity: enc.active?1:0.6}}>
+              <div key={enc.id} ref={itemRef('encadre:'+enc.id)} style={{border:'1px solid #e9d5ff', padding:10, borderRadius:12, marginBottom:8, background: enc.active? 'white':'#f8fafc', opacity: enc.active?1:0.6, ...flashStyle('encadre:'+enc.id)}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', gap:10}}>
                   <div style={{flex:1, minWidth:0}}>
                     {enc.advertiser && <div style={{fontSize:10, fontWeight:900, color:'#7e22ce', textTransform:'uppercase'}}>{enc.advertiser}</div>}
@@ -2478,7 +2536,7 @@ export default function Admin() {
           <div style={{background:'white', padding:16, borderRadius:14, borderTop:'4px solid #0284c7'}}>
             <h3 style={{marginTop:0, color:'#0284c7', display:'flex', alignItems:'center', gap:8}}>❓ FAQ - Foire Aux Questions <span style={{background:'#0284c7',color:'white',padding:'2px 8px',borderRadius:10,fontSize:10}}>{faqs.length} question{faqs.length>1?'s':''}</span></h3>
             <p style={{fontSize:11,color:'#64748b',marginTop:-4,marginBottom:14}}>Ces questions/reponses sont affichees publiquement sur le site, dans l'onglet FAQ. Seules les questions "Publiees" (ON) sont visibles des visiteurs.</p>
-            <div style={{border:'1px solid #bae6fd', padding:12, borderRadius:12, marginBottom:16, background:'#f0f9ff'}}>
+            <div ref={formRef('faq')} style={{border:'1px solid #bae6fd', padding:12, borderRadius:12, marginBottom:16, background:'#f0f9ff'}}>
               <label style={{fontSize:10,fontWeight:800,color:'#0284c7'}}>CATEGORIE *</label>
               <input list="faq-categories" placeholder="Ex: Radio, TV, Kiosque, Contact..." value={newFaqCategory} onChange={e=>setNewFaqCategory(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid #bae6fd',fontSize:13,marginTop:4,marginBottom:10}} />
               <datalist id="faq-categories">{[...new Set(faqs.map(f=>f.category).filter(Boolean))].map(c=>(<option key={c} value={c} />))}</datalist>
@@ -2493,7 +2551,7 @@ export default function Admin() {
               <div key={cat} style={{marginBottom:16}}>
                 <div style={{fontSize:11,fontWeight:900,color:'#0284c7',marginBottom:6,textTransform:'uppercase'}}>{cat} ({items.length})</div>
                 {items.map(f=>(
-                  <div key={f.id} style={{border:'1px solid #e0f2fe', padding:10, borderRadius:12, marginBottom:6, background: f.active? 'white':'#f8fafc', opacity: f.active?1:0.6}}>
+                  <div key={f.id} ref={itemRef('faq:'+f.id)} style={{border:'1px solid #e0f2fe', padding:10, borderRadius:12, marginBottom:6, background: f.active? 'white':'#f8fafc', opacity: f.active?1:0.6, ...flashStyle('faq:'+f.id)}}>
                     <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10}}>
                       <div style={{flex:1, minWidth:0}}>
                         <div style={{fontWeight:800, fontSize:13}}>{f.question}</div>
@@ -2568,7 +2626,7 @@ export default function Admin() {
             {filtered.map(a=>{
               const statusInfo = a.status==='published'? {label:'Publie', bg:'#dcfce7', color:'#16a34a'} : a.status==='pending_review'? {label:'En attente', bg:'#fef3c7', color:'#b45309'} : {label:'Brouillon', bg:'#e2e8f0', color:'#475569'}
               return (
-              <div key={a.id} style={{border:'1px solid #e0e7ff', padding:10, borderRadius:12, display:'flex', gap:10, alignItems:'center', marginBottom:6}}>
+              <div key={a.id} ref={itemRef('article:'+a.id)} style={{border:'1px solid #e0e7ff', padding:10, borderRadius:12, display:'flex', gap:10, alignItems:'center', marginBottom:6, ...flashStyle('article:'+a.id)}}>
                 <img src={a.image} style={{width:54,height:54,objectFit:'cover',borderRadius:8}} alt="" />
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
