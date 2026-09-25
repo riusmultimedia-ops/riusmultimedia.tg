@@ -1759,17 +1759,20 @@ export default function App(){
   // Recherche etendue au Kiosque (Unes) et aux Emissions passees : on compare aussi contre la
   // date (au format brut et au format lisible "25 septembre 2026"), pour retrouver une parution
   // precise, en plus du nom du journal/titre/categorie.
-  // Compare une date a ce que la personne a tape, en essayant plusieurs facons naturelles
-  // d'ecrire une date (chiffres avec barre/tiret/espace, mois en toutes lettres, annee seule...),
-  // plutot que seulement le format brut et le format tout en lettres.
+  // Compare une date a ce que la personne a tape. On "aplatit" a la fois la date et ce qui a
+  // ete tape en remplacant barre/tiret/point par un espace (23/09, 23-09 et 23 09 deviennent
+  // alors identiques a comparer), ce qui accepte n'importe quel separateur naturellement.
+  const flattenDateStr = (s) => String(s).toLowerCase().replace(/[/\-.]/g,' ').replace(/\s+/g,' ').trim()
   const dateMatches = (raw, q) => {
     if(!raw) return false
     const d = new Date(raw)
     if(isNaN(d.getTime())) return false
     const dd = String(d.getDate()).padStart(2,'0'), mm = String(d.getMonth()+1).padStart(2,'0'), yyyy = String(d.getFullYear())
     const monthName = d.toLocaleDateString('fr-FR',{month:'long'})
-    const variants = [ String(raw), `${dd}/${mm}/${yyyy}`, `${dd}-${mm}-${yyyy}`, `${dd} ${mm} ${yyyy}`, `${dd}/${mm}`, `${dd}-${mm}`, `${dd} ${mm}`, `${dd} ${monthName} ${yyyy}`, `${dd} ${monthName}`, monthName, yyyy ]
-    return variants.some(v => v.toLowerCase().includes(q))
+    const qFlat = flattenDateStr(q)
+    if(!qFlat) return true // seulement de la ponctuation de separation (tiret, barre...) : retrouve toutes les dates
+    const variants = [ raw, `${dd} ${mm} ${yyyy}`, `${dd} ${mm}`, `${dd} ${monthName} ${yyyy}`, `${dd} ${monthName}`, monthName, yyyy ]
+    return variants.some(v => flattenDateStr(v).includes(qFlat))
   }
   const unesForSearch = searchTerm? unes.filter(u=>{ const q=searchTerm.toLowerCase(); return (u.journal?.toLowerCase().includes(q)||u.title?.toLowerCase().includes(q)||dateMatches(u.date,q)) }) : []
   const emissionsForSearch = searchTerm? emissions.filter(e=>{ const q=searchTerm.toLowerCase(); return (e.title?.toLowerCase().includes(q)||e.description?.toLowerCase().includes(q)||e.category?.toLowerCase().includes(q)||dateMatches(e.date_diffusion,q)) }) : []
@@ -1826,7 +1829,7 @@ export default function App(){
             {selectedUne && (
               <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setSelectedUne(null)}>
                 <div style={{maxWidth:900,width:'100%',background:'#111',borderRadius:12,overflow:'hidden'}} onClick={e=>e.stopPropagation()}>
-                  <div style={{display:'flex',justifyContent:'space-between',padding:12,background:'#1a1a1a'}}><span>{selectedUne.journal}</span><button onClick={()=>setSelectedUne(null)} style={{background:'rgba(255,255,255,0.12)',border:0,color:'white',width:32,height:32,borderRadius:'50%',cursor:'pointer'}}>X</button></div>
+                  <div style={{display:'flex',justifyContent:'space-between',padding:12,background:'#1a1a1a'}}><span>{selectedUne.title||'Kiosque'}</span><button onClick={()=>setSelectedUne(null)} style={{background:'rgba(255,255,255,0.12)',border:0,color:'white',width:32,height:32,borderRadius:'50%',cursor:'pointer'}}>X</button></div>
                   <img src={selectedUne.image} style={{width:'100%',maxHeight:'80vh',objectFit:'contain',background:'white'}} alt="" />
                 </div>
               </div>
@@ -1839,11 +1842,10 @@ export default function App(){
                   <div key={une.id} style={{background:'white',borderRadius:12,overflow:'hidden'}}>
                     <div onClick={()=>setSelectedUne(une)} style={{position:'relative',aspectRatio:'3/4',background:'#f5f5f5',cursor:'pointer'}}>
                       <img src={une.image} loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />
-                      {une.journal&&<div style={{position:'absolute',top:8,left:8,background:'#0f2040',color:'#ffcc00',padding:'4px 8px',borderRadius:6,fontSize:9,fontWeight:900}}>{une.journal}</div>}
                       {!isFree && <div style={{position:'absolute',top:8,right:8,background:isPurchased?'#a8ff00':'#ffcc00',color:'black',padding:'4px 8px',borderRadius:6,fontSize:9,fontWeight:900}}>{isPurchased? '✓ Achetée' : `${une.price} F`}</div>}
                     </div>
                     <div style={{padding:'10px 12px',color:'#0f2040'}}>
-                      <div style={{fontSize:11,fontWeight:800}}>{une.title||une.journal}</div>
+                      <div style={{fontSize:11,fontWeight:800}}>{une.title||'Kiosque'}</div>
                       <div style={{fontSize:10,opacity:0.6,marginBottom:8}}>{une.date? new Date(une.date).toLocaleDateString('fr-FR'):''}</div>
                       {isFree ? (
                         <button onClick={()=>setSelectedUne(une)} style={{width:'100%',background:'#0f2040',color:'white',border:0,padding:'8px 10px',borderRadius:6,fontWeight:800,fontSize:11,cursor:'pointer'}}>👁 Voir</button>
