@@ -976,17 +976,23 @@ export default function App(){
       const vid = visitorIdRef.current; if(!vid) return
       const zone = currentZoneRef.current
       try{
-        // Une seule requete "upsert" : cree la ligne si elle n'existe pas encore pour ce
-        // visiteur/cette zone, ou met a jour last_seen si elle existe deja. On evite ainsi le
-        // PATCH-puis-POST d'avant, qui provoquait un faux conflit (409) a chaque battement : le
-        // PATCH fonctionnait bien, mais Supabase ne pouvait pas renvoyer la ligne modifiee pour
-        // le confirmer (lecture reservee au personnel), donc le code tentait quand meme de la
-        // recreer et tombait sur un doublon.
-        await fetch(`${supabaseUrl}/rest/v1/live_presence`, {
+        // On tente d'abord de creer la ligne (cas du tout premier battement pour ce
+        // visiteur/cette zone). Si elle existe deja, Supabase repond 409 : dans ce cas, on la
+        // met simplement a jour. On se base uniquement sur le code de la reponse (succes ou
+        // conflit), jamais sur les donnees renvoyees, car la lecture de cette table est reservee
+        // au personnel : le site ne peut pas la relire pour verifier, mais n'en a pas besoin.
+        const createRes = await fetch(`${supabaseUrl}/rest/v1/live_presence`, {
           method:'POST',
-          headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' },
+          headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
           body: JSON.stringify({ session_id:vid, zone, last_seen: new Date().toISOString() })
         })
+        if(createRes.status===409){
+          fetch(`${supabaseUrl}/rest/v1/live_presence?session_id=eq.${vid}&zone=eq.${zone}`, {
+            method:'PATCH',
+            headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+            body: JSON.stringify({ last_seen: new Date().toISOString() })
+          }).catch(()=>{})
+        }
       }catch{}
     }
     heartbeatFnRef.current = heartbeat
