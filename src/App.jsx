@@ -976,17 +976,17 @@ export default function App(){
       const vid = visitorIdRef.current; if(!vid) return
       const zone = currentZoneRef.current
       try{
-        const patchRes = await fetch(`${supabaseUrl}/rest/v1/live_presence?session_id=eq.${vid}&zone=eq.${zone}`, {
-          method:'PATCH', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'return=representation' },
-          body: JSON.stringify({ last_seen: new Date().toISOString() })
+        // Une seule requete "upsert" : cree la ligne si elle n'existe pas encore pour ce
+        // visiteur/cette zone, ou met a jour last_seen si elle existe deja. On evite ainsi le
+        // PATCH-puis-POST d'avant, qui provoquait un faux conflit (409) a chaque battement : le
+        // PATCH fonctionnait bien, mais Supabase ne pouvait pas renvoyer la ligne modifiee pour
+        // le confirmer (lecture reservee au personnel), donc le code tentait quand meme de la
+        // recreer et tombait sur un doublon.
+        await fetch(`${supabaseUrl}/rest/v1/live_presence`, {
+          method:'POST',
+          headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ session_id:vid, zone, last_seen: new Date().toISOString() })
         })
-        const updated = await patchRes.json().catch(()=>[])
-        if(!Array.isArray(updated) || updated.length===0){
-          fetch(`${supabaseUrl}/rest/v1/live_presence`, {
-            method:'POST', headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-            body: JSON.stringify({ session_id:vid, zone, last_seen: new Date().toISOString() })
-          }).catch(()=>{})
-        }
       }catch{}
     }
     heartbeatFnRef.current = heartbeat
