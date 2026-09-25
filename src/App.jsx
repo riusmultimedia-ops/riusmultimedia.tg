@@ -1759,7 +1759,18 @@ export default function App(){
   // Recherche etendue au Kiosque (Unes) et aux Emissions passees : on compare aussi contre la
   // date (au format brut et au format lisible "25 septembre 2026"), pour retrouver une parution
   // precise, en plus du nom du journal/titre/categorie.
-  const dateMatches = (raw, q) => { if(!raw) return false; if(String(raw).toLowerCase().includes(q)) return true; try{ return new Date(raw).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).toLowerCase().includes(q) }catch{ return false } }
+  // Compare une date a ce que la personne a tape, en essayant plusieurs facons naturelles
+  // d'ecrire une date (chiffres avec barre/tiret/espace, mois en toutes lettres, annee seule...),
+  // plutot que seulement le format brut et le format tout en lettres.
+  const dateMatches = (raw, q) => {
+    if(!raw) return false
+    const d = new Date(raw)
+    if(isNaN(d.getTime())) return false
+    const dd = String(d.getDate()).padStart(2,'0'), mm = String(d.getMonth()+1).padStart(2,'0'), yyyy = String(d.getFullYear())
+    const monthName = d.toLocaleDateString('fr-FR',{month:'long'})
+    const variants = [ String(raw), `${dd}/${mm}/${yyyy}`, `${dd}-${mm}-${yyyy}`, `${dd} ${mm} ${yyyy}`, `${dd}/${mm}`, `${dd}-${mm}`, `${dd} ${mm}`, `${dd} ${monthName} ${yyyy}`, `${dd} ${monthName}`, monthName, yyyy ]
+    return variants.some(v => v.toLowerCase().includes(q))
+  }
   const unesForSearch = searchTerm? unes.filter(u=>{ const q=searchTerm.toLowerCase(); return (u.journal?.toLowerCase().includes(q)||u.title?.toLowerCase().includes(q)||dateMatches(u.date,q)) }) : []
   const emissionsForSearch = searchTerm? emissions.filter(e=>{ const q=searchTerm.toLowerCase(); return (e.title?.toLowerCase().includes(q)||e.description?.toLowerCase().includes(q)||e.category?.toLowerCase().includes(q)||dateMatches(e.date_diffusion,q)) }) : []
   const filteredArticles=actif==='RECHERCHE'? articlesForSearch:articles
