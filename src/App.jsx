@@ -1005,43 +1005,24 @@ export default function App(){
   }
   const currentZoneRef = useRef('other')
   const heartbeatFnRef = useRef(null)
-  // Zones pour lesquelles on sait deja (depuis ce chargement de page) qu'une ligne de presence
-  // existe cote serveur : on evite ainsi de retenter une creation a chaque battement, ce qui
-  // provoquait un conflit (409) affiche en rouge dans la console a chaque fois, meme si ce
-  // conflit etait sans consequence et deja correctement gere.
-  const knownPresenceZonesRef = useRef(new Set())
-  // Presence en direct : "bat le rappel" toutes les 20s pour la zone actuellement visitee, et
-  // immediatement des qu'on change de zone (radio/tv/article), pour ne pas attendre jusqu'a 20s
-  // avant que le changement de page soit visible dans le compteur en direct.
-  // (On tente d'abord une mise a jour ; si rien n'existe encore pour ce visiteur/cette zone, on cree la ligne.
-  //  Ca evite d'avoir besoin d'un mecanisme d'upsert, qui necessiterait un droit de lecture publique.)
+  // Presence en direct : "bat le rappel" toutes les 12s pour la zone actuellement visitee, et
+  // immediatement des qu'on change de zone (radio/tv/article), pour que le compteur en direct
+  // reagisse sans attendre le prochain battement.
+  // On passe par la fonction securisee live_presence_heartbeat (cote base), qui cree la ligne
+  // si elle n'existe pas encore, ou met simplement a jour son heure sinon, en une seule requete.
+  // Le visiteur n'a ainsi jamais besoin de lire la table live_presence (lecture reservee au
+  // personnel) : c'est justement ce manque de lecture qui faisait echouer silencieusement
+  // les anciennes mises a jour directes (PATCH).
   useEffect(()=>{
     const heartbeat = async () => {
       const vid = visitorIdRef.current; if(!vid) return
       const zone = currentZoneRef.current
       try{
-        const patchOnly = () => fetch(`${supabaseUrl}/rest/v1/live_presence?session_id=eq.${vid}&zone=eq.${zone}`, {
-          method:'PATCH',
-          headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-          body: JSON.stringify({ last_seen: new Date().toISOString() })
-        }).catch(()=>{})
-        if(knownPresenceZonesRef.current.has(zone)){
-          // On sait deja qu'une ligne existe pour cette zone (depuis ce chargement de page) :
-          // on la met a jour directement, sans repasser par une creation qui echouerait.
-          await patchOnly()
-        } else {
-          // Premiere fois pour cette zone depuis le chargement de la page : on tente de creer la
-          // ligne. Si elle existe deja (409, visiteur revenu sur une zone deja visitee il y a
-          // peu), on la met a jour a la place, et on s'en souvient pour ne plus refaire cette
-          // tentative de creation lors des prochains battements.
-          const createRes = await fetch(`${supabaseUrl}/rest/v1/live_presence`, {
-            method:'POST',
-            headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-            body: JSON.stringify({ session_id:vid, zone, last_seen: new Date().toISOString() })
-          })
-          if(createRes.status===409){ knownPresenceZonesRef.current.add(zone); await patchOnly() }
-          else if(createRes.ok){ knownPresenceZonesRef.current.add(zone) }
-        }
+        await fetch(`${supabaseUrl}/rest/v1/rpc/live_presence_heartbeat`, {
+          method:'POST',
+          headers:{ 'apikey':supabaseKey, 'Authorization':'Bearer '+supabaseKey, 'Content-Type':'application/json' },
+          body: JSON.stringify({ p_session_id: vid, p_zone: zone })
+        })
       }catch{}
     }
     heartbeatFnRef.current = heartbeat
